@@ -1,0 +1,38 @@
+# Segredos e configurações locais
+.env
+.env.*
+!.env.example
+!**/.env.example
+frontend/.env.local
+frontend/.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node, Vite e cobertura
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Ferramentas e sistema operacional
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.vercel/
+
+# Logs e arquivos temporários
+*.log
+*.tmp
