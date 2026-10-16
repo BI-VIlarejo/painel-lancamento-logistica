@@ -1,0 +1,600 @@
+Project LancamentoLogistica_Operacional {
+  database_type: 'MySQL'
+  Note: 'Modelo proposto para captura, login local, workflow, autorização e auditoria do portal. Requer MySQL 8.0.16+ com InnoDB para aplicar CHECKs e FKs. É um domínio operacional separado do modelo dimensional do VilarejoBI; pode compartilhar o banco lógico de Logística, mas deve entrar em uma migration incremental da cadeia responsável pelo catálogo, sem alterar a migration analítica inicial.'
+}
+
+// Nomes físicos em snake_case. Todas as datas de auditoria são armazenadas em UTC.
+// Os detalhes são tipados por formulário. Não transformar este modelo em EAV nem guardar linhas em JSON genérico.
+// Rascunhos, nomes de clientes e relatos ficam neste modelo; consumidores de BI não recebem leitura ampla dele.
+// Não apagar registros de negócio/histórico por cascata: desativar cadastros e manter revisões/eventos/publicações.
+
+// ==========================================
+// CADASTROS E AUTORIZAÇÃO
+// ==========================================
+
+Table op_logistica_setor {
+  id_setor int [pk, increment]
+  codigo varchar(40) [not null, unique]
+  nome varchar(100) [not null]
+  ativo boolean [not null]
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+}
+
+Table op_logistica_localidade {
+  id_localidade bigint [pk, increment]
+  codigo_localidade varchar(60) [not null, unique]
+  nome_localidade varchar(160) [not null]
+  tipo_localidade varchar(30) [not null]
+  ativo boolean [not null]
+  sincronizado_em datetime [not null]
+
+  Note: 'Espelho controlado do cadastro canônico de localidades, atualizado a partir da referência aprovada. Não permitir edição livre pela interface. codigo_localidade é a chave de integração exata com dim_localidade/mapeamentos do modelo analítico; não usar nome/cidade para cruzamentos aproximados.'
+}
+
+Table op_logistica_perfil {
+  id_perfil int [pk, increment]
+  codigo varchar(40) [not null, unique]
+  nome varchar(100) [not null]
+  ativo boolean [not null]
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+}
+
+Table op_logistica_recurso {
+  id_recurso int [pk, increment]
+  codigo varchar(60) [not null, unique, note: 'Código estável da área/página funcional, por exemplo ENTREGAS_DIARIAS, FROTA ou PAINEL_GERENCIAL.']
+  nome varchar(100) [not null]
+  id_setor int [note: 'Setor dono do recurso; nulo para páginas transversais. Recurso transversal não concede acesso global aos dados; a consulta continua filtrada pelos escopos do usuário.']
+  ativo boolean [not null]
+  criado_em datetime [not null]
+
+  indexes {
+    (id_setor, ativo) [name: 'ix_op_logistica_recurso_setor_ativo']
+  }
+
+  Note: 'Catálogo de áreas/páginas do portal, independente das URLs ou componentes visuais. A navegação mostra apenas recursos com permissão ACESSAR; cada operação da API verifica também a ação exigida e o escopo do usuário.'
+}
+
+Table op_logistica_permissao {
+  id_permissao int [pk, increment]
+  id_recurso int [not null]
+  acao varchar(40) [not null, note: 'Ação no recurso, por exemplo ACESSAR, VER, CRIAR, APROVAR ou EXPORTAR.']
+  codigo varchar(100) [not null, unique, note: 'Código estável composto pelo recurso e ação, por exemplo ENTREGAS_DIARIAS:VER.']
+  descricao varchar(160) [not null]
+  ativo boolean [not null]
+
+  indexes {
+    (id_recurso, acao) [unique, name: 'uq_op_logistica_permissao_recurso_acao']
+  }
+
+  Note: 'Permissão sempre pertence a uma área/página e representa uma ação nela. Acesso ao menu requer ACESSAR; ver e alterar dados exige as ações correspondentes e também um escopo compatível.'
+}
+
+Table op_logistica_perfil_permissao {
+  id_perfil int [not null]
+  id_permissao int [not null]
+  concedido_em datetime [not null]
+  concedido_por bigint [not null]
+
+  indexes {
+    (id_perfil, id_permissao) [pk]
+    (id_permissao) [name: 'ix_op_logistica_perfil_permissao_permissao']
+    (concedido_por, concedido_em) [name: 'ix_op_logistica_perfil_permissao_autor_data']
+  }
+
+  Note: 'Representa as permissões atualmente concedidas ao perfil. Ao conceder ou revogar uma associação, registrar o evento correspondente em op_logistica_autorizacao_evento na mesma transação. O evento mantém o histórico mesmo quando a associação revogada é removida desta tabela.'
+}
+
+Table op_logistica_usuario {
+  id_usuario bigint [pk, increment]
+  username varchar(80) [not null, unique, note: 'Nome de login local; guardar forma canônica normalizada (trim + minúsculas) e aplicar a mesma normalização na autenticação. Não usar CPF como login.']
+  nome_completo varchar(160) [not null]
+  ativo boolean [not null, default: false, note: 'Conta deve ser ativada explicitamente após provisionamento.']
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+  ultimo_login_em datetime
+
+  Note: 'Conta local do portal. O nível de acesso não fica nesta tabela: op_logistica_usuario_escopo associa perfil e escopo à conta; op_logistica_perfil_permissao concede ações sobre recursos de op_logistica_recurso.'
+}
+
+Table op_logistica_usuario_credencial {
+  id_usuario bigint [pk, note: 'Uma credencial local por conta; ausência desta linha impede autenticação por senha.']
+  hash_senha varchar(255) [not null, note: 'Hash Argon2id codificado, incluindo parâmetros e salt aleatório. Gerar/verificar por biblioteca confiável; nunca armazenar senha em texto puro, criptografada reversivelmente ou com hash rápido.']
+  senha_alterada_em datetime [not null]
+  troca_senha_obrigatoria boolean [not null, default: true, note: 'Nova credencial ou redefinição administrativa exige troca no próximo login; credencial criada pelo próprio usuário após fluxo seguro pode ser marcada como false.']
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+
+  Note: 'Dados exclusivos de autenticação. Restringir leitura ao serviço de login; nunca retornar hash em API, tela ou log. Aplicar limitação de tentativas no serviço/gateway.'
+}
+
+Table op_logistica_usuario_identificacao {
+  id_usuario bigint [pk, note: 'Uma linha opcional por conta; sua ausência significa que o CPF não foi coletado.']
+  cpf char(11) [not null, unique, note: 'Somente dígitos; validar dígitos verificadores no serviço. Não usar para autenticação, recuperação ou autorização.']
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+
+  Note: 'Dado pessoal opcional em tabela separada para restringir leitura. Só coletar com necessidade aprovada; limitar acesso ao serviço autorizado e nunca expor em logs ou telas sem permissão.'
+}
+
+Table op_logistica_escopo {
+  id_escopo bigint [pk, increment]
+  codigo_escopo varchar(140) [not null, unique, note: 'Chave normalizada, por exemplo GLOBAL, SETOR:ENTREGAS ou SETOR:ENTREGAS:LOCALIDADE:CD01.']
+  tipo_escopo varchar(24) [not null]
+  id_setor int
+  id_localidade bigint
+  ativo boolean [not null]
+  criado_em datetime [not null]
+
+  checks {
+    `tipo_escopo in ('GLOBAL', 'SETOR', 'LOCALIDADE', 'SETOR_LOCALIDADE')` [name: 'ck_op_logistica_escopo_tipo']
+    `((tipo_escopo = 'GLOBAL' and id_setor is null and id_localidade is null) or (tipo_escopo = 'SETOR' and id_setor is not null and id_localidade is null) or (tipo_escopo = 'LOCALIDADE' and id_setor is null and id_localidade is not null) or (tipo_escopo = 'SETOR_LOCALIDADE' and id_setor is not null and id_localidade is not null))` [name: 'ck_op_logistica_escopo_alvo']
+  }
+
+  indexes {
+    (id_setor) [name: 'ix_op_logistica_escopo_setor']
+    (id_localidade) [name: 'ix_op_logistica_escopo_localidade']
+  }
+
+  Note: 'Escopos são cadastros controlados, não valores enviados livremente pelo navegador. codigo_escopo deve ser montado a partir dos códigos canônicos e permanecer único.'
+}
+
+Table op_logistica_usuario_escopo {
+  id_usuario_escopo bigint [pk, increment]
+  id_usuario bigint [not null]
+  id_perfil int [not null]
+  id_escopo bigint [not null]
+  ativo boolean [not null]
+  vigente_desde datetime [not null]
+  vigente_ate datetime
+  concedido_por bigint [not null]
+  concedido_em datetime [not null]
+
+  indexes {
+    (id_usuario, id_perfil, id_escopo, vigente_desde) [unique, name: 'uq_op_logistica_usuario_escopo_inicio']
+    (id_usuario, ativo, vigente_ate) [name: 'ix_op_logistica_usuario_escopo_ativo']
+    (id_perfil, ativo) [name: 'ix_op_logistica_usuario_escopo_perfil']
+    (id_escopo, id_perfil, ativo) [name: 'ix_op_logistica_escopo_perfil_ativo']
+    (concedido_por, concedido_em) [name: 'ix_op_logistica_usuario_escopo_autor_data']
+  }
+
+  checks {
+    `vigente_ate is null or vigente_ate > vigente_desde` [name: 'ck_op_logistica_usuario_escopo_periodo']
+  }
+
+  Note: 'Uma pessoa pode ter vários perfis/escopos. A API valida as concessões em toda leitura, escrita e exportação. A aplicação deve impedir concessões duplicadas ou com períodos sobrepostos; privilégios globais exigem concessão explícita. Na revogação manual, desativar a concessão ou definir vigente_ate para a data/hora da revogação, sem apagar a linha, e gravar o evento correspondente em op_logistica_autorizacao_evento na mesma transação. O vencimento natural em vigente_ate não exige evento de revogação. Uma nova concessão cria outra linha.'
+}
+
+Table op_logistica_autorizacao_evento {
+  id_evento_autorizacao bigint [pk, increment]
+  tipo_evento varchar(40) [not null, note: 'PERFIL_PERMISSAO_CONCEDIDA, PERFIL_PERMISSAO_REVOGADA, USUARIO_ESCOPO_CONCEDIDO ou USUARIO_ESCOPO_REVOGADO.']
+  id_usuario_ator bigint [not null]
+  id_perfil int [note: 'Preenchido para eventos de concessão/revogação de permissão de perfil.']
+  id_permissao int [note: 'Preenchido para eventos de concessão/revogação de permissão de perfil.']
+  id_usuario_escopo bigint [note: 'Preenchido para eventos de concessão/revogação de perfil e escopo de uma conta.']
+  ocorrido_em datetime [not null]
+  motivo varchar(500) [note: 'Obrigatório pela API para revogações; não incluir senha, hash, CPF ou outros dados pessoais desnecessários.']
+
+  indexes {
+    (tipo_evento, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_tipo_data']
+    (id_usuario_ator, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_ator_data']
+    (id_perfil, id_permissao, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_permissao_data']
+    (id_permissao, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_permissao_fk']
+    (id_usuario_escopo, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_escopo_data']
+  }
+
+  checks {
+    `tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO')` [name: 'ck_op_logistica_autorizacao_evento_tipo']
+    `((tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA') and id_perfil is not null and id_permissao is not null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO') and id_perfil is null and id_permissao is null and id_usuario_escopo is not null))` [name: 'ck_op_logistica_autorizacao_evento_alvo']
+    `tipo_evento not in ('PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_REVOGADO') or (motivo is not null and length(trim(motivo)) > 0)` [name: 'ck_op_logistica_autorizacao_evento_motivo_revogacao']
+  }
+
+  Note: 'Trilha append-only das mudanças em permissões de perfil e concessões usuário/escopo. Cada mudança de estado e seu evento são gravados na mesma transação. A tabela atual de concessões continua sendo a fonte da autorização; este histórico não concede acesso. Restringir UPDATE/DELETE para a credencial de runtime e preservar os perfis, permissões, usuários e concessões referenciados.'
+}
+
+// ==========================================
+// FORMULÁRIOS, SUBMISSÕES E AUDITORIA
+// ==========================================
+
+Table op_logistica_formulario_versao {
+  id_formulario_versao bigint [pk, increment]
+  id_setor int [not null]
+  codigo_formulario varchar(60) [not null]
+  versao int [not null]
+  hash_contrato char(64) [not null, note: 'SHA-256 do contrato de campos/validações correspondente no código.']
+  status varchar(20) [not null]
+  vigente_desde datetime
+  vigente_ate datetime
+  criado_por bigint [not null]
+  criado_em datetime [not null]
+  publicado_por bigint
+  publicado_em datetime
+
+  indexes {
+    (codigo_formulario, versao) [unique, name: 'uq_op_logistica_formulario_versao']
+    (id_setor, status) [name: 'ix_op_logistica_formulario_setor_status']
+    (criado_por, criado_em) [name: 'ix_op_logistica_formulario_autor_data']
+    (publicado_por, publicado_em) [name: 'ix_op_logistica_formulario_publicador_data']
+  }
+
+  checks {
+    `versao > 0` [name: 'ck_op_logistica_formulario_versao_numero']
+    `status in ('RASCUNHO', 'PUBLICADO', 'ENCERRADO')` [name: 'ck_op_logistica_formulario_versao_status']
+    `vigente_ate is null or (vigente_desde is not null and vigente_ate > vigente_desde)` [name: 'ck_op_logistica_formulario_versao_periodo']
+    `(status = 'RASCUNHO' and publicado_por is null and publicado_em is null) or (status in ('PUBLICADO', 'ENCERRADO') and publicado_por is not null and publicado_em is not null and vigente_desde is not null)` [name: 'ck_op_logistica_formulario_versao_publicacao']
+    `status <> 'ENCERRADO' or vigente_ate is not null` [name: 'ck_op_logistica_formulario_versao_encerrada']
+  }
+
+  Note: 'A versão pertence a um setor; a aplicação deve validar que o setor coincide com o do lançamento. A tabela registra versão e hash; a definição tipada de campos permanece no código/schema validado. Não guardar o formulário inteiro em JSON.'
+}
+
+Table op_logistica_lancamento {
+  id_lancamento bigint [pk, increment]
+  codigo_lancamento char(36) [not null, unique, note: 'UUID estável e opaco para linhagem; conhecer esse identificador não concede autorização de acesso. O ID sequencial não é exposto.']
+  id_setor int [not null]
+  chave_idempotencia char(36) [not null, unique]
+  criado_por bigint [not null]
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+
+  indexes {
+    (id_setor, criado_em) [name: 'ix_op_logistica_lancamento_setor_data']
+    (criado_por, criado_em) [name: 'ix_op_logistica_lancamento_autor_data']
+  }
+
+  Note: 'Cabeçalho estável do processo. O estado atual é derivado da revisão mais recente; o portal não deve tratar rascunho como dado analítico.'
+}
+
+Table op_logistica_lancamento_revisao {
+  id_lancamento_revisao bigint [pk, increment]
+  id_lancamento bigint [not null]
+  codigo_revisao char(36) [not null, unique, note: 'UUID público estável para linhagem entre o catálogo operacional e as tabelas fato analíticas.']
+  id_formulario_versao bigint [not null]
+  numero_revisao int [not null]
+  chave_idempotencia char(36) [not null, unique]
+  estado varchar(24) [not null]
+  hash_conteudo char(64)
+  criado_por bigint [not null]
+  criado_em datetime [not null]
+  enviado_por bigint
+  enviado_em datetime
+  aprovado_por bigint
+  aprovado_em datetime
+  devolvido_por bigint
+  devolvido_em datetime
+
+  indexes {
+    (id_lancamento, numero_revisao) [unique, name: 'uq_op_logistica_lancamento_revisao_numero']
+    (id_lancamento, id_lancamento_revisao) [unique, name: 'uq_op_logistica_revisao_lancamento']
+    (estado, enviado_em) [name: 'ix_op_logistica_revisao_estado_envio']
+    (id_formulario_versao, estado) [name: 'ix_op_logistica_revisao_formulario_estado']
+    (enviado_por, enviado_em) [name: 'ix_op_logistica_revisao_enviador_data']
+    (aprovado_por, aprovado_em) [name: 'ix_op_logistica_revisao_aprovador_data']
+    (devolvido_por, devolvido_em) [name: 'ix_op_logistica_revisao_devolvedor_data']
+  }
+
+  checks {
+    `numero_revisao > 0` [name: 'ck_op_logistica_revisao_numero']
+    `estado in ('RASCUNHO', 'ENVIADA', 'EM_REVISAO', 'DEVOLVIDA', 'APROVADA', 'CANCELADA')` [name: 'ck_op_logistica_revisao_estado']
+    `estado not in ('ENVIADA', 'EM_REVISAO', 'DEVOLVIDA', 'APROVADA') or (enviado_por is not null and enviado_em is not null)` [name: 'ck_op_logistica_revisao_envio']
+    `estado <> 'APROVADA' or (aprovado_por is not null and aprovado_em is not null)` [name: 'ck_op_logistica_revisao_aprovacao']
+    `estado <> 'DEVOLVIDA' or (devolvido_por is not null and devolvido_em is not null)` [name: 'ck_op_logistica_revisao_devolucao']
+    `estado not in ('ENVIADA', 'EM_REVISAO', 'DEVOLVIDA', 'APROVADA') or hash_conteudo is not null` [name: 'ck_op_logistica_revisao_hash_enviada']
+  }
+
+  Note: 'Cada correção após envio cria uma nova revisão. Depois de aprovada, a revisão e suas linhas ficam imutáveis; uma correção posterior cria outra revisão, sem sobrescrever o histórico.'
+}
+
+Table op_logistica_lancamento_evento {
+  id_evento bigint [pk, increment]
+  id_lancamento bigint [not null]
+  id_lancamento_revisao bigint [not null]
+  chave_idempotencia char(36) [not null, unique, note: 'UUID do comando/evento para evitar duplicação em retries da API.']
+  tipo_evento varchar(30) [not null]
+  estado_anterior varchar(24)
+  estado_novo varchar(24)
+  ator_usuario_id bigint [not null]
+  ocorrido_em datetime [not null]
+  comentario varchar(1000)
+  campos_alterados json [note: 'Somente nomes de campos/metadados; não copiar valores sensíveis nem o texto integral do formulário.']
+
+  checks {
+    `estado_anterior is null or estado_anterior in ('RASCUNHO', 'ENVIADA', 'EM_REVISAO', 'DEVOLVIDA', 'APROVADA', 'CANCELADA')` [name: 'ck_op_logistica_evento_estado_anterior']
+    `estado_novo is null or estado_novo in ('RASCUNHO', 'ENVIADA', 'EM_REVISAO', 'DEVOLVIDA', 'APROVADA', 'CANCELADA')` [name: 'ck_op_logistica_evento_estado_novo']
+  }
+
+  indexes {
+    (id_lancamento, ocorrido_em) [name: 'ix_op_logistica_evento_lancamento_data']
+    (id_lancamento, id_lancamento_revisao) [name: 'ix_op_logistica_evento_revisao']
+    (ator_usuario_id, ocorrido_em) [name: 'ix_op_logistica_evento_ator_data']
+  }
+
+  Note: 'Log append-only das transições e ações relevantes. Restringir UPDATE/DELETE para o usuário SQL da aplicação.'
+}
+
+// ==========================================
+// CATÁLOGOS USADOS NOS FORMULÁRIOS
+// ==========================================
+
+Table op_logistica_pessoa {
+  id_pessoa bigint [pk, increment]
+  codigo_pessoa char(36) [not null, note: 'UUID interno estável da pessoa, repetido nas versões e usado para integrar com dim_pessoa_logistica.']
+  sistema_origem varchar(40)
+  codigo_pessoa_origem varchar(120)
+  nome_exibicao varchar(160) [not null]
+  tipo_funcao varchar(24) [not null]
+  ativo boolean [not null]
+  vigente_desde date [not null]
+  vigente_ate date
+  criado_por bigint [not null]
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+
+  indexes {
+    (codigo_pessoa, vigente_desde) [unique, name: 'uq_op_logistica_pessoa_versao_inicio']
+    (codigo_pessoa, vigente_ate) [name: 'ix_op_logistica_pessoa_versao_fim']
+    (sistema_origem, codigo_pessoa_origem, vigente_desde) [unique, name: 'uq_op_logistica_pessoa_origem_inicio']
+    (ativo, nome_exibicao) [name: 'ix_op_logistica_pessoa_ativa_nome']
+    (criado_por, criado_em) [name: 'ix_op_logistica_pessoa_autor_data']
+  }
+
+  checks {
+    `tipo_funcao in ('MOTORISTA', 'AJUDANTE')` [name: 'ck_op_logistica_pessoa_funcao']
+    `vigente_ate is null or vigente_ate > vigente_desde` [name: 'ck_op_logistica_pessoa_periodo']
+    `(sistema_origem is null and codigo_pessoa_origem is null) or (sistema_origem is not null and codigo_pessoa_origem is not null)` [name: 'ck_op_logistica_pessoa_origem_par']
+  }
+
+  Note: 'Não identificar pessoas pelo nome digitado. codigo_pessoa é gerado uma vez; quando houver código mestre confiável, guardar sua origem. Cada alteração histórica de nome/função cria nova versão com intervalo próprio; participantes apontam para a versão válida na data do lançamento. A aplicação impede vigências sobrepostas e desativa, sem apagar, versões já usadas.'
+}
+
+Table op_logistica_motivo_nao_entrega {
+  id_motivo_nao_entrega bigint [pk, increment]
+  codigo_motivo varchar(40) [not null]
+  descricao_motivo varchar(160) [not null]
+  ativo boolean [not null]
+  vigente_desde date [not null]
+  vigente_ate date
+  criado_por bigint [not null]
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+
+  checks {
+    `vigente_ate is null or vigente_ate > vigente_desde` [name: 'ck_op_logistica_motivo_periodo']
+  }
+
+  indexes {
+    (codigo_motivo, vigente_desde) [unique, name: 'uq_op_logistica_motivo_versao_inicio']
+    (codigo_motivo, vigente_ate) [name: 'ix_op_logistica_motivo_versao_fim']
+    (criado_por, criado_em) [name: 'ix_op_logistica_motivo_autor_data']
+  }
+
+  Note: 'Código é estável ao longo das versões. Cada mudança de significado/descrição que deva ser preservada cria nova versão; motivos usados historicamente não são apagados nem reutilizados com outro significado. A aplicação impede vigências sobrepostas.'
+}
+
+Table op_logistica_tipo_feedback {
+  id_tipo_feedback int [pk, increment]
+  codigo_tipo varchar(30) [not null, unique]
+  descricao_tipo varchar(100) [not null]
+  ativo boolean [not null]
+}
+
+// ==========================================
+// DADOS TIPADOS DOS FORMULÁRIOS
+// ==========================================
+
+Table op_logistica_entrega_diaria {
+  id_entrega_diaria bigint [pk, increment]
+  id_lancamento_revisao bigint [not null]
+  codigo_item_lancamento char(36) [not null, note: 'UUID estável preservado entre revisões; identifica esta linha lógica.']
+  data_entrega date [not null]
+  id_localidade bigint [not null]
+  quantidade_realizada int [not null]
+  quantidade_nao_realizada int [not null]
+  observacao text
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+
+  indexes {
+    (id_lancamento_revisao, codigo_item_lancamento) [unique, name: 'uq_op_logistica_entrega_revisao_item']
+    (id_entrega_diaria, id_lancamento_revisao, id_localidade) [unique, name: 'uq_op_logistica_entrega_revisao_localidade']
+    (id_localidade, data_entrega) [name: 'ix_op_logistica_entrega_localidade_data']
+    (id_lancamento_revisao, data_entrega) [name: 'ix_op_logistica_entrega_revisao_data']
+  }
+
+  checks {
+    `quantidade_realizada >= 0 and quantidade_nao_realizada >= 0` [name: 'ck_op_logistica_entrega_quantidades']
+  }
+
+  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia. Observação fica fora do modelo analítico.'
+}
+
+Table op_logistica_entrega_participante {
+  id_entrega_diaria bigint [not null]
+  id_pessoa bigint [not null]
+  papel_participante varchar(20) [not null]
+  ordem smallint [not null]
+
+  indexes {
+    (id_entrega_diaria, id_pessoa) [pk]
+    (id_entrega_diaria, papel_participante, ordem) [unique, name: 'uq_op_logistica_entrega_papel_ordem']
+    (id_pessoa) [name: 'ix_op_logistica_entrega_participante_pessoa']
+  }
+
+  checks {
+    `papel_participante in ('MOTORISTA', 'AJUDANTE')` [name: 'ck_op_logistica_entrega_papel']
+    `ordem > 0` [name: 'ck_op_logistica_entrega_participante_ordem']
+  }
+
+  Note: 'Uma pessoa só aparece uma vez por linha e id_pessoa aponta para a versão de cadastro válida na data da entrega. A regra de no máximo um motorista e até dois ajudantes é validada no serviço dentro da transação.'
+}
+
+Table op_logistica_entrega_motivo {
+  id_entrega_diaria bigint [not null]
+  id_motivo_nao_entrega bigint [not null]
+  quantidade int [not null]
+
+  indexes {
+    (id_entrega_diaria, id_motivo_nao_entrega) [pk]
+    (id_motivo_nao_entrega) [name: 'ix_op_logistica_entrega_motivo_motivo']
+  }
+
+  checks {
+    `quantidade > 0` [name: 'ck_op_logistica_entrega_motivo_quantidade']
+  }
+
+  Note: 'Uma linha por motivo por registro. O serviço verifica na mesma transação que a soma das quantidades dos motivos coincide com quantidade_nao_realizada.'
+}
+
+Table op_logistica_feedback {
+  id_feedback bigint [pk, increment]
+  id_lancamento_revisao bigint [not null]
+  codigo_item_lancamento char(36) [not null, note: 'UUID estável preservado entre revisões; identifica este evento lógico.']
+  id_tipo_feedback int [not null]
+  data_feedback date [not null]
+  id_localidade bigint [not null]
+  id_entrega_diaria bigint
+  identificador_cliente varchar(120)
+  nome_cliente varchar(160)
+  relato text [not null]
+  criado_em datetime [not null]
+  atualizado_em datetime [not null]
+
+  indexes {
+    (id_lancamento_revisao, codigo_item_lancamento) [unique, name: 'uq_op_logistica_feedback_revisao_item']
+    (id_localidade, data_feedback, id_tipo_feedback) [name: 'ix_op_logistica_feedback_localidade_data_tipo']
+    (id_entrega_diaria, id_lancamento_revisao, id_localidade) [name: 'ix_op_logistica_feedback_entrega_revisao_localidade']
+    (id_tipo_feedback) [name: 'ix_op_logistica_feedback_tipo']
+  }
+
+  Note: 'Armazena dados pessoais e texto livre. Restringir a leitura a perfis autorizados, definir retenção/expurgo e não copiar identificador/nome/relato para fatos ou logs técnicos.'
+}
+
+Table op_logistica_feedback_participante {
+  id_feedback bigint [not null]
+  id_pessoa bigint [not null]
+  papel_participante varchar(20) [not null]
+
+  indexes {
+    (id_feedback, id_pessoa) [pk]
+    (id_feedback, papel_participante) [name: 'ix_op_logistica_feedback_participante_papel']
+    (id_pessoa) [name: 'ix_op_logistica_feedback_participante_pessoa']
+  }
+
+  checks {
+    `papel_participante in ('MOTORISTA', 'AJUDANTE')` [name: 'ck_op_logistica_feedback_papel']
+  }
+}
+
+// ==========================================
+// PUBLICAÇÃO E LINHAGEM DE DADOS
+// ==========================================
+
+Table op_logistica_publicacao {
+  id_publicacao bigint [pk, increment]
+  codigo_execucao char(36) [not null, unique, note: 'UUID de correlação com etl_logistica_execucao no DBML analítico; sem FK entre catálogos.']
+  chave_idempotencia char(36) [not null, unique]
+  codigo_alvo varchar(80) [not null]
+  status varchar(20) [not null]
+  iniciado_por bigint
+  iniciado_em datetime [not null]
+  concluido_em datetime
+  lancamentos_lidos int [not null]
+  lancamentos_publicados int [not null]
+  lancamentos_rejeitados int [not null]
+  erro_resumido text
+
+  indexes {
+    (status, iniciado_em) [name: 'ix_op_logistica_publicacao_status_inicio']
+    (codigo_alvo, iniciado_em) [name: 'ix_op_logistica_publicacao_alvo_inicio']
+    (iniciado_por, iniciado_em) [name: 'ix_op_logistica_publicacao_iniciador_data']
+  }
+
+  checks {
+    `status in ('INICIADA', 'CONCLUIDA', 'FALHOU', 'CANCELADA')` [name: 'ck_op_logistica_publicacao_status']
+    `lancamentos_lidos >= 0 and lancamentos_publicados >= 0 and lancamentos_rejeitados >= 0` [name: 'ck_op_logistica_publicacao_contagens']
+    `lancamentos_publicados + lancamentos_rejeitados <= lancamentos_lidos` [name: 'ck_op_logistica_publicacao_contagens_soma']
+    `concluido_em is null or concluido_em >= iniciado_em` [name: 'ck_op_logistica_publicacao_periodo']
+    `(status = 'INICIADA' and concluido_em is null) or (status in ('CONCLUIDA', 'FALHOU', 'CANCELADA') and concluido_em is not null)` [name: 'ck_op_logistica_publicacao_conclusao']
+  }
+
+  Note: 'Uma execução técnica de publicação, idempotente e auditável. Erros armazenados aqui devem ser resumidos e sem PII. A tabela não substitui a fato nem deve ser consultada como fonte dos indicadores.'
+}
+
+Table op_logistica_publicacao_lancamento {
+  id_publicacao bigint [not null]
+  id_lancamento_revisao bigint [not null]
+  hash_revisao char(64) [not null, note: 'Snapshot do hash_conteudo da revisão; a aplicação valida que os valores coincidem no momento da publicação.']
+  resultado varchar(20) [not null]
+  processado_em datetime [not null]
+
+  indexes {
+    (id_publicacao, id_lancamento_revisao) [pk]
+    (id_lancamento_revisao, processado_em) [name: 'ix_op_logistica_publicacao_revisao_data']
+  }
+
+  checks {
+    `resultado in ('PUBLICADO', 'IGNORADO', 'REJEITADO', 'SUBSTITUIDO')` [name: 'ck_op_logistica_publicacao_lancamento_resultado']
+  }
+
+  Note: 'Registra exatamente qual revisão foi considerada em cada execução. Uma revisão pode aparecer em novas execuções idempotentes; cada combinação execução/revisão é única.'
+}
+
+// ==========================================
+// RELACIONAMENTOS
+// ==========================================
+
+Ref: op_logistica_perfil_permissao.id_perfil > op_logistica_perfil.id_perfil
+Ref: op_logistica_perfil_permissao.id_permissao > op_logistica_permissao.id_permissao
+Ref: op_logistica_perfil_permissao.concedido_por > op_logistica_usuario.id_usuario
+Ref: op_logistica_permissao.id_recurso > op_logistica_recurso.id_recurso
+Ref: op_logistica_recurso.id_setor >? op_logistica_setor.id_setor
+
+Ref: op_logistica_escopo.id_setor >? op_logistica_setor.id_setor
+Ref: op_logistica_escopo.id_localidade >? op_logistica_localidade.id_localidade
+Ref: op_logistica_usuario_escopo.id_usuario > op_logistica_usuario.id_usuario
+Ref: op_logistica_usuario_escopo.id_perfil > op_logistica_perfil.id_perfil
+Ref: op_logistica_usuario_escopo.id_escopo > op_logistica_escopo.id_escopo
+Ref: op_logistica_usuario_escopo.concedido_por > op_logistica_usuario.id_usuario
+Ref: op_logistica_autorizacao_evento.id_usuario_ator > op_logistica_usuario.id_usuario
+Ref: op_logistica_autorizacao_evento.id_perfil >? op_logistica_perfil.id_perfil
+Ref: op_logistica_autorizacao_evento.id_permissao >? op_logistica_permissao.id_permissao
+Ref: op_logistica_autorizacao_evento.id_usuario_escopo >? op_logistica_usuario_escopo.id_usuario_escopo
+Ref: op_logistica_usuario_credencial.id_usuario - op_logistica_usuario.id_usuario
+Ref: op_logistica_usuario_identificacao.id_usuario - op_logistica_usuario.id_usuario
+
+Ref: op_logistica_formulario_versao.criado_por > op_logistica_usuario.id_usuario
+Ref: op_logistica_formulario_versao.publicado_por >? op_logistica_usuario.id_usuario
+Ref: op_logistica_formulario_versao.id_setor > op_logistica_setor.id_setor
+
+Ref: op_logistica_lancamento.id_setor > op_logistica_setor.id_setor
+Ref: op_logistica_lancamento.criado_por > op_logistica_usuario.id_usuario
+Ref: op_logistica_lancamento_revisao.id_lancamento > op_logistica_lancamento.id_lancamento
+Ref: op_logistica_lancamento_revisao.id_formulario_versao > op_logistica_formulario_versao.id_formulario_versao
+Ref: op_logistica_lancamento_revisao.criado_por > op_logistica_usuario.id_usuario
+Ref: op_logistica_lancamento_revisao.enviado_por >? op_logistica_usuario.id_usuario
+Ref: op_logistica_lancamento_revisao.aprovado_por >? op_logistica_usuario.id_usuario
+Ref: op_logistica_lancamento_revisao.devolvido_por >? op_logistica_usuario.id_usuario
+Ref: op_logistica_lancamento_evento.(id_lancamento, id_lancamento_revisao) > op_logistica_lancamento_revisao.(id_lancamento, id_lancamento_revisao)
+Ref: op_logistica_lancamento_evento.ator_usuario_id > op_logistica_usuario.id_usuario
+
+Ref: op_logistica_pessoa.criado_por > op_logistica_usuario.id_usuario
+Ref: op_logistica_motivo_nao_entrega.criado_por > op_logistica_usuario.id_usuario
+
+Ref: op_logistica_entrega_diaria.id_lancamento_revisao > op_logistica_lancamento_revisao.id_lancamento_revisao
+Ref: op_logistica_entrega_diaria.id_localidade > op_logistica_localidade.id_localidade
+Ref: op_logistica_entrega_participante.id_entrega_diaria > op_logistica_entrega_diaria.id_entrega_diaria
+Ref: op_logistica_entrega_participante.id_pessoa > op_logistica_pessoa.id_pessoa
+Ref: op_logistica_entrega_motivo.id_entrega_diaria > op_logistica_entrega_diaria.id_entrega_diaria
+Ref: op_logistica_entrega_motivo.id_motivo_nao_entrega > op_logistica_motivo_nao_entrega.id_motivo_nao_entrega
+
+Ref: op_logistica_feedback.id_lancamento_revisao > op_logistica_lancamento_revisao.id_lancamento_revisao
+Ref: op_logistica_feedback.id_tipo_feedback > op_logistica_tipo_feedback.id_tipo_feedback
+Ref: op_logistica_feedback.id_localidade > op_logistica_localidade.id_localidade
+Ref: op_logistica_feedback.(id_entrega_diaria, id_lancamento_revisao, id_localidade) >? op_logistica_entrega_diaria.(id_entrega_diaria, id_lancamento_revisao, id_localidade)
+Ref: op_logistica_feedback_participante.id_feedback > op_logistica_feedback.id_feedback
+Ref: op_logistica_feedback_participante.id_pessoa > op_logistica_pessoa.id_pessoa
+
+Ref: op_logistica_publicacao.iniciado_por >? op_logistica_usuario.id_usuario
+Ref: op_logistica_publicacao_lancamento.id_publicacao > op_logistica_publicacao.id_publicacao
+Ref: op_logistica_publicacao_lancamento.id_lancamento_revisao > op_logistica_lancamento_revisao.id_lancamento_revisao
