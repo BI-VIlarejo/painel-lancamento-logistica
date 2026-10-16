@@ -1,0 +1,16 @@
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.pyrefly]
+# O Pyrefly deve resolver dependências externas pelo ambiente do backend.
+python-interpreter-path = ".venv/bin/python"
+python-version = "3.14"
+search-path = ["."]
