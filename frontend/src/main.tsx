@@ -1,3 +1,9 @@
-// Inicialização do frontend.
-// Importar estilos globais, montar providers e renderizar o componente raiz React.
-// Configurar tratamento global de erros sem expor dados sensíveis na interface.
+import { StrictMode } from "react";
+import { createRoot } from "react-dom/client";
+import { App } from "./app/App";
+import "./styles/global.css";
+
+const root = document.getElementById("root");
+if (!root) throw new Error("Elemento #root não encontrado.");
+
+createRoot(root).render(<StrictMode><App /></StrictMode>);

@@ -1,0 +1,9 @@
+.brand-mark { display: inline-flex; align-items: center; gap: 9px; color: var(--primary-deep); }
+.brand-symbol { display: grid; width: 64px; height: 64px; flex: 0 0 auto; place-items: center; border-radius: 0; background: transparent; }
+.brand-symbol img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; }
+.brand-wordmark { display: flex; flex-direction: column; line-height: 1; }
+.brand-wordmark strong { font-size: 21px; font-weight: 800; letter-spacing: -.5px; }
+.brand-wordmark span { margin-top: 5px; color: var(--muted); font-size: 14px; font-weight: 700; letter-spacing: 1.35px; }
+.brand-mark-light { color: #fff; }
+.brand-mark-light .brand-symbol { background: transparent; box-shadow: none; }
+.brand-mark-light .brand-wordmark span { color: rgba(255,255,255,.74); }

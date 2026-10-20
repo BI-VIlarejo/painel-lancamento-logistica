@@ -1,3 +1,16 @@
-// Definição das rotas da aplicação web.
-// Criar rotas de login, início, lançamentos e histórico; proteger áreas autenticadas.
-// Tratar URLs inexistentes e redirecionamentos sem usar a interface como única autorização.
+import { useEffect, useState } from "react";
+
+export function navigate(path: string): void {
+  if (window.location.pathname !== path) window.history.pushState({}, "", path);
+  window.dispatchEvent(new PopStateEvent("popstate"));
+}
+
+export function usePathname(): string {
+  const [path, setPath] = useState(() => window.location.pathname);
+  useEffect(() => {
+    const update = () => setPath(window.location.pathname);
+    window.addEventListener("popstate", update);
+    return () => window.removeEventListener("popstate", update);
+  }, []);
+  return path;
+}

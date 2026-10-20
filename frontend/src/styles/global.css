@@ -1,1 +1,56 @@
-/* Estilos globais, tokens visuais, tipografia, foco, acessibilidade e layout responsivo. */
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;800&display=swap");
+
+:root {
+  font-family: "Roboto", Arial, sans-serif;
+  font-size: 16px;
+  color: #263548;
+  background: #f4f7fa;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  /* Vilarejo: azul-marinho e azul nas ações; vermelho indica erro ou risco. */
+  --brand-navy: #203351;
+  --brand-red: #a6191c;
+  --brand-orange: #e94e24;
+  --brand-olive: #b0c053;
+  --brand-blue: #2ba3d5;
+  --brand-blue-soft: #eef7fb;
+  --brand-blue-line: #c7e5f1;
+  --brand-red-soft: #fff1ef;
+  --brand-red-line: #ead3d3;
+  --primary: var(--brand-navy);
+  --primary-hover: #172943;
+  --primary-deep: #111f34;
+  --primary-soft: #eaf0f6;
+  --ink: #263548;
+  --muted: #68778b;
+  --line: #dee2e6;
+  --paper: #ffffff;
+  --canvas: #f4f7fa;
+  --surface-subtle: #f8fafc;
+  --gold: var(--brand-orange);
+  --plant: var(--brand-olive);
+  --water: var(--brand-blue);
+  --success: #39744b;
+  --success-soft: #edf5ef;
+  --success-line: #c8ddce;
+  --warning: #8b7041;
+  --warning-soft: #faf4e6;
+  --danger: var(--brand-red);
+  --danger-soft: var(--brand-red-soft);
+  --info: var(--brand-blue);
+  --info-soft: var(--primary-soft);
+  --shadow: 0 14px 40px rgba(32, 51, 81, .09);
+}
+
+* { box-sizing: border-box; }
+html { min-width: 320px; min-height: 100%; }
+body { min-width: 320px; min-height: 100vh; margin: 0; line-height: 1.5; }
+button, input, select, textarea { font: inherit; }
+button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+button { color: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid rgba(32, 51, 81, .28); outline-offset: 2px; }
+a { color: inherit; }
+h1, h2, h3, p { margin-top: 0; }
+h1, h2, h3 { font-family: "Roboto", Arial, sans-serif; }
+::selection { color: #203351; background: #dce6f1; }
