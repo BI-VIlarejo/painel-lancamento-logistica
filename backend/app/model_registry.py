@@ -1,8 +1,9 @@
-"""Registro dos 26 modelos ORM do schema operacional do portal.
+"""Registro dos modelos ORM do schema operacional do portal.
 
 Importar este módulo registra as tabelas em Base.metadata. A classificação
 entre núcleo e opcionais é apenas organizacional; a migration inicial do
-schema compartilhado cria as 26 tabelas definidas no DBML.
+schema compartilhado cria as tabelas-base definidas no DBML, com as evoluções
+incrementais registradas na cadeia do VilarejoBI.
 """
 
 from app.core.orm import Base
@@ -15,7 +16,6 @@ from app.modules.publication import models as publication_models  # noqa: F401
 
 OPTIONAL_OPERATIONAL_TABLES = frozenset(
     {
-        "op_logistica_usuario_identificacao",
         "op_logistica_tipo_feedback",
         "op_logistica_feedback",
         "op_logistica_feedback_participante",

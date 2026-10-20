@@ -2,7 +2,6 @@
 
 from sqlalchemy.orm import DeclarativeBase
 
-
 class Base(DeclarativeBase):
     """Metadata ORM do catálogo operacional de Logística."""
 

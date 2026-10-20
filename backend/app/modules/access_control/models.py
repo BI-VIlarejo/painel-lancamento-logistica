@@ -1,9 +1,7 @@
 """Modelos ORM de perfis, permissões, escopos e trilha de autorização."""
 
 from __future__ import annotations
-
 from datetime import datetime
-
 from app.core.orm import Base
 from sqlalchemy import (
     BigInteger,
@@ -13,11 +11,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column
-
 
 class Perfil(Base):
     __tablename__ = "op_logistica_perfil"
@@ -28,7 +26,6 @@ class Perfil(Base):
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     atualizado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-
 
 class Recurso(Base):
     __tablename__ = "op_logistica_recurso"
@@ -46,7 +43,6 @@ class Recurso(Base):
     )
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-
 
 class Permissao(Base):
     __tablename__ = "op_logistica_permissao"
@@ -70,7 +66,6 @@ class Permissao(Base):
     codigo: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     descricao: Mapped[str] = mapped_column(String(160), nullable=False)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
-
 
 class PerfilPermissao(Base):
     __tablename__ = "op_logistica_perfil_permissao"
@@ -108,7 +103,6 @@ class PerfilPermissao(Base):
         ),
         nullable=False,
     )
-
 
 class Escopo(Base):
     __tablename__ = "op_logistica_escopo"
@@ -149,7 +143,6 @@ class Escopo(Base):
     )
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-
 
 class UsuarioEscopo(Base):
     __tablename__ = "op_logistica_usuario_escopo"
@@ -219,7 +212,6 @@ class UsuarioEscopo(Base):
     )
     concedido_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
-
 class AutorizacaoEvento(Base):
     __tablename__ = "op_logistica_autorizacao_evento"
     __table_args__ = (
@@ -249,19 +241,55 @@ class AutorizacaoEvento(Base):
             "id_usuario_escopo",
             "ocorrido_em",
         ),
+        Index(
+            "ix_op_logistica_autorizacao_evento_recurso_data",
+            "id_recurso",
+            "ocorrido_em",
+        ),
         CheckConstraint(
             "tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', "
             "'PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_CONCEDIDO', "
-            "'USUARIO_ESCOPO_REVOGADO')",
+            "'USUARIO_ESCOPO_REVOGADO', 'PERFIL_CRIADO', 'PERFIL_ATUALIZADO', "
+            "'PERFIL_ATIVADO', 'PERFIL_DESATIVADO', 'RECURSO_CRIADO', "
+            "'RECURSO_ATUALIZADO', 'RECURSO_ATIVADO', 'RECURSO_DESATIVADO', "
+            "'PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', "
+            "'PERMISSAO_DESATIVADA', 'USUARIO_CRIADO', 'USUARIO_ATIVADO', "
+            "'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', "
+            "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', "
+            "'LOCALIDADES_SINCRONIZADAS_BI', "
+            "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
+            "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')",
             name="ck_op_logistica_autorizacao_evento_tipo",
         ),
         CheckConstraint(
             "((tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', "
             "'PERFIL_PERMISSAO_REVOGADA') and id_perfil is not null "
-            "and id_permissao is not null and id_usuario_escopo is null) "
+            "and id_permissao is not null and id_recurso is null "
+            "and id_usuario_escopo is null) "
             "or (tipo_evento in ('USUARIO_ESCOPO_CONCEDIDO', "
             "'USUARIO_ESCOPO_REVOGADO') and id_perfil is null "
-            "and id_permissao is null and id_usuario_escopo is not null))",
+            "and id_permissao is null and id_recurso is null "
+            "and id_usuario_escopo is not null) "
+            "or (tipo_evento in ('PERFIL_CRIADO', 'PERFIL_ATUALIZADO', "
+            "'PERFIL_ATIVADO', 'PERFIL_DESATIVADO') and id_perfil is not null "
+            "and id_permissao is null and id_recurso is null "
+            "and id_usuario_escopo is null) "
+            "or (tipo_evento in ('RECURSO_CRIADO', 'RECURSO_ATUALIZADO', "
+            "'RECURSO_ATIVADO', 'RECURSO_DESATIVADO') and id_perfil is null "
+            "and id_permissao is null and id_recurso is not null "
+            "and id_usuario_escopo is null) "
+            "or (tipo_evento in ('PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', "
+            "'PERMISSAO_ATIVADA', 'PERMISSAO_DESATIVADA') and id_perfil is null "
+            "and id_permissao is not null and id_recurso is null "
+            "and id_usuario_escopo is null) "
+            "or (tipo_evento in ('USUARIO_CRIADO', 'USUARIO_ATIVADO', "
+            "'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', "
+            "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', "
+            "'LOCALIDADES_SINCRONIZADAS_BI', "
+            "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
+            "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') "
+            "and id_perfil is null and id_permissao is null and id_recurso is null "
+            "and id_usuario_escopo is null))",
             name="ck_op_logistica_autorizacao_evento_alvo",
         ),
         CheckConstraint(
@@ -300,6 +328,14 @@ class AutorizacaoEvento(Base):
         ),
         nullable=True,
     )
+    id_recurso: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey(
+            "op_logistica_recurso.id_recurso",
+            name="fk_op_logistica_autorizacao_evento_recurso",
+        ),
+        nullable=True,
+    )
     id_usuario_escopo: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey(
@@ -310,3 +346,4 @@ class AutorizacaoEvento(Base):
     )
     ocorrido_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     motivo: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    detalhes: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
