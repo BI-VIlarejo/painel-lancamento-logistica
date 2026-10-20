@@ -1,9 +1,7 @@
 """Modelos ORM do fluxo de lançamentos e do formulário de entregas."""
 
 from __future__ import annotations
-
 from datetime import date, datetime
-
 from app.core.orm import Base
 from sqlalchemy import (
     BigInteger,
@@ -23,14 +21,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-
 class FormularioVersao(Base):
     __tablename__ = "op_logistica_formulario_versao"
     __table_args__ = (
         UniqueConstraint(
+            "id_setor",
             "codigo_formulario",
             "versao",
-            name="uq_op_logistica_formulario_versao",
+            name="uq_op_logistica_formulario_setor_versao",
         ),
         Index(
             "ix_op_logistica_formulario_setor_status",
@@ -104,7 +102,6 @@ class FormularioVersao(Base):
     )
     publicado_em: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-
 class Lancamento(Base):
     __tablename__ = "op_logistica_lancamento"
     __table_args__ = (
@@ -139,7 +136,6 @@ class Lancamento(Base):
     )
     criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     atualizado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-
 
 class LancamentoRevisao(Base):
     __tablename__ = "op_logistica_lancamento_revisao"
@@ -358,7 +354,8 @@ class EntregaDiaria(Base):
             "data_entrega",
         ),
         CheckConstraint(
-            "quantidade_realizada >= 0 and quantidade_nao_realizada >= 0",
+            "quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 "
+            "and (quantidade_realizada > 0 or quantidade_nao_realizada > 0)",
             name="ck_op_logistica_entrega_quantidades",
         ),
     )

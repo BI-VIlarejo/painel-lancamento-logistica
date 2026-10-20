@@ -1,1 +1,1 @@
-# Controle futuro de publicação de revisões aprovadas no modelo analítico.
+# Controle futuro de publicação de lançamentos confirmados no modelo analítico.

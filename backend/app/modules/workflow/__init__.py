@@ -1,1 +1,1 @@
-# Envio, devolução, aprovação e correção de lançamentos.
+# Correção e cancelamento auditáveis de lançamentos confirmados.
