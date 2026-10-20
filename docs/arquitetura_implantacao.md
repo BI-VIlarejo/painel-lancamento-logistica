@@ -1,6 +1,6 @@
 # Arquitetura e conexão com a RDS
 
-**Status:** arquitetura inicial do scaffold. A localização exata do backend na AWS e os catálogos de staging/produção ainda dependem de confirmação de Infra.
+**Status:** frontend e API já implementam autenticação, controle de acesso, catálogos e rascunhos de Entregas. A localização do backend na AWS e os catálogos de staging/produção ainda dependem de confirmação de Infra. Para validar sem RDS, use o MySQL local isolado descrito em [rodar-localmente.md](./rodar-localmente.md).
 
 ## Componentes
 
@@ -19,7 +19,13 @@ flowchart LR
 
 Em produção, somente a API na AWS acessa o endpoint privado da RDS. A RDS não deve ser aberta à internet nem acessada pelo navegador. O frontend Vercel conhece apenas a URL HTTPS da API.
 
-## Conexão no desenvolvimento
+## Desenvolvimento local isolado
+
+O `compose.yaml` do portal sobe um MySQL separado chamado `op_logistica_dev`, a API e o frontend. O comando local de bootstrap cria o schema do modelo ORM atual, perfis de teste, catálogos fictícios e a primeira conta `DEV`. Ele recusa qualquer banco que não seja local e não configura acesso ao RDS.
+
+Esse modo serve para validar login e rascunhos. Para integração com dados empresariais, a conexão à RDS continua dependendo de endpoint, credenciais, rota e aprovações de Infra descritas abaixo.
+
+## Conexão ao banco compartilhado no desenvolvimento
 
 Para desenvolvimento local, pode-se repetir o padrão operacional usado pelo VilarejoBI: abrir um túnel SSH do computador de desenvolvimento, via EC2/Tailscale autorizada, para o endpoint RDS. O container da API alcança a porta local encaminhada pelo endereço `host.docker.internal`.
 
@@ -55,7 +61,12 @@ O arquivo raiz `.env.example` documenta as variáveis locais. Copie-o para `.env
 |---|---|
 | `APP_ENV` | Seleciona o ambiente da API (`local`, `staging` ou `production`). |
 | `API_PREFIX` | Prefixo versionado das rotas HTTP. |
-| `SESSION_SECRET` | Segredo de sessão do backend; gere um valor local aleatório e use Secrets Manager em produção. |
+| `SESSION_SECRET` | Segredo aleatório com pelo menos 32 bytes; obrigatório em staging e produção e armazenado no gerenciador de segredos. Em desenvolvimento local, se omitido, uma chave efêmera é gerada para o processo. |
+| `SESSION_TTL_MINUTES` | Duração absoluta da sessão em minutos; padrão de 720 (12 horas), sem renovação automática. |
+| `SESSION_COOKIE_NAME` | Nome do cookie de sessão; padrão `op_logistica_session`. |
+| `SESSION_COOKIE_SECURE` | Controla o atributo `Secure`; ativado por padrão fora dos ambientes locais. `SameSite=None` exige `Secure`. |
+| `SESSION_COOKIE_SAMESITE` | `lax`, `strict` ou `none`; escolher conforme os domínios finais do frontend e da API. |
+| `LOGIN_RATE_LIMIT_ATTEMPTS`, `LOGIN_RATE_LIMIT_WINDOW_SECONDS` | Limite local de tentativas; o controle em memória serve a um processo. Antes de produção, mover o limite para um gateway ou serviço compartilhado. |
 | `CORS_ALLOWED_ORIGINS` | Origens web autorizadas a chamar a API. Configurar Vercel Preview e domínio oficial conforme política. |
 | `OP_LOGISTICA_DATABASE_URL` | Conexão de runtime com o catálogo operacional; nunca é variável do frontend. |
 | `OP_LOGISTICA_MIGRATION_DATABASE_URL` | Conexão privilegiada para etapa controlada de migrations; não deve ser disponibilizada à API em produção. |
@@ -77,7 +88,7 @@ LancamentoLogistica/
         access_control/       # Perfis, permissões e escopos
         catalogs/             # Setor, localidade, pessoas e motivos
         deliveries/           # Lançamentos diários de Entregas
-        workflow/             # Envio, devolução, aprovação e correção
+        workflow/             # Transições legadas; correções e cancelamentos auditáveis
         feedback/             # Reclamações/elogios, após aprovar política de dados
         publication/          # Publicação analítica, após definir contrato com BI/ETL
         audit/                # Trilha de ações
@@ -90,10 +101,10 @@ LancamentoLogistica/
   docs/                       # Especificação, plano, DBML e arquitetura
 ```
 
-O scaffold de API e frontend continua sem fluxos funcionais. Os mapeamentos ORM das tabelas
-operacionais do DBML já foram implementados no backend e estão registrados em
-backend/app/model_registry.py. Eles não criam as tabelas: a migration física ainda depende da
-escolha do catálogo e da cadeia Alembic responsável.
+Os mapeamentos ORM das tabelas operacionais do DBML estão registrados em
+backend/app/model_registry.py. O bootstrap usa esses modelos somente para criar a base local de
+teste. Bancos compartilhados continuam dependendo da cadeia Alembic responsável e de uma etapa
+controlada de migration.
 
 ## Publicação do frontend
 

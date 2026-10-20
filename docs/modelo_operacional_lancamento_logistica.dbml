@@ -29,7 +29,7 @@ Table op_logistica_localidade {
   ativo boolean [not null]
   sincronizado_em datetime [not null]
 
-  Note: 'Espelho controlado do cadastro canônico de localidades, atualizado a partir da referência aprovada. Não permitir edição livre pela interface. codigo_localidade é a chave de integração exata com dim_localidade/mapeamentos do modelo analítico; não usar nome/cidade para cruzamentos aproximados.'
+  Note: 'Espelho somente leitura do cadastro canônico de localidades, atualizado por sincronização a partir de dim_localidade. Não criar códigos neste portal. codigo_localidade é a chave exata de integração com dim_localidade/mapeamentos analíticos.'
 }
 
 Table op_logistica_perfil {
@@ -94,28 +94,38 @@ Table op_logistica_usuario {
   criado_em datetime [not null]
   atualizado_em datetime [not null]
   ultimo_login_em datetime
+  hash_senha varchar(255) [note: 'Hash Argon2id codificado. Nulo enquanto a credencial local não estiver provisionada; nunca armazenar senha em texto puro, de forma reversível ou com hash rápido.']
+  senha_alterada_em datetime
+  troca_senha_obrigatoria boolean
 
-  Note: 'Conta local do portal. O nível de acesso não fica nesta tabela: op_logistica_usuario_escopo associa perfil e escopo à conta; op_logistica_perfil_permissao concede ações sobre recursos de op_logistica_recurso.'
+  checks {
+    `(hash_senha is null and senha_alterada_em is null and troca_senha_obrigatoria is null) or (hash_senha is not null and senha_alterada_em is not null and troca_senha_obrigatoria is not null)` [name: 'ck_op_logistica_usuario_credencial_completa']
+  }
+
+  Note: 'Conta e credencial local do portal. Os três campos de senha ficam todos nulos até a credencial ser provisionada; nesse estado a conta não pode autenticar. Nunca retornar hash em API nem registrá-lo em logs. O nível de acesso fica em op_logistica_usuario_escopo e op_logistica_perfil_permissao.'
 }
 
-Table op_logistica_usuario_credencial {
-  id_usuario bigint [pk, note: 'Uma credencial local por conta; ausência desta linha impede autenticação por senha.']
-  hash_senha varchar(255) [not null, note: 'Hash Argon2id codificado, incluindo parâmetros e salt aleatório. Gerar/verificar por biblioteca confiável; nunca armazenar senha em texto puro, criptografada reversivelmente ou com hash rápido.']
-  senha_alterada_em datetime [not null]
-  troca_senha_obrigatoria boolean [not null, default: true, note: 'Nova credencial ou redefinição administrativa exige troca no próximo login; credencial criada pelo próprio usuário após fluxo seguro pode ser marcada como false.']
+Table op_logistica_sessao {
+  id_sessao bigint [pk, increment]
+  id_usuario bigint [not null]
+  hash_token char(64) [not null, note: 'SHA-256 hexadecimal do token opaco gerado por fonte criptográfica forte e entregue ao navegador. Nunca armazenar o token utilizável.']
   criado_em datetime [not null]
-  atualizado_em datetime [not null]
+  expira_em datetime [not null]
+  ultimo_uso_em datetime
+  revogado_em datetime
 
-  Note: 'Dados exclusivos de autenticação. Restringir leitura ao serviço de login; nunca retornar hash em API, tela ou log. Aplicar limitação de tentativas no serviço/gateway.'
-}
+  indexes {
+    (hash_token) [unique, name: 'uq_op_logistica_sessao_hash_token']
+    (id_usuario, expira_em) [name: 'ix_op_logistica_sessao_usuario_expira']
+    (expira_em) [name: 'ix_op_logistica_sessao_expira']
+  }
 
-Table op_logistica_usuario_identificacao {
-  id_usuario bigint [pk, note: 'Uma linha opcional por conta; sua ausência significa que o CPF não foi coletado.']
-  cpf char(11) [not null, unique, note: 'Somente dígitos; validar dígitos verificadores no serviço. Não usar para autenticação, recuperação ou autorização.']
-  criado_em datetime [not null]
-  atualizado_em datetime [not null]
+  checks {
+    `expira_em > criado_em` [name: 'ck_op_logistica_sessao_periodo']
+    `revogado_em is null or revogado_em >= criado_em` [name: 'ck_op_logistica_sessao_revogacao']
+  }
 
-  Note: 'Dado pessoal opcional em tabela separada para restringir leitura. Só coletar com necessidade aprovada; limitar acesso ao serviço autorizado e nunca expor em logs ou telas sem permissão.'
+  Note: 'Sessões persistentes do portal. A API autentica por hash_token, exige expira_em no futuro e revogado_em nulo. Remover sessões expiradas por rotina controlada; não registrar tokens em logs.'
 }
 
 Table op_logistica_escopo {
@@ -163,18 +173,20 @@ Table op_logistica_usuario_escopo {
     `vigente_ate is null or vigente_ate > vigente_desde` [name: 'ck_op_logistica_usuario_escopo_periodo']
   }
 
-  Note: 'Uma pessoa pode ter vários perfis/escopos. A API valida as concessões em toda leitura, escrita e exportação. A aplicação deve impedir concessões duplicadas ou com períodos sobrepostos; privilégios globais exigem concessão explícita. Na revogação manual, desativar a concessão ou definir vigente_ate para a data/hora da revogação, sem apagar a linha, e gravar o evento correspondente em op_logistica_autorizacao_evento na mesma transação. O vencimento natural em vigente_ate não exige evento de revogação. Uma nova concessão cria outra linha.'
+  Note: 'Uma pessoa pode ter vários perfis/escopos. A API valida as concessões em toda leitura, escrita e exportação. A aplicação deve impedir concessões duplicadas ou com períodos sobrepostos; privilégios globais exigem concessão explícita. vigente_desde e concedido_em são definidos pelo servidor; novas concessões começam sem data final. Na revogação manual, desativar a concessão ou definir vigente_ate para a data/hora da revogação, sem apagar a linha, e gravar o evento correspondente em op_logistica_autorizacao_evento na mesma transação. Uma nova concessão cria outra linha.'
 }
 
 Table op_logistica_autorizacao_evento {
   id_evento_autorizacao bigint [pk, increment]
-  tipo_evento varchar(40) [not null, note: 'PERFIL_PERMISSAO_CONCEDIDA, PERFIL_PERMISSAO_REVOGADA, USUARIO_ESCOPO_CONCEDIDO ou USUARIO_ESCOPO_REVOGADO.']
+  tipo_evento varchar(40) [not null, note: 'Concessões/revogações: PERFIL_PERMISSAO_CONCEDIDA, PERFIL_PERMISSAO_REVOGADA, USUARIO_ESCOPO_CONCEDIDO, USUARIO_ESCOPO_REVOGADO. Cadastro de autorização: PERFIL/RECURSO/PERMISSAO com eventos de CRIADO, ATUALIZADO, ATIVADO e DESATIVADO. Conta: USUARIO_CRIADO, USUARIO_ATIVADO, USUARIO_DESATIVADO e USUARIO_SENHA_ALTERADA. Catálogos: LOCALIDADES_SINCRONIZADAS_BI, PESSOA_CRIADA/VERSIONADA/DESATIVADA e MOTIVO_CRIADO/VERSIONADO/DESATIVADO.']
   id_usuario_ator bigint [not null]
-  id_perfil int [note: 'Preenchido para eventos de concessão/revogação de permissão de perfil.']
-  id_permissao int [note: 'Preenchido para eventos de concessão/revogação de permissão de perfil.']
+  id_perfil int [note: 'Preenchido para eventos de alteração do perfil ou de concessão/revogação de suas permissões.']
+  id_permissao int [note: 'Preenchido para eventos de alteração da permissão ou de concessão/revogação a perfis.']
+  id_recurso int [note: 'Preenchido para alterações no cadastro de recursos.']
   id_usuario_escopo bigint [note: 'Preenchido para eventos de concessão/revogação de perfil e escopo de uma conta.']
   ocorrido_em datetime [not null]
   motivo varchar(500) [note: 'Obrigatório pela API para revogações; não incluir senha, hash, CPF ou outros dados pessoais desnecessários.']
+  detalhes json [note: 'Metadados não sensíveis da alteração, como campos e valores anteriores/novos de perfil, recurso ou permissão.']
 
   indexes {
     (tipo_evento, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_tipo_data']
@@ -182,15 +194,16 @@ Table op_logistica_autorizacao_evento {
     (id_perfil, id_permissao, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_permissao_data']
     (id_permissao, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_permissao_fk']
     (id_usuario_escopo, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_escopo_data']
+    (id_recurso, ocorrido_em) [name: 'ix_op_logistica_autorizacao_evento_recurso_data']
   }
 
   checks {
-    `tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO')` [name: 'ck_op_logistica_autorizacao_evento_tipo']
-    `((tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA') and id_perfil is not null and id_permissao is not null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO') and id_perfil is null and id_permissao is null and id_usuario_escopo is not null))` [name: 'ck_op_logistica_autorizacao_evento_alvo']
+    `tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO', 'PERFIL_CRIADO', 'PERFIL_ATUALIZADO', 'PERFIL_ATIVADO', 'PERFIL_DESATIVADO', 'RECURSO_CRIADO', 'RECURSO_ATUALIZADO', 'RECURSO_ATIVADO', 'RECURSO_DESATIVADO', 'PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', 'PERMISSAO_DESATIVADA', 'USUARIO_CRIADO', 'USUARIO_ATIVADO', 'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', 'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', 'LOCALIDADES_SINCRONIZADAS_BI', 'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')` [name: 'ck_op_logistica_autorizacao_evento_tipo']
+    `((tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA') and id_perfil is not null and id_permissao is not null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO') and id_perfil is null and id_permissao is null and id_recurso is null and id_usuario_escopo is not null) or (tipo_evento in ('PERFIL_CRIADO', 'PERFIL_ATUALIZADO', 'PERFIL_ATIVADO', 'PERFIL_DESATIVADO') and id_perfil is not null and id_permissao is null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('RECURSO_CRIADO', 'RECURSO_ATUALIZADO', 'RECURSO_ATIVADO', 'RECURSO_DESATIVADO') and id_perfil is null and id_permissao is null and id_recurso is not null and id_usuario_escopo is null) or (tipo_evento in ('PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', 'PERMISSAO_DESATIVADA') and id_perfil is null and id_permissao is not null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_CRIADO', 'USUARIO_ATIVADO', 'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', 'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', 'LOCALIDADES_SINCRONIZADAS_BI', 'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') and id_perfil is null and id_permissao is null and id_recurso is null and id_usuario_escopo is null))` [name: 'ck_op_logistica_autorizacao_evento_alvo']
     `tipo_evento not in ('PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_REVOGADO') or (motivo is not null and length(trim(motivo)) > 0)` [name: 'ck_op_logistica_autorizacao_evento_motivo_revogacao']
   }
 
-  Note: 'Trilha append-only das mudanças em permissões de perfil e concessões usuário/escopo. Cada mudança de estado e seu evento são gravados na mesma transação. A tabela atual de concessões continua sendo a fonte da autorização; este histórico não concede acesso. Restringir UPDATE/DELETE para a credencial de runtime e preservar os perfis, permissões, usuários e concessões referenciados.'
+  Note: 'Trilha append-only das alterações no catálogo de acesso, concessões de permissões a perfis e concessões usuário/escopo. Cada mudança de estado e seu evento são gravados na mesma transação. A tabela atual de concessões continua sendo a fonte da autorização; este histórico não concede acesso. Restringir UPDATE/DELETE para a credencial de runtime e preservar os perfis, recursos, permissões, usuários e concessões referenciados.'
 }
 
 // ==========================================
@@ -212,7 +225,7 @@ Table op_logistica_formulario_versao {
   publicado_em datetime
 
   indexes {
-    (codigo_formulario, versao) [unique, name: 'uq_op_logistica_formulario_versao']
+    (id_setor, codigo_formulario, versao) [unique, name: 'uq_op_logistica_formulario_setor_versao']
     (id_setor, status) [name: 'ix_op_logistica_formulario_setor_status']
     (criado_por, criado_em) [name: 'ix_op_logistica_formulario_autor_data']
     (publicado_por, publicado_em) [name: 'ix_op_logistica_formulario_publicador_data']
@@ -257,12 +270,12 @@ Table op_logistica_lancamento_revisao {
   hash_conteudo char(64)
   criado_por bigint [not null]
   criado_em datetime [not null]
-  enviado_por bigint
-  enviado_em datetime
-  aprovado_por bigint
-  aprovado_em datetime
-  devolvido_por bigint
-  devolvido_em datetime
+  enviado_por bigint [note: 'Para novos registros no estado ENVIADA, identifica a pessoa que confirmou o lançamento.']
+  enviado_em datetime [note: 'Para novos registros no estado ENVIADA, registra quando a confirmação foi feita.']
+  aprovado_por bigint [note: 'Campo legado para compatibilidade histórica; não participa do fluxo atual de Entregas.']
+  aprovado_em datetime [note: 'Campo legado para compatibilidade histórica; não participa do fluxo atual de Entregas.']
+  devolvido_por bigint [note: 'Campo legado para compatibilidade histórica; não participa do fluxo atual de Entregas.']
+  devolvido_em datetime [note: 'Campo legado para compatibilidade histórica; não participa do fluxo atual de Entregas.']
 
   indexes {
     (id_lancamento, numero_revisao) [unique, name: 'uq_op_logistica_lancamento_revisao_numero']
@@ -283,7 +296,7 @@ Table op_logistica_lancamento_revisao {
     `estado not in ('ENVIADA', 'EM_REVISAO', 'DEVOLVIDA', 'APROVADA') or hash_conteudo is not null` [name: 'ck_op_logistica_revisao_hash_enviada']
   }
 
-  Note: 'Cada correção após envio cria uma nova revisão. Depois de aprovada, a revisão e suas linhas ficam imutáveis; uma correção posterior cria outra revisão, sem sobrescrever o histórico.'
+  Note: 'Para novos registros, ENVIADA significa confirmado e não depende de aprovação. A versão confirmada e suas linhas ficam imutáveis; uma correção futura cria outra revisão sem sobrescrever o histórico. EM_REVISAO, DEVOLVIDA, APROVADA e os respectivos campos de ator/data permanecem apenas para compatibilidade com registros legados.'
 }
 
 Table op_logistica_lancamento_evento {
@@ -345,7 +358,7 @@ Table op_logistica_pessoa {
     `(sistema_origem is null and codigo_pessoa_origem is null) or (sistema_origem is not null and codigo_pessoa_origem is not null)` [name: 'ck_op_logistica_pessoa_origem_par']
   }
 
-  Note: 'Não identificar pessoas pelo nome digitado. codigo_pessoa é gerado uma vez; quando houver código mestre confiável, guardar sua origem. Cada alteração histórica de nome/função cria nova versão com intervalo próprio; participantes apontam para a versão válida na data do lançamento. A aplicação impede vigências sobrepostas e desativa, sem apagar, versões já usadas.'
+  Note: 'Não identificar pessoas pelo nome digitado. codigo_pessoa é gerado uma vez; quando houver código mestre confiável, guardar sua origem. vigente_desde é definida pelo servidor. Cada alteração histórica de nome/função cria nova versão com intervalo próprio; participantes apontam para a versão válida na data do lançamento. A aplicação impede vigências sobrepostas e desativa, sem apagar, versões já usadas.'
 }
 
 Table op_logistica_motivo_nao_entrega {
@@ -369,7 +382,7 @@ Table op_logistica_motivo_nao_entrega {
     (criado_por, criado_em) [name: 'ix_op_logistica_motivo_autor_data']
   }
 
-  Note: 'Código é estável ao longo das versões. Cada mudança de significado/descrição que deva ser preservada cria nova versão; motivos usados historicamente não são apagados nem reutilizados com outro significado. A aplicação impede vigências sobrepostas.'
+  Note: 'codigo_motivo e vigente_desde são definidos pelo servidor. A interface pede apenas a descrição e preserva versões anteriores.'
 }
 
 Table op_logistica_tipo_feedback {
@@ -403,10 +416,10 @@ Table op_logistica_entrega_diaria {
   }
 
   checks {
-    `quantidade_realizada >= 0 and quantidade_nao_realizada >= 0` [name: 'ck_op_logistica_entrega_quantidades']
+    `quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 and (quantidade_realizada > 0 or quantidade_nao_realizada > 0)` [name: 'ck_op_logistica_entrega_quantidades']
   }
 
-  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia. Observação fica fora do modelo analítico.'
+  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. A soma de realizadas e não realizadas é o total registrado e alimenta a taxa de realização; não é uma previsão independente. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia. Este resumo não permite calcular OTIF: para isso será necessário capturar pedido/parada, prazo prometido, conclusão real e quantidade completa esperada/entregue. Observação fica fora do modelo analítico.'
 }
 
 Table op_logistica_entrega_participante {
@@ -484,6 +497,8 @@ Table op_logistica_feedback_participante {
   checks {
     `papel_participante in ('MOTORISTA', 'AJUDANTE')` [name: 'ck_op_logistica_feedback_papel']
   }
+
+  Note: 'codigo_participante é estável no registro de feedback; participantes apontam para a versão válida da pessoa.'
 }
 
 // ==========================================
@@ -559,9 +574,9 @@ Ref: op_logistica_usuario_escopo.concedido_por > op_logistica_usuario.id_usuario
 Ref: op_logistica_autorizacao_evento.id_usuario_ator > op_logistica_usuario.id_usuario
 Ref: op_logistica_autorizacao_evento.id_perfil >? op_logistica_perfil.id_perfil
 Ref: op_logistica_autorizacao_evento.id_permissao >? op_logistica_permissao.id_permissao
+Ref: op_logistica_autorizacao_evento.id_recurso >? op_logistica_recurso.id_recurso
 Ref: op_logistica_autorizacao_evento.id_usuario_escopo >? op_logistica_usuario_escopo.id_usuario_escopo
-Ref: op_logistica_usuario_credencial.id_usuario - op_logistica_usuario.id_usuario
-Ref: op_logistica_usuario_identificacao.id_usuario - op_logistica_usuario.id_usuario
+Ref: op_logistica_sessao.id_usuario > op_logistica_usuario.id_usuario
 
 Ref: op_logistica_formulario_versao.criado_por > op_logistica_usuario.id_usuario
 Ref: op_logistica_formulario_versao.publicado_por >? op_logistica_usuario.id_usuario
