@@ -65,7 +65,7 @@ O painel permite filtrar por mês ou período, loja, motivo, pessoa e equipe. A 
 
 ### 2.5 Indicadores exibidos e decisões de negócio necessárias
 
-O código do protótipo calcula a taxa rotulada **OTIF** como:
+O protótipo usa incorretamente a taxa de entregas realizadas como **OTIF**:
 
 ```text
 entregas realizadas / (entregas realizadas + entregas não realizadas)
@@ -73,9 +73,13 @@ entregas realizadas / (entregas realizadas + entregas não realizadas)
 
 O painel também apresenta meta de 95%, faixas abaixo de 90% e entre 90% e 95%, totais por loja/equipe/pessoa e um ranking que ordena primeiro pela taxa, depois pelo score de atendimento e depois pelo volume realizado.
 
-Os campos do formulário não informam horário prometido, prazo combinado ou atendimento completo do pedido. Portanto, a fórmula implementada na página mede a proporção de entregas realizadas dentro do total registrado; sozinha, ela não demonstra pontualidade e não permite validar OTIF. Antes de publicar o indicador, o gestor deve confirmar a definição e a meta ou autorizar a troca do rótulo para algo como **taxa de entregas realizadas**.
+Essa fórmula mede apenas entregas realizadas dentro do total registrado; não demonstra pontualidade nem completude.
 
-O ranking individual também precisa de aceite explícito. O formulário registra contagens por equipe, não por pedido e pessoa. Atribuir a mesma quantidade realizada/não realizada a cada integrante pode duplicar volumes ou produzir uma avaliação individual que os dados não sustentam. Definir se o ranking é por equipe, se há uma regra de atribuição por integrante ou se a tela deve mostrar apenas resultados agregados.
+**Decisão do responsável pelo produto em 21/10/2026:** o release inclui OTIF, calculado pelo produto entre os percentuais de pontualidade e completude (90% × 80% = 72%). O formulário registra as quantidades entregues no prazo e completas/sem avarias, ambas limitadas às entregas realizadas. O total registrado (`realizadas + não realizadas`) é o denominador das duas taxas. As contagens entraram no backend; registros anteriores podem permanecer sem esses valores e deixam o OTIF indisponível quando incluídos no filtro.
+
+O ranking individual do protótipo precisa ser lido com cautela: o formulário registra contagens por equipe, não por pedido e pessoa. Atribuir a mesma quantidade realizada/não realizada a cada integrante pode duplicar volumes ou produzir uma avaliação individual que os dados não sustentam. A regra de atribuição registrada pelo responsável pelo produto abaixo evita replicar contagens do motorista nos ajudantes.
+
+**Decisão do responsável pelo produto em 21/10/2026:** o release inclui ranking. Seguindo os campos do CSV histórico, as quantidades “pelo motorista” alimentam a taxa e o volume do motorista. Ajudantes recebem o score de feedback por pessoa (`+1` por elogio e `−1` por reclamação), sem copiar para eles as contagens da equipe. O ranking ordena por taxa de realização, score de feedback e volume realizado, nessa ordem.
 
 ### 2.6 Limite técnico do protótipo
 
@@ -116,13 +120,12 @@ flowchart LR
     WEB -->|HTTPS / JSON| API[API FastAPI na AWS/VPC]
     API -->|Acesso privado| OP[(Tabelas operacionais op_logistica_*)]
     API --> AUTH[Login local por username e senha]
-    OP --> PUB[Confirmação do autor, validação e publicação idempotente]
-    PUB --> F[(Tabelas fato de Logística)]
+    OP --> CONF[Confirmação do autor e validação]
     ETL[VilarejoAutomacaoLogistica: SEAC, Cobli, CTA e arquivos] --> F
     F --> BI[VilarejoBI: painéis]
 ```
 
-O navegador nunca acessa MySQL diretamente. O frontend React valida e envia dados pela API HTTPS; o backend valida sessão, autorização e regras de negócio em cada leitura e escrita, grava as tabelas operacionais e controla a publicação. A pessoa que preenche confere e confirma o próprio lançamento; a confirmação o registra imediatamente. A página de lançamento é independente do BI, ainda que ambos consumam dados analíticos publicados.
+O navegador nunca acessa MySQL diretamente. O frontend React valida e envia dados pela API HTTPS; o backend valida sessão, autorização e regras de negócio em cada leitura e escrita e grava as tabelas operacionais. A pessoa que preenche confere e confirma o próprio lançamento; a confirmação o registra imediatamente. O Portal não consulta nem publica dados no VilarejoBI neste release.
 
 ### 4.2 Aplicação Python
 
@@ -190,20 +193,16 @@ Os nomes e relacionamentos completos estão no [DBML operacional do portal](./mo
 | `op_logistica_lancamento_evento` | Uma transição ou ação auditável de uma revisão. | Estado anterior/novo, ator, horário UTC, comentário e nomes dos campos alterados sem copiar valores sensíveis. Append-only. |
 | `op_logistica_pessoa` | Cadastro canônico versionado de motoristas/ajudantes que aparecem no formulário. | `id_pessoa` identifica uma versão; `codigo_pessoa` permanece estável entre versões. Nome/função e vigência ficam na versão apontada pelo participante. Usar código estável se disponível; não depender apenas de comparar nomes digitados. |
 | `op_logistica_motivo_nao_entrega` | Catálogo controlado e versionado de motivos. | `id_motivo` identifica a versão; `codigo_motivo` permanece estável entre versões. Desativar/encerrar motivos usados historicamente em vez de apagá-los ou reutilizar seu código com outro significado. |
-| `op_logistica_tipo_feedback` | Categorias controladas de feedback. | Código e descrição; começar com categorias confirmadas pelo gestor. |
 | `op_logistica_entrega_diaria` | Uma linha de resumo diário por localidade/equipe em uma revisão. | Data, código estável da linha, localidade, quantidades e observação. Não fixar unicidade por data/localidade. |
 | `op_logistica_entrega_participante` | Uma pessoa e um papel por registro de entrega. | `id_entrega`, `id_pessoa`, papel (`MOTORISTA`/`AJUDANTE`), ordem; restringir um motorista e a quantidade de ajudantes aprovada. |
 | `op_logistica_entrega_motivo` | Quantidade não realizada por motivo em um registro. | `id_entrega`, `id_motivo`, `quantidade`; chave única por entrega e motivo, se o formulário só permitir uma linha consolidada por motivo. |
-| `op_logistica_feedback` | Um elogio/reclamação em uma revisão, opcionalmente ligado a uma entrega. | Código estável da linha, data, tipo, localidade, cliente/texto quando aprovados e retenção definida. |
-| `op_logistica_feedback_participante` | Uma pessoa associada a um feedback. | `id_feedback`, `id_pessoa`, papel; evitar campos duplicados `motorista`, `ajudante1`, `ajudante2` na tabela de feedback. |
-| `op_logistica_publicacao` | Uma execução idempotente que envia dados confirmados à camada analítica. | UUID correlacionável com `etl_logistica_execucao`, alvo, estado, contagens, horários e erro resumido. |
-| `op_logistica_publicacao_lancamento` | Linhagem das revisões consideradas por uma execução. | Publicação, revisão, hash e resultado. |
+| `op_logistica_feedback` | Uma manifestação de cliente ligada a uma entrega confirmada. | Vários feedbacks podem apontar para o mesmo item. `Idempotency-Key` única por submissão evita duplicatas em retries; cada novo feedback usa uma chave nova. |
 
 ### Regras de integridade que devem virar constraints e validações
 
 - Chaves primárias numéricas ou UUIDs geradas no servidor; username normalizado é único, e a credencial de senha tem relação um-para-um com a conta. A autorização não depende de username, nome ou CPF enviados pelo navegador.
-- FKs obrigatórias entre conta/credencial, conta/identificação opcional, recurso/setor, permissão/recurso, perfil/permissão, concessões/conta/perfil/escopo, cabeçalho/revisão/evento, revisão/formulário, entrega/revisão/localidade, participante/pessoa, motivo/catálogo e feedback/revisão/tipo. Os dois modelos DBML ficam sem FKs cruzadas entre o banco operacional e o analítico.
-- Unicidade de username normalizado, CPF quando informado, código de setor/localidade/recurso/motivo/tipo, `(id_recurso, acao)`, `(id_lancamento, numero_revisao)` e chaves de idempotência.
+- FKs obrigatórias entre conta/sessão, recurso/setor, permissão/recurso, perfil/permissão, concessões/conta/perfil/escopo, cabeçalho/revisão/evento, revisão/formulário, entrega/revisão/localidade, participante/pessoa, motivo/catálogo e feedback/entrega. Os dois modelos DBML ficam sem FKs cruzadas entre o banco operacional e o analítico.
+- Unicidade de username normalizado, código de setor/localidade/recurso/motivo, `(id_recurso, acao)`, `(id_lancamento, numero_revisao)` e chaves de idempotência. O tipo de feedback é restrito por CHECK aos códigos `ELOGIO` e `RECLAMACAO`.
 - Quantidades de entregas e motivos não podem ser negativas; motivo informado precisa ter quantidade positiva. Aplicar `CHECK` nas colunas suportadas pelo MySQL e repetir as regras no serviço da API.
 - A soma das quantidades de motivos precisa ser igual à quantidade não realizada. Como depende de várias linhas, validar todas as linhas dentro da transação da API antes de enviar o formulário; repetir a validação na publicação.
 - Uma entrega tem no máximo um motorista, até dois ajudantes e não pode repetir a mesma pessoa como participante, salvo regra de negócio aprovada. Validar no serviço e, quando possível, reforçar com chaves/índices.
@@ -214,13 +213,13 @@ Essas regras protegem a base contra requests inválidos mesmo quando o formulár
 
 ### 5.4 Cadastros reutilizáveis e tabelas opcionais
 
-- **Localidades:** o portal usa `op_logistica_localidade` como referência sincronizada e somente leitura. A sincronização lê `dim_localidade` com uma credencial de leitura, preserva a chave canônica e desativa no portal itens ausentes/inativos na origem. O ETL resolve `codigo_localidade` para `dim_localidade` ou para `dim_localidade_codigo_origem` por correspondência exata; não há FK entre catálogos.
+- **Localidades:** o portal usa `op_logistica_localidade` como catálogo local de referência. Não há sincronização com `dim_localidade` nem dependência de uma conexão do VilarejoBI.
 - **Competência:** usar `dim_competencia` quando a linha for mensal; para os lançamentos do protótipo, armazenar a data do evento e derivar a competência a partir dela no servidor.
 - **Equipe fixa:** o protótipo monta equipe a partir das pessoas no lançamento. Só criar `op_logistica_equipe` e `op_logistica_equipe_membro` se o negócio confirmar grupos permanentes e precisar administrá-los.
 - **Anexos:** não são requeridos pelo protótipo. Adicionar tabela/armazenamento separado só se gestores aprovarem evidências anexadas.
 - **Auditoria de catálogos:** os campos `criado_por`, `criado_em` e `atualizado_em` são preenchidos pelo servidor e registram a manutenção dos catálogos. A interface não deve aceitar essas datas como entrada. Se houver edição administrativa com impacto histórico, adicionar eventos específicos antes de habilitar a alteração pela interface.
 
-## 6. Integração com o modelo analítico e com a automação
+## 6. Fronteira com o modelo analítico e com a automação
 
 ### 6.1 Fluxo dos dados do portal
 
@@ -228,13 +227,16 @@ Essas regras protegem a base contra requests inválidos mesmo quando o formulár
 2. A pessoa confere os dados e confirma o lançamento; a API valida sessão, setor, localidade, datas, pessoas, campos obrigatórios e regras aritméticas.
 3. A confirmação registra o lançamento imediatamente, torna a versão imutável e cria um evento de auditoria. Não há aprovação obrigatória por outra pessoa.
 4. Uma correção posterior deve criar nova versão vinculada à anterior e preservar o histórico.
-5. Uma rotina de publicação lê revisões confirmadas e publica fatos idempotentemente por lançamento, UUID da revisão e UUID de cada item. A versão anterior permanece rastreável.
-6. A publicação registra um UUID de execução correlacionável com `etl_logistica_execucao`, revisões consideradas, contagens e resultado.
-7. Os painéis consomem dados publicados nas tabelas fato; o portal pode mostrar seus lançamentos/indicadores autorizados pelas tabelas operacionais.
+5. Os painéis do Portal usam diretamente os registros operacionais confirmados, respeitando as permissões e o escopo da conta.
+6. O Portal não gera execução de publicação nem envia registros a outro projeto neste release.
+7. A integração de dados analíticos pertence ao VilarejoBI e segue o plano próprio daquele projeto.
 
 Para novos registros, `RASCUNHO` é editável e `ENVIADA` representa confirmação final. `CANCELADA` depende de política e justificativa. `EM_REVISAO`, `DEVOLVIDA` e `APROVADA` são estados legados mantidos para compatibilidade histórica; não fazem parte do fluxo novo nem devem ser atribuídos a novos lançamentos.
 
-### 6.2 Fatos analíticos propostos para os lançamentos
+### 6.2 Modelo analítico do VilarejoBI (fora do escopo deste Portal)
+
+Os pontos abaixo descrevem o modelo analítico do outro projeto; não são entregáveis nem dependências
+do release deste Portal.
 
 O DBML do VilarejoBI mantém as 15 tabelas analíticas de baseline e adiciona uma extensão proposta para esse portal:
 
@@ -242,7 +244,7 @@ O DBML do VilarejoBI mantém as 15 tabelas analíticas de baseline e adiciona um
 - `dim_pessoa_logistica` preserva versões históricas de função usando chave pseudonimizada; `dim_pessoa_logistica_identidade` guarda o nome em tabela separada com leitura restrita. Pontes e indicadores individuais continuam sujeitos a autorização.
 - `dim_localidade_codigo_origem` associa códigos exatos de cada sistema à localidade canônica em períodos de vigência. A carga valida sobreposições temporalmente, sem usar nome/cidade como chave.
 - `dim_motivo_nao_entrega` e `dim_tipo_feedback` normalizam categorias usadas nos formulários.
-- `fato_entregas_diarias` tem grão de uma linha de resumo diária/localidade/equipe por revisão publicada. A chave de idempotência é formada por sistema, UUID do lançamento, UUID da revisão e UUID estável do item. Reprocessar a mesma revisão não duplica linhas; uma nova revisão preserva a versão anterior e atualiza `eh_revisao_atual` na mesma transação de publicação.
+- `fato_entregas_diarias` tem grão de uma linha de resumo diária/localidade/equipe por revisão publicada. Deve carregar também as contagens de entregas no prazo e completas usadas pelo OTIF aprovado. A chave de idempotência é formada por sistema, UUID do lançamento, UUID da revisão e UUID estável do item. Reprocessar a mesma revisão não duplica linhas; uma nova revisão preserva a versão anterior e atualiza `eh_revisao_atual` na mesma transação de publicação.
 - `fato_entregas_nao_realizadas_motivo` tem grão de uma linha de resumo por motivo e revisão, e guarda a quantidade não realizada daquele motivo. O ETL valida que a soma por linha coincide com o resumo diário.
 - `fato_feedback` tem grão de um evento por revisão e guarda somente contagem, tipo, data e localidade. Nome de cliente, identificador e texto permanecem no banco operacional.
 - `bridge_entrega_pessoa` e `bridge_feedback_pessoa` representam participantes sem atribuir a cada pessoa as medidas totais da equipe/evento. Ranking por entregas individuais exige uma regra de rateio aprovada.
@@ -250,7 +252,7 @@ O DBML do VilarejoBI mantém as 15 tabelas analíticas de baseline e adiciona um
 
 Os fatos novos mantêm versões analíticas de correções confirmadas em vez de apagar a versão anterior. Consultas de indicadores vigentes filtram `eh_revisao_atual = true`; a rotina de publicação garante que somente a última versão confirmada de cada lançamento permaneça marcada nas três fatos. Esse marcador deve ser atualizado transacionalmente para evitar uma janela com duas versões somadas ou nenhuma versão visível. O UUID `codigo_revisao` da camada operacional é gravado como `codigo_revisao_origem` no analítico.
 
-Esses fatos não substituem automaticamente `fato_entregas_mensais`, cujo grão e medidas são diferentes. Também não modelam OTIF: o formulário atual não registra pedido, data prometida e data efetiva por pedido. Só criar esse indicador quando os campos e sua definição forem aprovados.
+Esses fatos não substituem automaticamente `fato_entregas_mensais`, cujo grão e medidas são diferentes. O OTIF deste produto é calculado no grão agregado aprovado a partir das contagens no prazo e completas; a publicação analítica precisa carregar essas duas medidas. O histórico legado sem as contagens permanece sem OTIF.
 
 ### 6.3 Evitar conflito com `VilarejoAutomacaoLogistica`
 
@@ -268,7 +270,7 @@ Manter os projetos separados em código:
 
 | Projeto | Responsabilidade |
 |---|---|
-| `LancamentoLogistica` (novo) | Interface de lançamento, login/permissões do portal, tabelas operacionais, confirmação e publicação dos dados manuais autorizados. |
+| `LancamentoLogistica` (novo) | Interface de lançamento, login/permissões do portal, tabelas operacionais e confirmação dos dados manuais autorizados. |
 | `VilarejoAutomacaoLogistica` | Extração, normalização, validação e consolidação mensal das fontes externas/planilhas. |
 | `VilarejoBI` | Modelo analítico, migrations atuais, API/painéis de BI e consumo dos dados publicados nas tabelas fato. |
 
@@ -278,7 +280,7 @@ Os modelos ORM operacionais pertencem ao backend do portal, que é o serviço do
 
 ### 7.1 Identidade
 
-O portal terá autenticação local por username e senha. op_logistica_usuario guarda os dados da conta e os campos opcionais da credencial local: hash Argon2id codificado, data de alteração e indicador de troca obrigatória. Os três campos devem estar todos nulos ou todos preenchidos; conta sem hash não autentica. O hash inclui salt aleatório e parâmetros do algoritmo, permitindo atualizar o custo quando necessário. Nunca armazenar senha em texto puro, criptografia reversível, SHA-256 simples ou outro hash rápido. A API nunca retorna o hash nem o registra em logs.
+O portal terá autenticação local por username e senha. op_logistica_usuario guarda os dados da conta e os campos opcionais da credencial local: hash Argon2id codificado, data de alteração e indicador legado de troca obrigatória, mantido para compatibilidade e sem impor troca no primeiro acesso. Os três campos devem estar todos nulos ou todos preenchidos; conta sem hash não autentica. O hash inclui salt aleatório e parâmetros do algoritmo, permitindo atualizar o custo quando necessário. Nunca armazenar senha em texto puro, criptografia reversível, SHA-256 simples ou outro hash rápido. A API nunca retorna o hash nem o registra em logs.
 
 O username deve ser normalizado (remover espaços externos e converter para minúsculas) antes de salvar e comparar. CPF não faz parte do esquema nem da coleta no MVP. Se for aprovado futuramente, deve ser armazenado em tabela própria, validado no serviço e nunca usado como username, recuperação de conta ou autorização.
 
@@ -288,7 +290,7 @@ O nível de acesso não é um número único na conta. A autorização combina t
 
 Assim, os gestores X e Y podem receber o mesmo perfil e escopo do setor que administram, vendo os lançamentos daquele setor. O diretor de Logística e o dono da Vilarejo podem receber permissões de leitura nos recursos necessários e escopo `GLOBAL` explícito. O sistema não infere acesso pela cadeia hierárquica: esses acessos superiores são concessões explícitas. Um gestor de outro setor não vê uma página/recurso sem permissão no perfil ou sem escopo compatível.
 
-O cadastro administrativo cria a conta e sua primeira concessão de perfil/escopo na mesma transação. O servidor gera uma senha temporária, armazena somente o hash, exige troca no primeiro login e revela a senha uma vez para entrega por canal privado. Se for esquecida, a administração emite outra senha temporária e revoga as sessões existentes; não há consulta à senha anterior. Não confiar em perfil, setor, localidade ou usuário enviados pelo navegador.
+O cadastro administrativo cria a conta e sua primeira concessão de perfil/escopo na mesma transação. O servidor gera uma senha numérica aleatória de seis dígitos, armazena somente o hash e revela a senha uma vez para entrega por canal privado. A troca no primeiro login é opcional. A pessoa pode trocar a senha na área autenticada ou redefini-la informando nome completo, username e uma nova senha; a redefinição revoga as sessões abertas, é limitada por tentativas e não revela se os dados informados correspondem a uma conta. A administração também pode emitir outra senha numérica de seis dígitos. Não confiar em perfil, setor, localidade ou usuário enviados pelo navegador.
 
 Concentrar autorização numa camada de serviços/repositórios Python e validar operações sensíveis no servidor; esconder botões na interface é apenas conveniência visual. FastAPI fornece dependências de segurança e scopes que podem compor essa autorização ([OAuth2 scopes no FastAPI](https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/)).
 
@@ -332,8 +334,9 @@ Este contrato é uma proposta de divisão por responsabilidade; nomes e formatos
 | Método e rota | Uso | Regra de autorização essencial |
 |---|---|---|
 | `GET /api/v1/me` | Retorna identidade autenticada, módulos, ações e localidades disponíveis para montar a navegação. | O servidor calcula as capacidades a partir de concessões vigentes. |
-| `POST /api/v1/auth/change-password` | Troca a senha temporária no primeiro acesso ou atualiza a senha da própria conta. | Exige sessão e CSRF; a senha atual é validada, as demais sessões são revogadas e a nova credencial usa Argon2id. |
-| `GET/POST /api/v1/access/users`, `PATCH /api/v1/access/users/{id}` | Lista contas, cria conta interna junto com o perfil/escopo inicial ou ativa/desativa usuário. | Somente `CONTROLE_ACESSO:ADMINISTRAR` global. Não existe auto cadastro; a conta e a concessão inicial são gravadas juntas, sem data final preenchida pelo usuário. A senha temporária exige troca no primeiro login. Desativar revoga as sessões. |
+| `POST /api/v1/auth/change-password` | Atualiza opcionalmente a senha da própria conta. | Exige sessão e CSRF; a senha atual é validada, as demais sessões são revogadas e a nova credencial usa Argon2id. |
+| `POST /api/v1/auth/reset-password` | Redefine senha localmente sem e-mail. | Confere nome completo e username, aplica limite de tentativas, revoga as sessões abertas e registra auditoria; a resposta não indica se os dados corresponderam a uma conta. |
+| `GET/POST /api/v1/access/users`, `PATCH /api/v1/access/users/{id}` | Lista contas, cria conta interna junto com o perfil/escopo inicial ou ativa/desativa usuário. | Somente `CONTROLE_ACESSO:ADMINISTRAR` global. Não existe auto cadastro; a conta e a concessão inicial são gravadas juntas, sem data final preenchida pelo usuário. A senha inicial é numérica de seis dígitos, sem troca obrigatória. Desativar revoga as sessões. |
 | `GET /api/v1/access/scope-options` | Carrega setores e lojas para concessões de perfil/escopo. | Somente administração global de acesso; retorna somente opções ativas. |
 | `GET/POST/PATCH /api/v1/cadastros/localidades` | Lista, cadastra e ativa/desativa lojas/unidades. | Exigir `CADASTROS:ADMINISTRAR` global; código estável e imutável, sem exclusão física. Confirmar códigos com a referência oficial. |
 | `GET/POST/PATCH /api/v1/cadastros/pessoas` | Lista pessoas, cria motorista/ajudante ou nova versão e desativa a versão atual. | Exigir `CADASTROS:ADMINISTRAR` global; manter identidade estável e vigência para preservar lançamentos históricos. |
@@ -343,9 +346,9 @@ Este contrato é uma proposta de divisão por responsabilidade; nomes e formatos
 | `POST /api/v1/entregas` | Cria um rascunho com cabeçalho, participantes e motivos. | Exigir setor/localidade permitidos; aceitar `Idempotency-Key` para proteger retries. |
 | `PATCH /api/v1/entregas/{id}` | Atualiza o próprio rascunho ou rascunho autorizado. | Revalidar escopo e estado; não aceitar autor, perfil ou localidade alterados pelo cliente sem permissão. |
 | `POST /api/v1/deliveries/{codigo_lancamento}/confirm` | Valida e registra definitivamente o lançamento conferido pelo autor. | Exigir permissão de criação e escopo compatível; confirmação idempotente. |
-| `POST /api/v1/feedbacks` e `GET /api/v1/feedbacks` | Registra ou consulta reclamações/elogios. | Aplicar permissão mais restrita para nome do cliente e texto. |
+| `POST /api/v1/feedbacks` e `GET /api/v1/feedbacks` | Registra ou consulta reclamações/elogios. | Aplicar permissão mais restrita para nome do cliente e texto; POST exige `Idempotency-Key` e permite vários feedbacks por entrega. |
 | `GET /api/v1/indicadores/entregas` | Painel gerencial com filtros. | Indicadores e exportações usam os mesmos escopos e filtros que a listagem. |
-| `POST /api/v1/access/users` | Provisiona funcionários autorizados a entrar no portal com perfil e escopo iniciais. | Exigir `CONTROLE_ACESSO:ADMINISTRAR` global; criar conta e concessão na mesma transação, emitir senha temporária e exigir troca no primeiro acesso. |
+| `POST /api/v1/access/users` | Provisiona funcionários autorizados a entrar no portal com perfil e escopo iniciais. | Exigir `CONTROLE_ACESSO:ADMINISTRAR` global; criar conta e concessão na mesma transação e emitir senha numérica de seis dígitos exibida uma vez. |
 
 As rotas devem usar respostas paginadas, validação de schema, códigos HTTP consistentes e mensagens que não revelem dados de outro escopo. A interface pode ocultar funções, mas a API é a autoridade final. Logs técnicos registram request ID, rota, ator e resultado sem gravar tokens ou textos integrais de feedback.
 
@@ -367,7 +370,6 @@ LancamentoLogistica/
         deliveries/                       # lançamentos de Entregas
         workflow/                         # envio, revisão, aprovação e correção
         feedback/                          # reclamação/elogio, após política aprovada
-        publication/                      # publicação analítica, após contrato aprovado
         audit/                             # trilha de ações
     migrations/                           # Alembic e revisões incrementais
     Dockerfile
@@ -449,7 +451,7 @@ Antes de definir migration, registrar respostas para:
 
 ### Etapa 5 — Implementar cadastros, feedback e correções auditáveis
 
-1. Usar `dim_localidade` ou catálogo sincronizado para as lojas/filiais; impedir criação duplicada de texto livre.
+1. Usar o catálogo local de localidades para as lojas/filiais; impedir criação duplicada de texto livre.
 2. Restringir criação, alteração e desativação de motoristas, ajudantes e motivos a quem possuir permissão de cadastro.
 3. Desativar motivos/pessoas antigas sem apagar referências históricas.
 4. Implementar feedback com controles de acesso mais restritos a cliente/descrição.
@@ -460,7 +462,7 @@ Antes de definir migration, registrar respostas para:
 
 ### Etapa 6 — Indicadores, filtros, CSV e impressão
 
-1. Definir com o gestor fórmula do indicador; se não houver horário/status de prazo, apresentar a razão atual como taxa de conclusão, não como OTIF.
+1. Usar a fórmula aprovada: percentual no prazo × percentual completo, com ambas as taxas calculadas sobre o total registrado.
 2. Implementar filtros de competência/período/localidade/motivo/pessoa/equipe com consultas paginadas e escopo de acesso.
 3. Implementar dados por equipe/pessoa sem atribuir todo o volume de uma equipe a cada integrante até regra aprovada.
 4. Implementar feedback score somente após aprovação da política de pontuação e visibilidade.
@@ -469,16 +471,11 @@ Antes de definir migration, registrar respostas para:
 
 **Aceite:** indicadores conferem com casos manuais conhecidos e exportações não ampliam o escopo de dados do usuário.
 
-### Etapa 7 — Publicar dados confirmados e integrar com ETL/BI
+### Etapa 7 — Integração com VilarejoBI (fora do escopo)
 
-1. Definir por métrica se a origem é formulário, SEAC, Cobli, CTA ou arquivo e a precedência em divergência.
-2. Mapear campos do portal às fatos atuais; identificar novos campos/fatos se a granularidade atual não comportar equipe, pessoa ou dia.
-3. Criar serviço de publicação idempotente com validação e registro de `codigo_execucao` UUID/linhagem, correlacionado com `etl_logistica_execucao`; a chave de negócio inclui os UUIDs de lançamento, revisão e item.
-4. Só publicar submissões confirmadas; agregar nos grãos definidos pelo DBML e reconciliar quantidades/totais.
-5. Coordenar a mesma revisão do DBML, models e Alembic com o projeto de automação quando ambos tocarem as mesmas tabelas fato.
-6. Rodar em paralelo com planilha e ETL por um período acordado; obter aceite dos gestores antes de tornar o portal a fonte operacional oficial.
-
-**Aceite:** reprocessar a publicação não duplica fatos, a origem é rastreável e não há soma dupla entre lançamento manual e extração automatizada.
+O Portal não consulta nem publica dados no VilarejoBI neste projeto. O projeto do BI mantém seu
+próprio processo de integração. A cadeia Alembic `logistica` versiona o schema operacional por estar
+no repositório responsável pelo catálogo MySQL; isso não conecta as aplicações.
 
 ### Etapa 8 — Adicionar setores e seus formulários
 
@@ -566,7 +563,7 @@ Processo de coordenação:
 ## 13. Perguntas que bloqueiam o modelo final
 
 1. Quais perfis podem lançar, confirmar, cancelar e corrigir registros? A confirmação diária é feita pela própria pessoa que preenche.
-2. A taxa mostrada como OTIF está aprovada com a fórmula atual? Como medir pontualidade e integridade do pedido?
+2. Fórmula do OTIF já definida: percentual no prazo × percentual completo. Continua pendente validar a forma operacional de coletar essas contagens e carregar as duas medidas ao BI.
 3. A meta de 95% e os limites 90%/95% são oficiais?
 4. Ranking de pessoas será usado para avaliação? Como atribuir uma entrega coletiva?
 5. Feedback deve manter nome do cliente? Quem pode ler/exportar o texto?
@@ -574,7 +571,7 @@ Processo de coordenação:
 7. A primeira versão precisa de CSV, impressão/PDF, ranking e gerenciamento de cadastros?
 8. Qual é o grão exato de um lançamento e qual a regra de correção depois da confirmação?
 9. Podemos adicionar as tabelas ao catálogo atual ou o gestor/Infra prefere catálogo operacional separado?
-10. Quais usuários serão provisionados, qual é o processo seguro de senha inicial/recuperação e qual escopo por setor/localidade cada pessoa deve receber?
+10. Quais usuários serão provisionados e qual escopo por setor/localidade cada pessoa deve receber?
 11. Qual plano Vercel existe para a equipe e onde a API ficará hospedada?
 
 ## 14. Critérios de aceite do primeiro módulo

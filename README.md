@@ -14,9 +14,14 @@ O frontend usa a API por padrão. A demonstração só é ativada explicitamente
 - Consulta da identidade, permissões e escopos da conta.
 - Administração de perfis, permissões e escopos pela API protegida.
 - Leitura de catálogos, criação e edição de rascunhos, conferência e confirmação direta dos lançamentos de Entregas.
+- Correção de lançamento confirmado por nova revisão, cancelamento justificado e consulta da trilha de eventos.
+- Feedback de cliente vinculado a entrega confirmada, com consulta paginada, filtros e exportação protegida.
+- Consulta administrativa paginada de auditoria, limitada a metadados.
 - Conta inicial `DEV` para desenvolvimento local, com acesso global às permissões deste portal.
 
-Ainda não existe cadastro público ou tela de administração de usuários no portal. Contas adicionais são criadas por um comando local; o perfil e o escopo são concedidos pela API administrativa documentada no guia.
+Não existe cadastro público. Contas são provisionadas pelo fluxo administrativo autenticado ou pelo comando local; perfil e escopo são concedidos pela API administrativa documentada no guia. No bootstrap local, feedback, correção e cancelamento ficam disponíveis apenas ao perfil `DEV` até a matriz real de permissões ser aprovada.
+
+A integração com o VilarejoBI não faz parte deste portal neste release. A evolução do schema operacional continua pela cadeia Alembic `logistica`, mantida no repositório responsável pelo catálogo MySQL. Consulte o [plano de implementação](docs/plano_implementacao.md) antes de usar o portal com dados reais.
 
 ## Estrutura
 

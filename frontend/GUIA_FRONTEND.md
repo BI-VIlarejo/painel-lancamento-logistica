@@ -18,7 +18,7 @@ index.html
                     └── cliente HTTP compartilhado
 ```
 
-As rotas da aplicação são `/login`, `/entregas`, `/historico`, `/feedback`, `/painel` e `/cadastros`. Um endereço `/entregas/{id}` abre a edição de um rascunho; `/trocar-senha` aparece apenas durante a primeira entrada de uma conta provisionada. As telas autenticadas são exibidas dentro da estrutura comum do `AppShell`.
+As rotas da aplicação são `/login`, `/redefinir-senha`, `/entregas`, `/historico`, `/feedback`, `/painel` e `/cadastros`. Um endereço `/entregas/{id}` abre a edição de um rascunho; `/trocar-senha` permite alterar a senha opcionalmente após autenticação. As telas autenticadas são exibidas dentro da estrutura comum do `AppShell`.
 
 ## Inicialização, autenticação e rotas
 
@@ -36,9 +36,10 @@ As permissões verificadas no frontend controlam o que aparece na navegação e 
 
 - `src/features/auth/pages/LoginPage.tsx` — tela de login. Controla os campos, o envio das credenciais, estados de carregamento e mensagens de erro. Pode mostrar a opção de demonstração quando o modo demo está ativo.
 - `src/features/auth/pages/LoginPage.module.css` — estilos exclusivos da tela de login.
-- `src/features/auth/pages/ChangePasswordPage.tsx` — troca obrigatória da senha temporária no primeiro acesso; não oferece criação pública de conta.
+- `src/features/auth/pages/ChangePasswordPage.tsx` — alteração opcional da própria senha.
+- `src/features/auth/pages/ResetPasswordPage.tsx` — redefinição local com nome completo, username e senha nova; não oferece criação pública de conta.
 - `src/features/auth/pages/ChangePasswordPage.module.css` — estilos próprios da troca de senha.
-- `src/features/auth/api.ts` — operações de autenticação com a API: consultar a identidade atual, entrar, renovar o token CSRF e sair. Encaminha essas operações para a implementação demo quando ela está ativa.
+- `src/features/auth/api.ts` — operações de autenticação com a API: consultar identidade, entrar, trocar ou redefinir senha, renovar o token CSRF e sair. Encaminha o modo demo quando ele está ativo.
 - `src/features/auth/types.ts` — tipos TypeScript para usuário autenticado, permissões e respostas de login e identidade.
 
 ## Entregas

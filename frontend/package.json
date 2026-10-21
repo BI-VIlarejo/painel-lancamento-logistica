@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
+    "dev:demo": "VITE_API_BASE_URL= VITE_DEMO_MODE=true vite --host 0.0.0.0 --mode demo",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
     "typecheck": "tsc -b --pretty"

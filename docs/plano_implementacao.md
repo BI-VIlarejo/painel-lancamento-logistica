@@ -1,9 +1,21 @@
 # Plano de implementação do portal de lançamento de dados
 
-**Atualizado em:** 16/10/2026
+**Atualizado em:** 21/10/2026
 **Status:** plano de execução; as decisões de negócio e infraestrutura indicadas como pendentes precisam ser aprovadas antes de gravar dados reais ou publicar em produção.
 
 Este documento organiza o trabalho do `LancamentoLogistica` em ordem de implementação. A [especificação do portal](./especificacao_portal_lancamento_logistica.md) continua sendo a referência para campos, regras, arquitetura, segurança e modelo de dados. O [DBML operacional](./modelo_operacional_lancamento_logistica.dbml) é uma proposta, ainda não é uma migration aplicada.
+
+### Atualização de implementação — 21/10/2026
+
+- Decisões do responsável pelo produto: Entregas, feedback, painel e ranking entram no release. O feedback aponta para uma entrega e inclui o cliente. DEV, GESTOR e DIRETORIA (perfil administrador) podem usar as ações do portal; OPERADOR pode consultar, registrar e editar rascunhos de Entregas. O catálogo de localidades pertence ao portal; integração com o BI fica fora deste projeto e deste release.
+- Os CSVs de referência são: feedback com data, tipo, cliente, loja, motorista, até dois ajudantes e descrição; histórico de Entregas com data, loja, motorista, até dois ajudantes, quantidades realizadas/não realizadas, motivos e observações.
+- O ranking documentado no protótipo ordena por taxa de realização, score de feedback (+1 elogio/−1 reclamação por pessoa) e volume realizado. O backend atribui as quantidades registradas “pelo motorista” ao motorista; ajudantes recebem seu score de feedback, sem duplicação dos volumes da equipe.
+- A definição de OTIF foi informada como produto das taxas de pontualidade e completude (90% × 80% = 72%). O backend agora registra as duas contagens como subconjuntos das realizadas e calcula as taxas sobre o total registrado; dados antigos sem essas contagens deixam OTIF indisponível.
+- Correções abrem revisão nova com justificativa e preservam a revisão confirmada; cancelamentos também exigem justificativa, têm permissão separada e geram evento. O painel ignora lançamentos cancelados e mantém os números confirmados enquanto a correção está em rascunho.
+- A API de feedback consulta, cria e exporta por páginas; aceita vários registros por entrega e exige chave idempotente por submissão. Cada registro fica ligado a uma entrega confirmada, armazena nome do cliente e não grava relato/nome em logs técnicos.
+- A consulta administrativa de auditoria reúne metadados de Entregas, acessos e feedback, sem devolver comentário, relato ou detalhes livres.
+- Permanecem pendentes: atualizar a interface para coletar as duas contagens de OTIF; definir retenção e tratamento de reclamações; implementar e validar a importação dos dois CSVs de referência; concluir validação do grão; revisar/aplicar a migration incremental em staging; cadastrar localidades no catálogo local; e configurar hospedagem. A integração com o BI não faz parte deste release.
+- Verificações locais atuais: suíte `unittest`, compilação Python, typecheck e build do frontend. Ruff não está disponível no ambiente local.
 
 ## 1. Objetivo e escopo
 
@@ -36,7 +48,7 @@ Feedbacks com dados de clientes, ranking, painel gerencial, importação CSV e i
 | 5 | Entregar fluxo de Entregas | Criar, editar rascunho, confirmar e consultar lançamentos | Etapas 3 e 4 |
 | 6 | Completar cadastros e feedback | Gestão de catálogos, correções auditáveis e feedback | Etapas 4 e 5; política de feedback |
 | 7 | Entregar indicadores e relatórios | Consultas e exportações limitadas pelo mesmo escopo | Definições de negócio aprovadas |
-| 8 | Publicar dados no modelo analítico | Carga idempotente de lançamentos confirmados, sem duplicidade | Dono da métrica e contrato com BI/ETL |
+| 8 | Integração com BI | Fora do escopo deste projeto/release | Projeto VilarejoBI |
 | 9 | Fazer piloto e liberar o MVP | Operação de Entregas acompanhada e aceite dos gestores | Etapas anteriores e release aprovado |
 | 10 | Adicionar outros setores | Formulários próprios de Frota, CD e novos setores | MVP aceito; descoberta e aceite de cada setor |
 
@@ -52,9 +64,9 @@ Feedbacks com dados de clientes, ranking, painel gerencial, importação CSV e i
 2. Confirmar a granularidade: resumo diário por localidade/equipe, rota ou pedido; registrar se pode haver mais de um lançamento para a mesma data e localidade.
 3. Definir quem pode criar, confirmar, cancelar e corrigir lançamentos. O fluxo padrão permite que o autor confirme o próprio lançamento; não há aprovação obrigatória por outra pessoa.
 4. Aprovar a matriz de perfis e escopos: ações de cada perfil e setores/localidades disponíveis para cada pessoa. Não inferir autorização apenas pelo cargo.
-5. O login local por username e senha está decidido. Definir provisionamento/ativação de contas, senha inicial, recuperação, necessidade de MFA, duração da sessão e quem pode conceder perfis/escopos.
+5. O login local por username e senha está decidido. O provisionamento administrativo cria contas ativas com senha inicial numérica de seis dígitos; a troca é opcional e a recuperação local usa nome completo e username. A administração concede perfis e escopos. A duração da sessão permanece configurável.
 6. Decidir se nome do cliente é necessário em feedback, quem pode consultar/exportar esses dados e qual é o prazo de retenção. Feedback só entra no escopo quando isso estiver definido.
-7. Aprovar a fórmula, o nome e a meta dos indicadores. Os campos atuais não demonstram pontualidade; sem novos dados e regra, não apresentar a taxa de conclusão como OTIF.
+7. Fórmula do OTIF aprovada: percentual de entregas no prazo multiplicado pelo percentual de entregas completas; coletar as duas contagens no formulário e manter taxa de realização separada. A meta e as faixas continuam pendentes de confirmação.
 8. Decidir se ranking individual é necessário e qual regra atribui resultados coletivos a cada participante. Sem regra aprovada, mostrar resultados por equipe ou agregados.
 9. Definir catálogo/banco operacional, grants de leitura e escrita e forma de sincronizar localidades e pessoas.
 10. Confirmar o serviço AWS/VPC que hospedará a API, endpoint HTTPS, Security Groups e secrets para a RDS privada; a Vercel hospeda o frontend estático.
@@ -142,7 +154,7 @@ Feedbacks com dados de clientes, ranking, painel gerencial, importação CSV e i
    Ajustar `schemas.py` para nunca serializar senha, hash ou token de sessão. A resposta de `/me` nesta parte não deve inventar capacidades: permissões e escopos entram na parte 4.2.
 7. **Adicionar proteção para uso por navegador.** Com cookie de sessão, validar o token CSRF enviado em `X-CSRF-Token` nas operações de escrita e conferir a origem permitida. Emitir o token CSRF por mecanismo validado pelo backend, sem expor o cookie de sessão ao JavaScript. Manter CORS limitado às origens configuradas e com credenciais habilitadas. Nunca guardar token de sessão em `localStorage`.
 8. **Tratar abuso e logs.** Aplicar limitação de tentativas de login e resposta genérica para credenciais inválidas. Uma limitação em memória serve apenas para desenvolvimento com um processo; antes de produção, usar limite compartilhado entre instâncias ou no gateway. Não registrar senha, hash, cookie, token CSRF ou token de sessão.
-9. **Provisionar contas sem cadastro público.** Não criar `POST /register`. A página autenticada de Administração provisiona contas apenas para quem tem `CONTROLE_ACESSO:ADMINISTRAR`, aplica Argon2id, concede um perfil e escopo iniciais na mesma transação e exige troca da senha temporária no primeiro acesso. A administração pode adicionar outros acessos depois. O comando interativo `cd backend && python -m scripts.provision_user` continua disponível para bootstrap operacional; o primeiro acesso de produção deve receber concessão por processo administrativo auditado.
+9. **Provisionar contas sem cadastro público.** Não criar `POST /register`. A página autenticada de Administração provisiona contas apenas para quem tem `CONTROLE_ACESSO:ADMINISTRAR`, aplica Argon2id, concede um perfil e escopo iniciais na mesma transação e gera uma senha inicial numérica de seis dígitos, exibida uma única vez. A troca no primeiro acesso é opcional; a pessoa pode alterar a senha autenticada ou redefini-la na tela de login com nome completo e username. A administração pode adicionar outros acessos depois. O comando interativo `cd backend && python -m scripts.provision_user` continua disponível para bootstrap operacional; o primeiro acesso de produção deve receber concessão por processo administrativo auditado.
 
 **Arquivos desta parte:**
 
@@ -189,12 +201,12 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 
 **Objetivo:** percorrer o ciclo completo de um lançamento diário, da tela até o banco e de volta ao histórico.
 
-**Fatia inicial implementada no backend:** criar rascunho com chave de idempotência, consultar detalhe, listar histórico paginado com filtros, atualizar somente enquanto estiver em `RASCUNHO` e confirmar o rascunho validado no estado final `ENVIADA`. A confirmação é feita pelo autor e inclui o registro imediatamente nos indicadores. A API valida setor/localidade, vigência de pessoas e motivos, motorista/ajudantes e soma dos motivos; grava cabeçalho, revisão, itens, participantes, motivos e eventos na mesma transação. Aprovação por outra pessoa não faz parte do fluxo. Correção após confirmação, cancelamento e publicação continuam pendentes.
+**Fatia inicial implementada no backend:** criar rascunho com chave de idempotência, consultar detalhe, listar histórico paginado com filtros, atualizar somente enquanto estiver em `RASCUNHO` e confirmar o rascunho validado no estado final `ENVIADA`. A confirmação é feita pelo autor e inclui o registro imediatamente nos indicadores. A API valida setor/localidade, vigência de pessoas e motivos, motorista/ajudantes e soma dos motivos; grava cabeçalho, revisão, itens, participantes, motivos e eventos na mesma transação. Aprovação por outra pessoa não faz parte do fluxo. Correção pós-confirmação por nova revisão e cancelamento justificado também estão implementados. O Portal não publica os lançamentos no BI.
 
 **O que fazer:**
 
 1. Consumir as rotas paginadas de leitura de setores, localidades, pessoas e motivos implementadas na Etapa 4.2; validar a integração e os filtros de escopo no formulário de Entregas. A carga/sincronização dos catálogos e a manutenção administrativa continuam nesta etapa.
-2. Criar formulário de entrega com data, localidade, motorista obrigatório, até dois ajudantes opcionais, realizadas, não realizadas, motivos com quantidades e observação, conforme o contrato aprovado.
+2. Criar formulário de entrega com data, localidade, motorista obrigatório, até dois ajudantes opcionais, realizadas, não realizadas, entregas no prazo e completas, motivos com quantidades e observação, conforme o contrato aprovado.
 3. Não impor chave única apenas por data/localidade/motorista. Gerar UUID estável de item e aplicar somente a regra de duplicidade definida para o grão aprovado.
 4. Criar operação de salvar rascunho e operação de confirmação final pelo próprio autor. Receber chave de idempotência para que retry após timeout não crie lançamento duplicado.
 5. Validar no backend campos obrigatórios, data, escopo, estado ativo dos participantes/motivos, quantidades não negativas, total maior que zero e soma dos motivos igual ao total não realizado quando aplicável.
@@ -210,13 +222,15 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 
 **Objetivo:** preservar a confiabilidade do histórico após a confirmação e manter referências confiáveis.
 
+**Estado em 21/10/2026:** correção versionada, cancelamento justificado, trilha de eventos e módulo de feedback ligado a entrega confirmada estão implementados no Portal, com cobertura unitária. Antes de uso com dados reais, ainda precisam de aceite das permissões e políticas de feedback, migration compartilhada revisada e validação em ambiente autorizado.
+
 **O que fazer:**
 
 1. Tratar `ENVIADA` como estado final de confirmação para novos lançamentos. Os estados `EM_REVISAO`, `DEVOLVIDA` e `APROVADA` permanecem somente para leitura de registros históricos legados.
-2. Definir e implementar correção por nova versão, cancelamento com justificativa e permissões correspondentes. Não criar fila de aprovação para o fluxo diário.
+2. Validar com o gestor as permissões e justificativas de correção/cancelamento já implementadas. O fluxo cria revisão nova ou evento append-only e não cria fila de aprovação para o fluxo diário.
 3. Registrar estado anterior/novo, ator, horário e comentário em log append-only. Não apagar histórico confirmado por operação comum.
 4. A interface administrativa de lojas, pessoas, motivos e contas está implementada. Revisar o catálogo oficial de lojas e a matriz de perfis/escopos antes do piloto; as alterações de pessoas e motivos preservam versões e vigência.
-5. Caso feedback esteja aprovado para o MVP ou versão seguinte, criar cadastro e formulário próprios para elogio/reclamação, participantes, localidade e descrição. Aplicar leitura/exportação e retenção mais restritas aos dados do cliente e do relato.
+5. O cadastro e o formulário de feedback já oferecem criação, consulta paginada, filtros e exportação; cada manifestação está ligada a entrega confirmada e deriva localidade/equipe do lançamento. Aprovar a política de coleta, acesso, retenção e tratamento antes de habilitar os perfis reais.
 6. Não habilitar pontuação individual de feedback até a política de uso e visibilidade estar aprovada.
 
 **Entregáveis:** correção e cancelamento auditáveis; manutenção controlada de catálogos; módulo de feedback somente se autorizado.
@@ -230,7 +244,7 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 **O que fazer:**
 
 1. Implementar filtros de período/competência, localidade, motivo, pessoa, equipe e situação somente para dimensões presentes e autorizadas.
-2. Definir o nome e a fórmula de cada medida junto ao gestor. Com os campos atuais, usar rótulo de taxa de entregas realizadas/conclusão se não houver dados de prazo e atendimento completo por pedido.
+2. Calcular o OTIF aprovado como produto dos percentuais no prazo e completo sobre o total registrado; manter taxa de realização como indicador separado.
 3. Paginar consultas e agregar no grão aprovado. Não replicar o volume total da equipe em cada participante para produzir ranking individual.
 4. Adicionar ranking e score de feedback apenas se fórmula, desempate, volume mínimo e público autorizado estiverem definidos.
 5. Confirmar a necessidade de importação CSV. Se aprovada, validar arquivo inteiro e apresentar prévia de erros antes de persistir qualquer linha.
@@ -240,23 +254,9 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 
 **Critério para avançar:** totais conferem com exemplos reconciliados, nomes não induzem interpretação incorreta e consultas/exportações obedecem ao mesmo escopo da tela.
 
-### Etapa 8 — Integrar publicação analítica com VilarejoBI e automação
+### Etapa 8 — Integração com o VilarejoBI (fora do escopo)
 
-**Objetivo:** publicar somente lançamentos confirmados e evitar perda, duplicidade ou soma entre fontes diferentes.
-
-**O que fazer:**
-
-1. Para cada métrica, registrar origem oficial (portal, SEAC, Cobli, CTA ou arquivo), processo responsável pela publicação e regra para divergências/substituições.
-2. Mapear o grão e os campos do portal às fatos atuais. Quando as tabelas existentes não representarem o dia, equipe, motivo ou participantes, revisar DBML analítico antes de criar extensão/migration.
-3. Não misturar a tabela operacional com `fato_entregas_mensais` nem converter feedback em devolução/ocorrência sem regra de negócio explícita.
-4. Implementar publicação de revisões confirmadas `ENVIADA` com UUID de execução, `codigo_lancamento`, `codigo_revisao` e UUID de item. Considerar `APROVADA` apenas para registros históricos legados. O reprocessamento da mesma revisão deve ser idempotente.
-5. Atualizar a versão atual de uma revisão e registrar a anterior transacionalmente; preservar linhagem, contagens, erros e resultado da carga em `op_logistica_publicacao` e correlacionar com `etl_logistica_execucao` quando o catálogo permitir.
-6. Coordenar DBML, models e migrations com BI/automação se compartilharem catálogo ou fatos. Manter uma cadeia Alembic coerente por catálogo.
-7. Executar publicação em staging e comparar com fontes e controles aprovados. Rodar portal em paralelo à planilha/ETL pelo período definido com o gestor.
-
-**Entregáveis:** contrato de publicação por métrica; serviço idempotente; rastreabilidade entre operação e fato; reconciliação aprovada em staging.
-
-**Critério para avançar:** somente revisões confirmadas chegam ao modelo analítico, reprocessamentos não duplicam medidas e portal/ETL não contam o mesmo indicador duas vezes.
+O Portal não consulta nem publica dados no VilarejoBI neste release. O projeto do BI mantém seu próprio processo de integração e publicação. As alterações de schema operacional do Portal continuam versionadas na cadeia Alembic `logistica`, no repositório que administra esse catálogo MySQL; isso não cria comunicação entre as aplicações.
 
 ### Etapa 9 — Preparar piloto, release e operação do MVP
 
@@ -304,7 +304,7 @@ Enquanto as decisões de negócio e conectividade são fechadas, podem avançar 
 - revisão de acessibilidade e mensagens de erro;
 - definição de provisionamento de contas, localidades e pessoas.
 
-Dependem de decisões ou do ambiente aprovado: migration definitiva, acesso a dados reais, feedback com dados de cliente, painel/ranking com fórmula oficial, publicação nas fatos analíticas e deploy com conexão à RDS. Automação de planilhas, portal e VilarejoBI mantêm repositórios separados e coordenam contratos, grãos, localidades e propriedade de cada métrica.
+Dependem de decisões ou do ambiente aprovado: aplicar a migration em staging, acesso a dados reais, feedback com dados de cliente, importação dos CSVs e deploy. A integração do Portal com fatos analíticas do VilarejoBI fica fora deste projeto.
 
 ## 5. Lista de aceite do MVP de Entregas
 
@@ -316,7 +316,7 @@ Dependem de decisões ou do ambiente aprovado: migration definitiva, acesso a da
 - [ ] Rascunhos podem ser editados; correções e cancelamentos após confirmação seguem as permissões definidas e deixam versão/evento auditável. Não há aprovação por segundo usuário.
 - [ ] O banco operacional não altera a baseline analítica e credenciais de runtime têm privilégio mínimo.
 - [ ] Dados pessoais e exports seguem política aprovada; se a política não estiver pronta, feedback não está habilitado.
-- [ ] Indicadores têm fórmula e rótulo aprovados; taxa de conclusão não é chamada de OTIF sem dados de prazo.
+- [ ] O formulário coleta entregas no prazo e completas; OTIF usa as duas taxas sobre o total registrado e não substitui a taxa de realização.
 - [ ] Configuração de preview/staging está separada de produção e RDS não é exposta ao navegador.
 - [ ] O piloto foi conciliado com o processo atual e aceito pelo gestor antes da adoção oficial.
 
