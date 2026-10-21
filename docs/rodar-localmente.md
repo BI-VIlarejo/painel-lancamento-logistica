@@ -2,6 +2,17 @@
 
 Esse fluxo sobe um MySQL próprio no Docker, a API e o frontend. Não usa RDS, staging, produção ou o banco do VilarejoBI.
 
+## Abrir somente o frontend, sem API ou banco
+
+Na pasta `LancamentoLogistica/frontend/`:
+
+```bash
+npm ci
+npm run dev:demo
+```
+
+Abra `http://localhost:5173` e clique em **Entrar na demonstração**. Esse modo não inicia a API nem conecta a banco; as alterações da prévia ficam somente no armazenamento local do navegador. Para apagar as alterações da demonstração, limpe os dados do site `localhost:5173` nas configurações do navegador.
+
 ## Iniciar o banco e criar o usuário DEV
 
 Na pasta `LancamentoLogistica/`:
@@ -11,13 +22,32 @@ docker compose up -d db
 docker compose --profile tools run --build --rm bootstrap
 ```
 
-O bootstrap cria as tabelas do modelo atual, carrega cadastros de teste e pergunta:
+Se ainda não houver uma conta DEV global, o bootstrap cria as tabelas do modelo atual, carrega cadastros de teste e pergunta:
 
 - username (por exemplo, `nome.sobrenome`);
 - nome completo;
 - senha e confirmação, digitadas sem aparecer no terminal.
 
-Essa conta recebe o perfil `DEV`, escopo global e todas as permissões registradas neste portal, incluindo o Painel Gerencial. Se já existir uma conta DEV, o bootstrap pode ser executado novamente para aplicar novas permissões ao perfil sem alterar a conta.
+Essa conta recebe o perfil `DEV`, escopo global e todas as permissões registradas neste portal, incluindo o Painel Gerencial. Se já existir uma conta DEV, o bootstrap atualiza as permissões do perfil e encerra sem criar outra conta ou alterar a senha. Se o terminal mostrar `Permissões locais do perfil DEV atualizadas; nenhuma conta foi alterada.`, foi isso que aconteceu.
+
+### Criar uma conta DEV nova sem apagar o banco local existente
+
+Para criar `dev-gabriel` sem substituir os dados do volume local atual, use outro nome de projeto Compose. Isso cria outro MySQL e outro volume. Execute na pasta `LancamentoLogistica/`:
+
+```bash
+docker compose down
+docker compose -p lancamento-gabriel up -d db
+docker compose -p lancamento-gabriel --profile tools run --build --rm bootstrap
+docker compose -p lancamento-gabriel up -d --build api frontend
+```
+
+O primeiro comando para os serviços Compose do projeto padrão, mas preserva o volume atual. No bootstrap, informe `dev-gabriel`, seu nome completo e uma senha local de pelo menos seis caracteres (pode escolher uma senha numérica de seis dígitos). Depois abra `http://localhost:5173` e entre com essa conta. O projeto `lancamento-gabriel` usa um volume separado e não conecta ao staging, à RDS ou ao banco do BI.
+
+Se já houver outro container usando as portas 5173 ou 8000, ele precisa ser parado antes de iniciar a nova instância. Para voltar ao projeto Compose padrão, pare esta instância com `docker compose -p lancamento-gabriel down` e suba os serviços padrão novamente. Não use `down -v`: essa opção apaga o volume e os dados locais.
+
+O ambiente local inclui correção versionada e cancelamento de lançamentos confirmados, consulta da trilha de eventos e API de reclamações/elogios. Vários feedbacks podem apontar para a mesma entrega confirmada. O feedback registra o nome do cliente e deriva data/localidade/equipe da entrega relacionada. Para `POST /api/v1/feedbacks`, envie `Idempotency-Key` com um UUID novo por manifestação e reutilize-o em retries da mesma submissão. DEV, GESTOR e DIRETORIA recebem todas as permissões semeadas pelo bootstrap local; OPERADOR pode consultar, registrar e editar rascunhos de Entregas. Use somente dados fictícios no desenvolvimento.
+
+O bootstrap corrige, somente no MySQL local validado, a coluna opcional `criado_por`, a chave de idempotência e o índice de feedback, as contagens e validação de OTIF e os CHECKs antigos de `op_logistica_autorizacao_evento`. Contagens históricas sem origem confiável ficam nulas. Em staging/produção, essas evoluções precisam entrar em uma revisão incremental da cadeia Alembic `logistica` mantida pelo VilarejoBI; não as aplique pelo bootstrap local nem pela inicialização da API.
 
 ## Subir API e frontend
 
@@ -35,19 +65,31 @@ Entre com o username e a senha criados no bootstrap. O formulário recebe dados 
 
 Os containers não precisam de Node.js instalado na máquina. Para executar somente o frontend no host, use Node 22 e configure `frontend/.env.local` com `VITE_API_BASE_URL=/api/v1`, `VITE_API_PROXY_TARGET=http://127.0.0.1:8000` e `VITE_DEMO_MODE=false`.
 
-## Sincronizar lojas do Vilarejo BI
-
-O catálogo local de lojas é um espelho de `dim_localidade`; o portal não cria códigos de loja. Para habilitar a ação **Sincronizar lojas do BI**, configure `VILAREJO_BI_LOGISTICA_DATABASE_URL` no ambiente do serviço `api` com uma conexão de leitura ao banco do BI. A conta do banco deve ter somente `SELECT` na dimensão `dim_localidade`. Não coloque credenciais reais no repositório.
-
-O Compose local não conecta ao BI por padrão. Nesse ambiente, use as localidades fictícias carregadas pelo bootstrap. O botão de sincronização funciona quando a variável acima está configurada.
+O catálogo de localidades pertence ao portal e fica no banco operacional do próprio projeto. O portal não consulta nem sincroniza dados com o VilarejoBI.
 
 ## Criar usuários e definir acesso
 
 O primeiro acesso DEV é criado pelo bootstrap acima. Para cadastrar os demais funcionários, entre no portal, abra **Cadastros → Usuários e acessos** e escolha **Nova conta**. Informe nome e username, selecione o perfil e indique se ele vale para todas as áreas, um setor, uma loja ou a combinação de setor e loja.
 
-Ao confirmar, o portal cria a conta e a primeira concessão juntas. A senha temporária aparece uma única vez; envie-a em canal privado. No primeiro login, a pessoa define sua senha. Depois é possível adicionar outros perfis/escopos ou revogar o acesso. As concessões não têm data de expiração configurável.
+Ao confirmar, o portal cria a conta e a primeira concessão juntas. A senha inicial numérica de seis dígitos aparece uma única vez; envie-a em canal privado. A pessoa pode entrar com ela sem troca obrigatória, alterar a senha na área **Minha senha** ou redefini-la na tela de login informando o nome completo e o username. Depois é possível adicionar outros perfis/escopos ou revogar o acesso. As concessões não têm data de expiração configurável.
 
 O perfil define as ações disponíveis; o escopo limita onde elas valem. A lista só mostra perfis que quem administra está autorizado a conceder. O perfil `DEV` exige escopo global.
+
+## Verificações locais
+
+Na pasta `backend/`, execute a suíte e a compilação da API com o Python do ambiente:
+
+```bash
+.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m compileall -q app scripts tests
+```
+
+Na pasta `frontend/`, valide tipos e build:
+
+```bash
+npm run typecheck
+npm run build
+```
 
 ## Sobre a conta DEV inicial
 

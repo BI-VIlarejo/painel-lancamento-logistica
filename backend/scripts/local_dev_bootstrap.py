@@ -8,7 +8,7 @@ from getpass import getpass
 from hashlib import sha256
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import CheckConstraint, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -27,24 +27,25 @@ from app.modules.access_control.models import (
     Recurso,
     UsuarioEscopo,
 )
+from app.modules.access_control.catalog import (
+    DELIVERY_SECTOR_CODE,
+    DELIVERY_SECTOR_NAME,
+    PERMISSION_DEFINITIONS,
+    PROFILE_PERMISSION_CODES,
+    RESOURCE_DEFINITIONS,
+)
 from app.modules.auth.models import Usuario
 from app.modules.auth.normalization import normalize_username
-from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa, Setor
+from app.modules.catalogs.models import (
+    Localidade,
+    MotivoNaoEntrega,
+    Pessoa,
+    Setor,
+)
 from app.modules.deliveries.models import FormularioVersao
 
 
-PERMISSION_SEED = (
-    ("CONTROLE_ACESSO", "ADMINISTRAR", "Administrar contas e acessos"),
-    ("CADASTROS", "ADMINISTRAR", "Administrar lojas, pessoas e motivos"),
-    ("ENTREGAS_DIARIAS", "VER", "Consultar lançamentos e catálogos"),
-    ("ENTREGAS_DIARIAS", "CRIAR", "Criar lançamentos"),
-    ("ENTREGAS_DIARIAS", "EDITAR_RASCUNHO", "Editar rascunhos"),
-    ("FEEDBACK_CLIENTES", "ACESSAR", "Acessar reclamações e elogios"),
-    ("FEEDBACK_CLIENTES", "VER", "Consultar manifestações de clientes"),
-    ("FEEDBACK_CLIENTES", "CRIAR", "Registrar reclamações e elogios"),
-    ("FEEDBACK_CLIENTES", "EXPORTAR", "Exportar manifestações de clientes"),
-    ("PAINEL_GERENCIAL", "ACESSAR", "Consultar o painel gerencial"),
-)
+PERMISSION_SEED = PERMISSION_DEFINITIONS
 
 
 def _now() -> datetime:
@@ -116,13 +117,7 @@ def _seed_access_catalog(
     now: datetime,
 ) -> tuple[dict[str, Perfil], list[Permissao]]:
     resources: dict[str, Recurso] = {}
-    for code, name in (
-        ("CONTROLE_ACESSO", "Controle de acesso"),
-        ("CADASTROS", "Cadastros operacionais"),
-        ("ENTREGAS_DIARIAS", "Entregas diárias"),
-        ("FEEDBACK_CLIENTES", "Reclamações e elogios"),
-        ("PAINEL_GERENCIAL", "Painel gerencial"),
-    ):
+    for code, name in RESOURCE_DEFINITIONS:
         resource = db.scalar(select(Recurso).where(Recurso.codigo == code))
         if resource is None:
             resource = Recurso(
@@ -162,41 +157,8 @@ def _profile_permissions(
     profile_code: str,
     permissions: list[Permissao],
 ) -> list[Permissao]:
-    if profile_code == "DEV":
-        return permissions
-    if profile_code == "OPERADOR":
-        return [
-            permission
-            for permission in permissions
-            if permission.codigo in {
-                "ENTREGAS_DIARIAS:VER",
-                "ENTREGAS_DIARIAS:CRIAR",
-                "ENTREGAS_DIARIAS:EDITAR_RASCUNHO",
-            }
-        ]
-    if profile_code == "GESTOR":
-        return [
-            permission
-            for permission in permissions
-            if permission.codigo.startswith("ENTREGAS_DIARIAS:")
-            or permission.codigo in {
-                "PAINEL_GERENCIAL:ACESSAR",
-                "CADASTROS:ADMINISTRAR",
-                "CONTROLE_ACESSO:ADMINISTRAR",
-            }
-        ]
-    if profile_code == "DIRETORIA":
-        return [
-            permission
-            for permission in permissions
-            if permission.codigo in {
-                "ENTREGAS_DIARIAS:VER",
-                "PAINEL_GERENCIAL:ACESSAR",
-                "CADASTROS:ADMINISTRAR",
-                "CONTROLE_ACESSO:ADMINISTRAR",
-            }
-        ]
-    return []
+    allowed_codes = PROFILE_PERMISSION_CODES.get(profile_code, frozenset())
+    return [permission for permission in permissions if permission.codigo in allowed_codes]
 
 
 def _grant_profile_permissions(
@@ -259,17 +221,25 @@ def _find_dev_admin(db: Session) -> int | None:
 
 
 def _seed_sample_catalog(db: Session, *, actor_id: int, now: datetime) -> None:
-    sector = db.scalar(select(Setor).where(Setor.codigo == "LOCAL_DEV"))
+    sector = db.scalar(select(Setor).where(Setor.codigo == DELIVERY_SECTOR_CODE))
     if sector is None:
-        sector = Setor(
-            codigo="LOCAL_DEV",
-            nome="Setor de teste local",
-            ativo=True,
-            criado_em=now,
-            atualizado_em=now,
-        )
-        db.add(sector)
-        db.flush()
+        # Reaproveita o setor criado por versões anteriores do bootstrap para
+        # manter os lançamentos e a versão do formulário no mesmo registro.
+        sector = db.scalar(select(Setor).where(Setor.codigo == "LOCAL_DEV"))
+        if sector is None:
+            sector = Setor(
+                codigo=DELIVERY_SECTOR_CODE,
+                nome=DELIVERY_SECTOR_NAME,
+                ativo=True,
+                criado_em=now,
+                atualizado_em=now,
+            )
+            db.add(sector)
+            db.flush()
+        else:
+            sector.codigo = DELIVERY_SECTOR_CODE
+            sector.nome = DELIVERY_SECTOR_NAME
+            sector.atualizado_em = now
 
     locality = db.scalar(
         select(Localidade).where(Localidade.codigo_localidade == "LOCALIDADE_DEV")
@@ -352,6 +322,191 @@ def _seed_sample_catalog(db: Session, *, actor_id: int, now: datetime) -> None:
                 publicado_em=now,
             )
         )
+
+
+def _ensure_local_feedback_creator_column(engine) -> None:
+    """Aplica a evolução aditiva do schema somente ao MySQL local validado."""
+    inspector = inspect(engine)
+    if not inspector.has_table("op_logistica_feedback"):
+        return
+    columns = {column["name"] for column in inspector.get_columns("op_logistica_feedback")}
+    if "criado_por" in columns:
+        return
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "ALTER TABLE op_logistica_feedback "
+                "ADD COLUMN criado_por BIGINT NULL, "
+                "ADD CONSTRAINT fk_op_logistica_feedback_criador "
+                "FOREIGN KEY (criado_por) REFERENCES op_logistica_usuario (id_usuario)"
+            )
+        )
+
+
+def _ensure_local_feedback_idempotency(engine) -> None:
+    """Permite vários feedbacks por entrega e protege retries no MySQL local."""
+    table = "op_logistica_feedback"
+    inspector = inspect(engine)
+    if not inspector.has_table(table):
+        return
+
+    columns = {column["name"]: column for column in inspector.get_columns(table)}
+    index_names = {
+        index["name"]
+        for index in inspector.get_indexes(table)
+        if index.get("name")
+    }
+    index_names.update(
+        constraint["name"]
+        for constraint in inspector.get_unique_constraints(table)
+        if constraint.get("name")
+    )
+
+    with engine.begin() as connection:
+        if "chave_idempotencia" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_feedback "
+                    "ADD COLUMN chave_idempotencia CHAR(36) NULL"
+                )
+            )
+        connection.execute(
+            text(
+                "UPDATE op_logistica_feedback "
+                "SET chave_idempotencia = UUID() "
+                "WHERE chave_idempotencia IS NULL"
+            )
+        )
+        if (
+            "chave_idempotencia" not in columns
+            or columns["chave_idempotencia"].get("nullable", True)
+        ):
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_feedback "
+                    "MODIFY COLUMN chave_idempotencia CHAR(36) NOT NULL"
+                )
+            )
+        if "ix_op_logistica_feedback_revisao" not in index_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_feedback "
+                    "ADD INDEX ix_op_logistica_feedback_revisao "
+                    "(id_lancamento_revisao)"
+                )
+            )
+        if "uq_op_logistica_feedback_revisao_item" in index_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_feedback "
+                    "DROP INDEX uq_op_logistica_feedback_revisao_item"
+                )
+            )
+        if "uq_op_logistica_feedback_idempotencia" not in index_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_feedback "
+                    "ADD CONSTRAINT uq_op_logistica_feedback_idempotencia "
+                    "UNIQUE (chave_idempotencia)"
+                )
+            )
+
+
+def _ensure_local_delivery_otif_columns(engine) -> None:
+    """Adiciona as contagens OTIF sem inventar valores para entregas antigas."""
+    table = "op_logistica_entrega_diaria"
+    inspector = inspect(engine)
+    if not inspector.has_table(table):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns(table)}
+    checks = {
+        constraint.get("name")
+        for constraint in inspector.get_check_constraints(table)
+    }
+    with engine.begin() as connection:
+        if "quantidade_entregas_no_prazo" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_entrega_diaria "
+                    "ADD COLUMN quantidade_entregas_no_prazo INT NULL"
+                )
+            )
+        if "quantidade_entregas_completas" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_entrega_diaria "
+                    "ADD COLUMN quantidade_entregas_completas INT NULL"
+                )
+            )
+        if "ck_op_logistica_entrega_otif_quantidades" not in checks:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_entrega_diaria "
+                    "ADD CONSTRAINT ck_op_logistica_entrega_otif_quantidades CHECK ("
+                    "(quantidade_entregas_no_prazo IS NULL AND "
+                    "quantidade_entregas_completas IS NULL) OR "
+                    "(quantidade_entregas_no_prazo IS NOT NULL AND "
+                    "quantidade_entregas_completas IS NOT NULL AND "
+                    "quantidade_entregas_no_prazo >= 0 AND "
+                    "quantidade_entregas_completas >= 0 AND "
+                    "quantidade_entregas_no_prazo <= quantidade_realizada AND "
+                    "quantidade_entregas_completas <= quantidade_realizada))"
+                )
+            )
+
+
+def _ensure_local_authorization_event_checks(engine) -> None:
+    """Evolui checks antigos de auditoria somente no MySQL local validado."""
+    table = AutorizacaoEvento.__tablename__
+    inspector = inspect(engine)
+    if not inspector.has_table(table):
+        return
+
+    existing = {
+        constraint["name"]: constraint.get("sqltext", "")
+        for constraint in inspector.get_check_constraints(table)
+        if constraint.get("name")
+    }
+    dialect = engine.dialect
+    preparer = dialect.identifier_preparer
+    table_name = preparer.quote(table)
+
+    with engine.begin() as connection:
+        for constraint in AutorizacaoEvento.__table_args__:
+            if not isinstance(constraint, CheckConstraint) or not constraint.name:
+                continue
+
+            current_expression = existing.get(constraint.name, "")
+            expected_values = {
+                value
+                for value in constraint.sqltext.text.split("'")[1::2]
+                if value
+            }
+            if current_expression and all(
+                value in current_expression for value in expected_values
+            ):
+                continue
+
+            constraint_name = preparer.quote(constraint.name)
+            if current_expression:
+                connection.execute(
+                    text(
+                        f"ALTER TABLE {table_name} "
+                        f"DROP CHECK {constraint_name}"
+                    )
+                )
+
+            expression = constraint.sqltext.compile(
+                dialect=dialect,
+                compile_kwargs={"literal_binds": True},
+            )
+            connection.execute(
+                text(
+                    f"ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} "
+                    f"CHECK ({expression})"
+                )
+            )
 
 
 def _create_dev_user(
@@ -446,6 +601,10 @@ def main() -> int:
 
     try:
         Base.metadata.create_all(engine)
+        _ensure_local_feedback_creator_column(engine)
+        _ensure_local_feedback_idempotency(engine)
+        _ensure_local_delivery_otif_columns(engine)
+        _ensure_local_authorization_event_checks(engine)
         with Session(engine) as db, db.begin():
             now = _now()
             profiles, permissions = _seed_access_catalog(

@@ -24,7 +24,6 @@ services:
       SESSION_SECRET: local-development-secret-change-before-any-shared-environment
       SESSION_COOKIE_SECURE: "false"
       OP_LOGISTICA_DATABASE_URL: mysql+pymysql://portal:portal_local_only@db:3306/op_logistica_dev?charset=utf8mb4
-      VILAREJO_BI_LOGISTICA_DATABASE_URL: ${VILAREJO_BI_LOGISTICA_DATABASE_URL:-}
     ports:
       - "8000:8000"
     depends_on:
