@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import date
 
-from sqlalchemy import and_, false, func, inspect, or_, select
+from sqlalchemy import and_, case, exists, false, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.exceptions import APIError, ServiceUnavailableError
 from app.modules.access_control import service as access_control_service
@@ -22,15 +21,16 @@ from app.modules.analytics.schemas import (
     TeamPerformance,
     TrendPoint,
 )
-from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa, TipoFeedback
+from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa
 from app.modules.deliveries.models import (
     EntregaDiaria,
     EntregaMotivo,
     EntregaParticipante,
     Lancamento,
+    LancamentoEvento,
     LancamentoRevisao,
 )
-from app.modules.feedback.models import Feedback, FeedbackParticipante
+from app.modules.feedback.models import Feedback
 
 
 def _scope_condition(*, sector_column, locality_column, access: AuthorizationContext):
@@ -55,6 +55,7 @@ def _latest_revision_subquery():
             LancamentoRevisao.id_lancamento.label("id_lancamento"),
             func.max(LancamentoRevisao.numero_revisao).label("numero_revisao"),
         )
+        .where(LancamentoRevisao.estado.in_(("ENVIADA", "APROVADA")))
         .group_by(LancamentoRevisao.id_lancamento)
         .subquery("ultima_revisao")
     )
@@ -63,9 +64,7 @@ def _latest_revision_subquery():
 def _feedback_tables_available(db: Session) -> bool:
     inspector = inspect(db.get_bind())
     required = {
-        "op_logistica_tipo_feedback",
         "op_logistica_feedback",
-        "op_logistica_feedback_participante",
     }
     return all(inspector.has_table(table_name) for table_name in required)
 
@@ -73,6 +72,10 @@ def _feedback_tables_available(db: Session) -> bool:
 def _rate(completed: int, not_completed: int) -> float | None:
     total = completed + not_completed
     return round((completed / total) * 100, 2) if total else None
+
+
+def _percentage(count: int, total: int) -> float | None:
+    return round((count / total) * 100, 2) if total else None
 
 
 def get_dashboard(
@@ -96,6 +99,12 @@ def get_dashboard(
         LancamentoRevisao.numero_revisao == latest_revision.c.numero_revisao,
         # ENVIADA is the final confirmation state; APROVADA remains for legacy records.
         LancamentoRevisao.estado.in_(("ENVIADA", "APROVADA")),
+        ~exists(
+            select(LancamentoEvento.id_evento).where(
+                LancamentoEvento.id_lancamento == Lancamento.id_lancamento,
+                LancamentoEvento.tipo_evento == "LANCAMENTO_CANCELADO",
+            )
+        ),
         _scope_condition(
             sector_column=Lancamento.id_setor,
             locality_column=EntregaDiaria.id_localidade,
@@ -120,6 +129,8 @@ def get_dashboard(
             Localidade.nome_localidade.label("nome_localidade"),
             EntregaDiaria.quantidade_realizada.label("realizadas"),
             EntregaDiaria.quantidade_nao_realizada.label("nao_realizadas"),
+            EntregaDiaria.quantidade_entregas_no_prazo.label("entregas_no_prazo"),
+            EntregaDiaria.quantidade_entregas_completas.label("entregas_completas"),
         )
         .select_from(EntregaDiaria)
         .join(
@@ -141,39 +152,112 @@ def get_dashboard(
     )
 
     try:
-        rows = db.execute(select(registered_items)).all()
-        item_count = len(rows)
-        launch_ids = {row.id_lancamento for row in rows}
-        locality_totals: dict[int, dict[str, object]] = {}
-        daily_totals: dict[date, list[int]] = defaultdict(lambda: [0, 0])
-        item_data: dict[int, object] = {}
-        planned_total = completed_total = not_completed_total = 0
-
-        for row in rows:
-            planned = row.realizadas + row.nao_realizadas
-            planned_total += planned
-            completed_total += row.realizadas
-            not_completed_total += row.nao_realizadas
-            daily_totals[row.data_entrega][0] += row.realizadas
-            daily_totals[row.data_entrega][1] += row.nao_realizadas
-            item_data[row.id_entrega_diaria] = row
-
-            locality = locality_totals.setdefault(
-                row.id_localidade,
-                {
-                    "name": row.nome_localidade,
-                    "launch_ids": set(),
-                    "planned": 0,
-                    "completed": 0,
-                    "not_completed": 0,
-                    "praise": 0,
-                    "complaint": 0,
-                },
+        summary_row = db.execute(
+            select(
+                func.count(func.distinct(registered_items.c.id_lancamento)).label(
+                    "launch_count"
+                ),
+                func.count().label("item_count"),
+                func.coalesce(func.sum(registered_items.c.realizadas), 0).label(
+                    "completed_total"
+                ),
+                func.coalesce(func.sum(registered_items.c.nao_realizadas), 0).label(
+                    "not_completed_total"
+                ),
+                func.sum(registered_items.c.entregas_no_prazo).label(
+                    "on_time_total"
+                ),
+                func.sum(registered_items.c.entregas_completas).label(
+                    "in_full_total"
+                ),
+                func.coalesce(
+                    func.sum(
+                        case(
+                            (
+                                or_(
+                                    registered_items.c.entregas_no_prazo.is_(None),
+                                    registered_items.c.entregas_completas.is_(None),
+                                ),
+                                1,
+                            ),
+                            else_=0,
+                        )
+                    ),
+                    0,
+                ).label("otif_missing_count"),
             )
-            locality["launch_ids"].add(row.id_lancamento)
-            locality["planned"] += planned
-            locality["completed"] += row.realizadas
-            locality["not_completed"] += row.nao_realizadas
+            .select_from(registered_items)
+        ).one()
+        item_count = int(summary_row.item_count)
+        launch_count = int(summary_row.launch_count)
+        completed_total = int(summary_row.completed_total)
+        not_completed_total = int(summary_row.not_completed_total)
+        planned_total = completed_total + not_completed_total
+
+        otif_disponivel = item_count > 0 and int(summary_row.otif_missing_count) == 0
+        quantidade_entregas_no_prazo = (
+            int(summary_row.on_time_total or 0) if otif_disponivel else None
+        )
+        quantidade_entregas_completas = (
+            int(summary_row.in_full_total or 0) if otif_disponivel else None
+        )
+        percentual_entregas_no_prazo = (
+            _percentage(quantidade_entregas_no_prazo, planned_total)
+            if quantidade_entregas_no_prazo is not None
+            else None
+        )
+        percentual_entregas_completas = (
+            _percentage(quantidade_entregas_completas, planned_total)
+            if quantidade_entregas_completas is not None
+            else None
+        )
+        otif_percentual = (
+            round(
+                percentual_entregas_no_prazo * percentual_entregas_completas / 100,
+                2,
+            )
+            if percentual_entregas_no_prazo is not None
+            and percentual_entregas_completas is not None
+            else None
+        )
+
+        daily_rows = db.execute(
+            select(
+                registered_items.c.data_entrega,
+                func.sum(registered_items.c.realizadas).label("completed"),
+                func.sum(registered_items.c.nao_realizadas).label("not_completed"),
+            )
+            .select_from(registered_items)
+            .group_by(registered_items.c.data_entrega)
+            .order_by(registered_items.c.data_entrega)
+        ).all()
+        locality_rows = db.execute(
+            select(
+                registered_items.c.id_localidade,
+                registered_items.c.nome_localidade,
+                func.count(
+                    func.distinct(registered_items.c.id_lancamento)
+                ).label("launch_count"),
+                func.sum(registered_items.c.realizadas).label("completed"),
+                func.sum(registered_items.c.nao_realizadas).label("not_completed"),
+            )
+            .select_from(registered_items)
+            .group_by(
+                registered_items.c.id_localidade,
+                registered_items.c.nome_localidade,
+            )
+        ).all()
+        locality_totals: dict[int, dict[str, object]] = {}
+        for row in locality_rows:
+            locality_totals[row.id_localidade] = {
+                "name": row.nome_localidade,
+                "launch_count": int(row.launch_count),
+                "planned": int(row.completed) + int(row.not_completed),
+                "completed": int(row.completed),
+                "not_completed": int(row.not_completed),
+                "praise": 0,
+                "complaint": 0,
+            }
 
         reason_rows = db.execute(
             select(
@@ -197,158 +281,350 @@ def get_dashboard(
             .order_by(func.sum(EntregaMotivo.quantidade).desc(), MotivoNaoEntrega.descricao_motivo)
         ).all()
 
-        participants_by_item: dict[int, list[tuple[int, str, str, int]]] = defaultdict(list)
-        person_totals: dict[int, dict[str, object]] = {}
-        if item_count:
-            participant_rows = db.execute(
-                select(
-                    EntregaParticipante.id_entrega_diaria,
-                    Pessoa.id_pessoa,
-                    Pessoa.nome_exibicao,
-                    Pessoa.tipo_funcao,
-                    EntregaParticipante.papel_participante,
-                    EntregaParticipante.ordem,
-                )
-                .join(
-                    registered_items,
-                    registered_items.c.id_entrega_diaria
-                    == EntregaParticipante.id_entrega_diaria,
-                )
-                .join(Pessoa, Pessoa.id_pessoa == EntregaParticipante.id_pessoa)
-                .order_by(
-                    EntregaParticipante.id_entrega_diaria,
-                    EntregaParticipante.papel_participante,
-                    EntregaParticipante.ordem,
-                )
-            ).all()
+        team_members = (
+            select(
+                EntregaParticipante.id_entrega_diaria.label("id_entrega_diaria"),
+                func.max(
+                    case(
+                        (
+                            EntregaParticipante.papel_participante == "MOTORISTA",
+                            EntregaParticipante.id_pessoa,
+                        ),
+                        else_=None,
+                    )
+                ).label("driver_id"),
+                func.max(
+                    case(
+                        (
+                            and_(
+                                EntregaParticipante.papel_participante == "AJUDANTE",
+                                EntregaParticipante.ordem == 1,
+                            ),
+                            EntregaParticipante.id_pessoa,
+                        ),
+                        else_=None,
+                    )
+                ).label("helper_1_id"),
+                func.max(
+                    case(
+                        (
+                            and_(
+                                EntregaParticipante.papel_participante == "AJUDANTE",
+                                EntregaParticipante.ordem == 2,
+                            ),
+                            EntregaParticipante.id_pessoa,
+                        ),
+                        else_=None,
+                    )
+                ).label("helper_2_id"),
+            )
+            .select_from(EntregaParticipante)
+            .join(
+                registered_items,
+                registered_items.c.id_entrega_diaria
+                == EntregaParticipante.id_entrega_diaria,
+            )
+            .group_by(EntregaParticipante.id_entrega_diaria)
+            .subquery("entrega_equipe")
+        )
 
-            for row in participant_rows:
-                participants_by_item[row.id_entrega_diaria].append(
-                    (row.id_pessoa, row.nome_exibicao, row.tipo_funcao, row.ordem)
-                )
-                person = person_totals.setdefault(
-                    row.id_pessoa,
-                    {
-                        "name": row.nome_exibicao,
-                        "role": row.tipo_funcao,
-                        "items": set(),
-                        "teams": set(),
-                        "planned": 0,
-                        "completed": 0,
-                        "not_completed": 0,
-                        "praise": 0,
-                        "complaint": 0,
-                    },
-                )
-                item = item_data[row.id_entrega_diaria]
-                if row.id_entrega_diaria not in person["items"]:
-                    person["items"].add(row.id_entrega_diaria)
-                    person["planned"] += item.realizadas + item.nao_realizadas
-                    person["completed"] += item.realizadas
-                    person["not_completed"] += item.nao_realizadas
+        team_rows = db.execute(
+            select(
+                team_members.c.driver_id,
+                team_members.c.helper_1_id,
+                team_members.c.helper_2_id,
+                func.count(func.distinct(registered_items.c.id_lancamento)).label(
+                    "launch_count"
+                ),
+                func.sum(
+                    registered_items.c.realizadas
+                    + registered_items.c.nao_realizadas
+                ).label("planned"),
+                func.sum(registered_items.c.realizadas).label("completed"),
+                func.sum(registered_items.c.nao_realizadas).label("not_completed"),
+            )
+            .select_from(team_members)
+            .join(
+                registered_items,
+                registered_items.c.id_entrega_diaria
+                == team_members.c.id_entrega_diaria,
+            )
+            .group_by(
+                team_members.c.driver_id,
+                team_members.c.helper_1_id,
+                team_members.c.helper_2_id,
+            )
+        ).all()
+
+        participant_ids = {
+            int(person_id)
+            for row in team_rows
+            for person_id in (row.driver_id, row.helper_1_id, row.helper_2_id)
+            if person_id is not None
+        }
+        people_by_id = {
+            person.id_pessoa: person
+            for person in db.scalars(
+                select(Pessoa).where(Pessoa.id_pessoa.in_(participant_ids))
+            ).all()
+        } if participant_ids else {}
+
+        person_totals: dict[int, dict[str, object]] = {
+            person_id: {
+                "name": person.nome_exibicao,
+                "role": person.tipo_funcao,
+                "teams": set(),
+                "planned": 0,
+                "completed": 0,
+                "not_completed": 0,
+                "praise": 0,
+                "complaint": 0,
+            }
+            for person_id, person in people_by_id.items()
+        }
+        driver_rows = db.execute(
+            select(
+                Pessoa.id_pessoa,
+                func.sum(
+                    registered_items.c.realizadas
+                    + registered_items.c.nao_realizadas
+                ).label("planned"),
+                func.sum(registered_items.c.realizadas).label("completed"),
+                func.sum(registered_items.c.nao_realizadas).label("not_completed"),
+            )
+            .select_from(EntregaParticipante)
+            .join(
+                registered_items,
+                registered_items.c.id_entrega_diaria
+                == EntregaParticipante.id_entrega_diaria,
+            )
+            .join(Pessoa, Pessoa.id_pessoa == EntregaParticipante.id_pessoa)
+            .where(EntregaParticipante.papel_participante == "MOTORISTA")
+            .group_by(Pessoa.id_pessoa)
+        ).all()
+        for row in driver_rows:
+            person = person_totals.get(row.id_pessoa)
+            if person is not None:
+                person["planned"] = int(row.planned or 0)
+                person["completed"] = int(row.completed or 0)
+                person["not_completed"] = int(row.not_completed or 0)
 
         team_totals: dict[str, dict[str, object]] = {}
-        team_key_by_item: dict[int, str] = {}
-        for item_id, members in participants_by_item.items():
-            ordered_members = sorted(
-                members,
-                key=lambda member: (0 if member[2] == "MOTORISTA" else 1, member[3], member[0]),
-            )
-            team_key = ":".join(str(member[0]) for member in ordered_members)
-            team_key_by_item[item_id] = team_key
-            team = team_totals.setdefault(
-                team_key,
-                {
-                    "name": " · ".join(member[1] for member in ordered_members),
-                    "member_ids": [member[0] for member in ordered_members],
-                    "items": set(),
-                    "launch_ids": set(),
-                    "planned": 0,
-                    "completed": 0,
-                    "not_completed": 0,
-                    "praise": 0,
-                    "complaint": 0,
-                },
-            )
-            item = item_data[item_id]
-            if item_id not in team["items"]:
-                team["items"].add(item_id)
-                team["launch_ids"].add(item.id_lancamento)
-                team["planned"] += item.realizadas + item.nao_realizadas
-                team["completed"] += item.realizadas
-                team["not_completed"] += item.nao_realizadas
-            for member_id, _, _, _ in ordered_members:
-                person_totals[member_id]["teams"].add(team_key)
+        for row in team_rows:
+            member_ids = [
+                int(person_id)
+                for person_id in (row.driver_id, row.helper_1_id, row.helper_2_id)
+                if person_id is not None
+            ]
+            team_key = ":".join(str(person_id) for person_id in member_ids)
+            team_totals[team_key] = {
+                "name": " · ".join(
+                    people_by_id[person_id].nome_exibicao
+                    for person_id in member_ids
+                    if person_id in people_by_id
+                ),
+                "launch_count": int(row.launch_count or 0),
+                "planned": int(row.planned or 0),
+                "completed": int(row.completed or 0),
+                "not_completed": int(row.not_completed or 0),
+                "praise": 0,
+                "complaint": 0,
+            }
+            for person_id in member_ids:
+                person = person_totals.get(person_id)
+                if person is not None:
+                    person["teams"].add(team_key)
 
         feedback_available = _feedback_tables_available(db)
         feedback_totals = {"praise": 0, "complaint": 0}
         if feedback_available:
-            feedback_rows = db.execute(
+            feedback_delivery = aliased(EntregaDiaria)
+            feedback_revision = aliased(LancamentoRevisao)
+            feedback_launch = aliased(Lancamento)
+            feedback_team_members = (
                 select(
-                    registered_items.c.id_entrega_diaria,
-                    Feedback.id_feedback,
-                    TipoFeedback.codigo_tipo,
-                    registered_items.c.id_localidade,
+                    EntregaParticipante.id_entrega_diaria.label("id_entrega_diaria"),
+                    func.max(
+                        case(
+                            (
+                                EntregaParticipante.papel_participante == "MOTORISTA",
+                                EntregaParticipante.id_pessoa,
+                            ),
+                            else_=None,
+                        )
+                    ).label("driver_id"),
+                    func.max(
+                        case(
+                            (
+                                and_(
+                                    EntregaParticipante.papel_participante == "AJUDANTE",
+                                    EntregaParticipante.ordem == 1,
+                                ),
+                                EntregaParticipante.id_pessoa,
+                            ),
+                            else_=None,
+                        )
+                    ).label("helper_1_id"),
+                    func.max(
+                        case(
+                            (
+                                and_(
+                                    EntregaParticipante.papel_participante == "AJUDANTE",
+                                    EntregaParticipante.ordem == 2,
+                                ),
+                                EntregaParticipante.id_pessoa,
+                            ),
+                            else_=None,
+                        )
+                    ).label("helper_2_id"),
+                )
+                .group_by(EntregaParticipante.id_entrega_diaria)
+                .subquery("equipe_da_entrega_do_feedback")
+            )
+            feedback_context = (
+                select(
+                    Feedback.id_feedback.label("id_feedback"),
+                    feedback_delivery.id_entrega_diaria.label("id_entrega_diaria"),
+                    func.upper(Feedback.tipo).label("codigo_tipo"),
+                    feedback_delivery.id_localidade.label("id_localidade"),
+                    feedback_team_members.c.driver_id.label("driver_id"),
+                    feedback_team_members.c.helper_1_id.label("helper_1_id"),
+                    feedback_team_members.c.helper_2_id.label("helper_2_id"),
+                )
+                .select_from(Feedback)
+                .join(
+                    feedback_delivery,
+                    feedback_delivery.id_entrega_diaria == Feedback.id_entrega_diaria,
                 )
                 .join(
-                    Feedback,
+                    feedback_revision,
                     and_(
-                        Feedback.id_lancamento_revisao
-                        == registered_items.c.id_lancamento_revisao,
-                        Feedback.codigo_item_lancamento
-                        == registered_items.c.codigo_item_lancamento,
+                        feedback_revision.id_lancamento_revisao
+                        == feedback_delivery.id_lancamento_revisao,
+                        feedback_revision.id_lancamento_revisao
+                        == Feedback.id_lancamento_revisao,
                     ),
                 )
                 .join(
-                    TipoFeedback,
-                    TipoFeedback.id_tipo_feedback == Feedback.id_tipo_feedback,
+                    feedback_launch,
+                    feedback_launch.id_lancamento == feedback_revision.id_lancamento,
+                )
+                .join(
+                    feedback_team_members,
+                    feedback_team_members.c.id_entrega_diaria
+                    == feedback_delivery.id_entrega_diaria,
                 )
                 .where(
+                    Feedback.tipo.in_(("ELOGIO", "RECLAMACAO")),
+                    feedback_revision.estado.in_(("ENVIADA", "APROVADA")),
+                    _scope_condition(
+                        sector_column=feedback_launch.id_setor,
+                        locality_column=feedback_delivery.id_localidade,
+                        access=access,
+                    ),
+                    ~exists(
+                        select(LancamentoEvento.id_evento).where(
+                            LancamentoEvento.id_lancamento
+                            == feedback_launch.id_lancamento,
+                            LancamentoEvento.tipo_evento == "LANCAMENTO_CANCELADO",
+                        )
+                    ),
+                    feedback_delivery.id_localidade == id_localidade
+                    if id_localidade is not None
+                    else True,
                     Feedback.data_feedback >= data_de if data_de is not None else True,
                     Feedback.data_feedback <= data_ate if data_ate is not None else True,
                 )
+                .subquery("feedback_no_recorte")
+            )
+            feedback_count_rows = db.execute(
+                select(
+                    feedback_context.c.codigo_tipo,
+                    func.count(func.distinct(feedback_context.c.id_feedback)).label(
+                        "feedback_count"
+                    ),
+                ).group_by(feedback_context.c.codigo_tipo)
             ).all()
-            feedback_item_by_id: dict[int, int] = {}
-            feedback_member_codes: dict[int, str] = {}
-            for row in feedback_rows:
-                code = row.codigo_tipo.upper()
-                metric = "praise" if code == "ELOGIO" else "complaint" if code == "RECLAMACAO" else None
-                if metric is None:
-                    continue
-                feedback_totals[metric] += 1
+            for row in feedback_count_rows:
+                metric = "praise" if row.codigo_tipo == "ELOGIO" else "complaint"
+                feedback_totals[metric] = int(row.feedback_count or 0)
+
+            locality_feedback_rows = db.execute(
+                select(
+                    feedback_context.c.id_localidade,
+                    feedback_context.c.codigo_tipo,
+                    func.count(func.distinct(feedback_context.c.id_feedback)).label(
+                        "feedback_count"
+                    ),
+                ).group_by(
+                    feedback_context.c.id_localidade,
+                    feedback_context.c.codigo_tipo,
+                )
+            ).all()
+            for row in locality_feedback_rows:
                 locality = locality_totals.get(row.id_localidade)
                 if locality is not None:
-                    locality[metric] += 1
-                feedback_item_by_id[row.id_feedback] = row.id_entrega_diaria
-                feedback_member_codes[row.id_feedback] = metric
+                    metric = "praise" if row.codigo_tipo == "ELOGIO" else "complaint"
+                    locality[metric] = int(row.feedback_count or 0)
 
-            if feedback_member_codes:
-                feedback_participant_rows = db.execute(
-                    select(
-                        FeedbackParticipante.id_feedback,
-                        Pessoa.id_pessoa,
-                    )
-                    .join(Pessoa, Pessoa.id_pessoa == FeedbackParticipante.id_pessoa)
-                    .where(FeedbackParticipante.id_feedback.in_(feedback_member_codes.keys()))
-                ).all()
-                counted_team_feedback: set[tuple[str, int]] = set()
-                for row in feedback_participant_rows:
-                    metric = feedback_member_codes[row.id_feedback]
-                    person = person_totals.get(row.id_pessoa)
-                    if person is not None:
-                        person[metric] += 1
-                    item_id = feedback_item_by_id[row.id_feedback]
-                    team_key = team_key_by_item.get(item_id)
-                    team_feedback_key = (team_key, row.id_feedback) if team_key is not None else None
-                    if team_key is not None and team_feedback_key not in counted_team_feedback:
-                        team_totals[team_key][metric] += 1
-                        counted_team_feedback.add((team_key, row.id_feedback))
+            person_feedback_rows = db.execute(
+                select(
+                    EntregaParticipante.id_pessoa,
+                    feedback_context.c.codigo_tipo,
+                    func.count(func.distinct(feedback_context.c.id_feedback)).label(
+                        "feedback_count"
+                    ),
+                )
+                .join(
+                    feedback_context,
+                    feedback_context.c.id_entrega_diaria
+                    == EntregaParticipante.id_entrega_diaria,
+                )
+                .group_by(
+                    EntregaParticipante.id_pessoa,
+                    feedback_context.c.codigo_tipo,
+                )
+            ).all()
+            for row in person_feedback_rows:
+                person = person_totals.get(row.id_pessoa)
+                if person is not None:
+                    metric = "praise" if row.codigo_tipo == "ELOGIO" else "complaint"
+                    person[metric] = int(row.feedback_count or 0)
+
+            team_feedback_rows = db.execute(
+                select(
+                    feedback_context.c.driver_id,
+                    feedback_context.c.helper_1_id,
+                    feedback_context.c.helper_2_id,
+                    feedback_context.c.codigo_tipo,
+                    func.count(func.distinct(feedback_context.c.id_feedback)).label(
+                        "feedback_count"
+                    ),
+                )
+                .group_by(
+                    feedback_context.c.driver_id,
+                    feedback_context.c.helper_1_id,
+                    feedback_context.c.helper_2_id,
+                    feedback_context.c.codigo_tipo,
+                )
+            ).all()
+            for row in team_feedback_rows:
+                member_ids = [
+                    int(person_id)
+                    for person_id in (row.driver_id, row.helper_1_id, row.helper_2_id)
+                    if person_id is not None
+                ]
+                team_key = ":".join(str(person_id) for person_id in member_ids)
+                team = team_totals.get(team_key)
+                if team is not None:
+                    metric = "praise" if row.codigo_tipo == "ELOGIO" else "complaint"
+                    team[metric] = int(row.feedback_count or 0)
 
         by_locality = [
             LocalityPerformance(
                 id_localidade=id_locality,
                 nome=str(values["name"]),
-                lancamentos=len(values["launch_ids"]),
+                lancamentos=int(values["launch_count"]),
                 itens_planejados=int(values["planned"]),
                 realizadas=int(values["completed"]),
                 nao_realizadas=int(values["not_completed"]),
@@ -372,13 +648,15 @@ def get_dashboard(
                 taxa_realizacao=_rate(int(values["completed"]), int(values["not_completed"])),
                 elogios=int(values["praise"]) if feedback_available else None,
                 reclamacoes=int(values["complaint"]) if feedback_available else None,
+                score_atendimento=int(values["praise"]) - int(values["complaint"]),
             )
             for id_person, values in person_totals.items()
         ]
         by_people.sort(
             key=lambda item: (
                 -(item.taxa_realizacao if item.taxa_realizacao is not None else -1),
-                -item.itens_planejados,
+                -item.score_atendimento,
+                -item.realizadas,
                 item.nome.casefold(),
             )
         )
@@ -391,7 +669,7 @@ def get_dashboard(
                 realizadas=int(values["completed"]),
                 nao_realizadas=int(values["not_completed"]),
                 taxa_realizacao=_rate(int(values["completed"]), int(values["not_completed"])),
-                lancamentos=len(values["launch_ids"]),
+                lancamentos=int(values["launch_count"]),
                 elogios=int(values["praise"]) if feedback_available else None,
                 reclamacoes=int(values["complaint"]) if feedback_available else None,
             )
@@ -407,13 +685,13 @@ def get_dashboard(
 
         daily = [
             TrendPoint(
-                data=day,
-                planejadas=values[0] + values[1],
-                realizadas=values[0],
-                nao_realizadas=values[1],
-                taxa_realizacao=_rate(values[0], values[1]),
+                data=row.data_entrega,
+                planejadas=int(row.completed) + int(row.not_completed),
+                realizadas=int(row.completed),
+                nao_realizadas=int(row.not_completed),
+                taxa_realizacao=_rate(int(row.completed), int(row.not_completed)),
             )
-            for day, values in sorted(daily_totals.items())
+            for row in daily_rows
         ]
         reasons = [
             ReasonPerformance(
@@ -428,12 +706,16 @@ def get_dashboard(
             data_ate=data_ate,
             id_localidade=id_localidade,
             resumo=DashboardSummary(
-                lancamentos_registrados=len(launch_ids),
+                lancamentos_registrados=launch_count,
                 itens_planejados=planned_total,
                 entregas_realizadas=completed_total,
                 entregas_nao_realizadas=not_completed_total,
                 taxa_realizacao=_rate(completed_total, not_completed_total),
-                otif_percentual=None,
+                quantidade_entregas_no_prazo=quantidade_entregas_no_prazo,
+                quantidade_entregas_completas=quantidade_entregas_completas,
+                percentual_entregas_no_prazo=percentual_entregas_no_prazo,
+                percentual_entregas_completas=percentual_entregas_completas,
+                otif_percentual=otif_percentual,
             ),
             feedback=FeedbackSummary(
                 disponivel=feedback_available,
