@@ -1,4 +1,5 @@
-import { apiRequest } from "../../shared/api/apiClient";
+import { apiRequest, isDemoMode } from "../../shared/api/apiClient";
+import { demoAnalyticsApi } from "./demoApi";
 import type { DashboardFilters, DashboardResponse } from "./types";
 
 function queryFrom(filters: DashboardFilters): string {
@@ -11,6 +12,7 @@ function queryFrom(filters: DashboardFilters): string {
 
 export const analyticsApi = {
   dashboard(filters: DashboardFilters = {}): Promise<DashboardResponse> {
+    if (isDemoMode) return demoAnalyticsApi.dashboard(filters);
     const query = queryFrom(filters);
     return apiRequest<DashboardResponse>(`/analytics/dashboard${query ? `?${query}` : ""}`);
   },

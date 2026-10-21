@@ -37,6 +37,7 @@ export type DashboardPerson = {
   taxa_realizacao: number | null;
   elogios: number | null;
   reclamacoes: number | null;
+  score_atendimento: number;
 };
 
 export type DashboardTeam = {
@@ -61,6 +62,10 @@ export type DashboardResponse = {
     entregas_realizadas: number;
     entregas_nao_realizadas: number;
     taxa_realizacao: number | null;
+    quantidade_entregas_no_prazo: number | null;
+    quantidade_entregas_completas: number | null;
+    percentual_entregas_no_prazo: number | null;
+    percentual_entregas_completas: number | null;
     otif_percentual: number | null;
   };
   feedback: { disponivel: boolean; elogios: number | null; reclamacoes: number | null };

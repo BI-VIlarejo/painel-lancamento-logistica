@@ -28,6 +28,7 @@
 .empty-state-icon { display: grid; width: 44px; height: 44px; place-items: center; border-radius: 14px; color: var(--primary); background: var(--primary-soft); font-size: 24px; }
 .notice { display: flex; align-items: center; gap: 9px; padding: 11px 13px; border: 1px solid transparent; border-radius: 7px; font-size: 13px; line-height: 1.5; }
 .notice-warning { border-color: #f0e4c8; color: var(--warning); background: var(--warning-soft); }
+.notice-info { border-color: #d8e4eb; color: var(--brand-navy); background: #f3f8fa; }
 .notice-error { border-color: var(--brand-red-line); color: var(--danger); background: var(--danger-soft); }
 .notice-success { border-color: var(--success-line); color: var(--success); background: var(--success-soft); }
 .notice strong { color: inherit; }

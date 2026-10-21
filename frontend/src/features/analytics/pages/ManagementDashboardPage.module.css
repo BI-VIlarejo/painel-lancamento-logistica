@@ -34,6 +34,7 @@
 .metric-complaint strong { color: var(--brand-navy); }
 
 .otif-definition-note { display: flex; align-items: flex-start; gap: 11px; padding: 13px 15px; border: 1px solid #eadfc8; border-radius: 8px; background: #fcf8ef; }
+.ranking-position { color: #516974; font-weight: 700; font-variant-numeric: tabular-nums; }
 .otif-note-icon { display: grid; width: 21px; height: 21px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #795e2f; background: #efe3c9; font-size: 13px; font-weight: 700; }
 .otif-definition-note strong { color: #6d552d; font-size: 13px; }
 .otif-definition-note p { margin: 3px 0 0; color: #756443; font-size: 12px; line-height: 1.55; }
