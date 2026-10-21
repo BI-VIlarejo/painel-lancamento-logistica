@@ -1,0 +1,32 @@
+.audit-page { display: flex; flex-direction: column; gap: 19px; }
+.audit-card { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: #fff; }
+.audit-toolbar { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); align-items: end; gap: 12px; padding: 16px 18px; border-bottom: 1px solid var(--line); background: #f8fafc; }
+.audit-toolbar input, .audit-toolbar select { height: 39px; padding: 0 10px; font-size: 13px; }
+.audit-note { display: flex; align-items: flex-start; gap: 9px; margin: 15px 17px; padding: 10px 12px; border: 1px solid #e3e9ed; border-radius: 7px; color: #63748a; background: #f8fafc; font-size: 12px; line-height: 1.5; }
+.audit-note > span { display: grid; width: 17px; height: 17px; flex: 0 0 auto; place-items: center; border: 1px solid currentColor; border-radius: 50%; font-weight: 700; }
+.audit-note p { margin: 0; }
+.audit-message { margin: 0 17px 13px; }
+.audit-table-wrap { overflow-x: auto; }
+.audit-table { width: 100%; border-collapse: collapse; }
+.audit-table th { padding: 11px 14px; color: #63748a; background: #f8fafc; font-size: 12px; text-align: left; }
+.audit-table td { padding: 12px 14px; border-top: 1px solid #eef1ee; color: #56666f; font-size: 13px; }
+.audit-table td strong { color: #344b66; font-weight: 600; text-transform: capitalize; }
+.audit-origin { display: inline-flex; padding: 4px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
+.audit-origin-entregas { color: #34536f; background: #edf3f8; }
+.audit-origin-acessos { color: #536f57; background: #edf4ee; }
+.audit-empty { display: grid; min-height: 170px; place-items: center; color: #7c8981; font-size: 13px; }
+.audit-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 17px; border-top: 1px solid var(--line); color: #63748a; font-size: 12px; }
+.pagination-controls { display: flex; align-items: center; gap: 9px; }
+.pagination-controls :global(.button) { min-height: 31px; padding: 0 10px; font-size: 12px; }
+
+@media (max-width: 950px) {
+  .audit-toolbar { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .audit-toolbar { grid-template-columns: repeat(2, minmax(110px, 1fr)); padding: 13px; }
+  .audit-toolbar :global(.filter-control):nth-child(2) { grid-column: 1 / -1; }
+  .audit-note { margin: 12px; }
+  .audit-footer { align-items: stretch; flex-direction: column; padding: 12px; }
+  .pagination-controls { justify-content: space-between; }
+}
