@@ -131,6 +131,61 @@ def get_latest_revision(
     return db.scalar(statement)
 
 
+def get_revision_for_launch(
+    db: Session,
+    *,
+    id_lancamento: int,
+    id_lancamento_revisao: int,
+) -> tuple[LancamentoRevisao, Setor] | None:
+    statement = (
+        select(LancamentoRevisao, Setor)
+        .join(Lancamento, Lancamento.id_lancamento == LancamentoRevisao.id_lancamento)
+        .join(Setor, Setor.id_setor == Lancamento.id_setor)
+        .where(
+            LancamentoRevisao.id_lancamento == id_lancamento,
+            LancamentoRevisao.id_lancamento_revisao == id_lancamento_revisao,
+        )
+    )
+    row = db.execute(statement).one_or_none()
+    return (row[0], row[1]) if row is not None else None
+
+
+def get_latest_confirmed_revision(
+    db: Session,
+    *,
+    id_lancamento: int,
+    before_revision: int | None = None,
+) -> LancamentoRevisao | None:
+    statement = select(LancamentoRevisao).where(
+        LancamentoRevisao.id_lancamento == id_lancamento,
+        LancamentoRevisao.estado.in_(("ENVIADA", "APROVADA")),
+    )
+    if before_revision is not None:
+        statement = statement.where(
+            LancamentoRevisao.numero_revisao < before_revision
+        )
+    statement = statement.order_by(LancamentoRevisao.numero_revisao.desc()).limit(1)
+    return db.scalar(statement)
+
+
+def list_launch_events(
+    db: Session,
+    *,
+    id_lancamento: int,
+) -> list[tuple[LancamentoEvento, LancamentoRevisao]]:
+    statement = (
+        select(LancamentoEvento, LancamentoRevisao)
+        .join(
+            LancamentoRevisao,
+            LancamentoRevisao.id_lancamento_revisao
+            == LancamentoEvento.id_lancamento_revisao,
+        )
+        .where(LancamentoEvento.id_lancamento == id_lancamento)
+        .order_by(LancamentoEvento.ocorrido_em, LancamentoEvento.id_evento)
+    )
+    return list(db.execute(statement).all())
+
+
 def get_launch_by_code(
     db: Session,
     *,

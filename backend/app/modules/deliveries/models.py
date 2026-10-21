@@ -200,7 +200,9 @@ class LancamentoRevisao(Base):
     )
 
     id_lancamento_revisao: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     id_lancamento: Mapped[int] = mapped_column(
         BigInteger,
@@ -304,7 +306,9 @@ class LancamentoEvento(Base):
     )
 
     id_evento: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     id_lancamento: Mapped[int] = mapped_column(BigInteger, nullable=False)
     id_lancamento_revisao: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -358,10 +362,23 @@ class EntregaDiaria(Base):
             "and (quantidade_realizada > 0 or quantidade_nao_realizada > 0)",
             name="ck_op_logistica_entrega_quantidades",
         ),
+        CheckConstraint(
+            "(quantidade_entregas_no_prazo is null and "
+            "quantidade_entregas_completas is null) or "
+            "(quantidade_entregas_no_prazo is not null and "
+            "quantidade_entregas_completas is not null and "
+            "quantidade_entregas_no_prazo >= 0 and "
+            "quantidade_entregas_completas >= 0 and "
+            "quantidade_entregas_no_prazo <= quantidade_realizada and "
+            "quantidade_entregas_completas <= quantidade_realizada)",
+            name="ck_op_logistica_entrega_otif_quantidades",
+        ),
     )
 
     id_entrega_diaria: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     id_lancamento_revisao: Mapped[int] = mapped_column(
         BigInteger,
@@ -383,6 +400,12 @@ class EntregaDiaria(Base):
     )
     quantidade_realizada: Mapped[int] = mapped_column(Integer, nullable=False)
     quantidade_nao_realizada: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantidade_entregas_no_prazo: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
+    quantidade_entregas_completas: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
     criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     atualizado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)

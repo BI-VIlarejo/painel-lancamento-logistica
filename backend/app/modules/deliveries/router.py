@@ -11,19 +11,24 @@ from app.api.v1.dependencies import (
     DatabaseSession,
     require_permission,
 )
+from app.modules.access_control.catalog import PermissionCode
 from app.modules.access_control.service import AuthorizationContext
 from app.modules.deliveries import service
 from app.modules.deliveries.schemas import (
     DeliveryDraftCreateRequest,
     DeliveryDraftUpdateRequest,
+    DeliveryEventResponse,
     DeliveryLaunchDetail,
     DeliveryLaunchPage,
+    DeliveryLifecycleReasonRequest,
 )
 
 router = APIRouter(prefix="/deliveries", tags=["Entregas"])
-_read_access = require_permission("ENTREGAS_DIARIAS:VER")
-_create_access = require_permission("ENTREGAS_DIARIAS:CRIAR")
-_edit_access = require_permission("ENTREGAS_DIARIAS:EDITAR_RASCUNHO")
+_read_access = require_permission(PermissionCode.DELIVERY_VIEW)
+_create_access = require_permission(PermissionCode.DELIVERY_CREATE)
+_edit_access = require_permission(PermissionCode.DELIVERY_EDIT_DRAFT)
+_correct_access = require_permission(PermissionCode.DELIVERY_CORRECT)
+_cancel_access = require_permission(PermissionCode.DELIVERY_CANCEL)
 
 
 def _no_store(response: Response) -> None:
@@ -102,6 +107,24 @@ def get_delivery(
     )
 
 
+@router.get(
+    "/{codigo_lancamento}/events",
+    response_model=list[DeliveryEventResponse],
+)
+def get_delivery_events(
+    codigo_lancamento: UUID,
+    db: DatabaseSession,
+    response: Response,
+    access: AuthorizationContext = Depends(_read_access),
+) -> list[DeliveryEventResponse]:
+    _no_store(response)
+    return service.list_launch_events(
+        db,
+        codigo_lancamento=codigo_lancamento,
+        access=access,
+    )
+
+
 @router.put("/{codigo_lancamento}", response_model=DeliveryLaunchDetail)
 def update_delivery_draft(
     codigo_lancamento: UUID,
@@ -160,3 +183,52 @@ def confirm_delivery_draft(
         idempotency_key=idempotency_key,
         access=access,
     )
+
+
+@router.post(
+    "/{codigo_lancamento}/corrections",
+    response_model=DeliveryLaunchDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+def start_delivery_correction(
+    codigo_lancamento: UUID,
+    payload: DeliveryLifecycleReasonRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    idempotency_key: UUID = Header(alias="Idempotency-Key"),
+    access: AuthorizationContext = Depends(_correct_access),
+) -> DeliveryLaunchDetail:
+    _no_store(response)
+    return service.start_correction_draft(
+        db,
+        codigo_lancamento=codigo_lancamento,
+        justificativa=payload.justificativa,
+        idempotency_key=idempotency_key,
+        access=access,
+    )
+
+
+@router.post(
+    "/{codigo_lancamento}/cancel",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def cancel_delivery(
+    codigo_lancamento: UUID,
+    payload: DeliveryLifecycleReasonRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    idempotency_key: UUID = Header(alias="Idempotency-Key"),
+    access: AuthorizationContext = Depends(_cancel_access),
+) -> Response:
+    _no_store(response)
+    service.cancel_confirmed_launch(
+        db,
+        codigo_lancamento=codigo_lancamento,
+        justificativa=payload.justificativa,
+        idempotency_key=idempotency_key,
+        access=access,
+    )
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response

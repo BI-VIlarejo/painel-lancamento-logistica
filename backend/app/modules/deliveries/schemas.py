@@ -29,6 +29,12 @@ class DeliveryItemInput(BaseModel):
     id_localidade: int = Field(ge=1)
     quantidade_realizada: int = Field(ge=0, le=2_147_483_647)
     quantidade_nao_realizada: int = Field(ge=0, le=2_147_483_647)
+    quantidade_entregas_no_prazo: int | None = Field(
+        default=None, ge=0, le=2_147_483_647
+    )
+    quantidade_entregas_completas: int | None = Field(
+        default=None, ge=0, le=2_147_483_647
+    )
     observacao: str | None = Field(default=None, max_length=5000)
     participantes: list[DeliveryParticipantInput] = Field(min_length=1, max_length=3)
     motivos: list[DeliveryReasonInput] = Field(default_factory=list, max_length=30)
@@ -45,6 +51,19 @@ class DeliveryItemInput(BaseModel):
     def validate_item(self) -> "DeliveryItemInput":
         if self.quantidade_realizada + self.quantidade_nao_realizada == 0:
             raise ValueError("Informe ao menos uma entrega realizada ou não realizada.")
+        if (self.quantidade_entregas_no_prazo is None) != (
+            self.quantidade_entregas_completas is None
+        ):
+            raise ValueError("Informe as duas contagens de OTIF ou deixe ambas vazias.")
+        if self.quantidade_entregas_no_prazo is not None:
+            if self.quantidade_entregas_no_prazo > self.quantidade_realizada:
+                raise ValueError(
+                    "Entregas no prazo não podem superar as entregas realizadas."
+                )
+            if self.quantidade_entregas_completas > self.quantidade_realizada:
+                raise ValueError(
+                    "Entregas completas não podem superar as entregas realizadas."
+                )
 
         drivers = [
             item for item in self.participantes
@@ -86,6 +105,20 @@ class DeliveryDraftUpdateRequest(BaseModel):
     itens: list[DeliveryItemInput] = Field(min_length=1, max_length=100)
 
 
+class DeliveryLifecycleReasonRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    justificativa: str = Field(min_length=5, max_length=1000)
+
+    @field_validator("justificativa")
+    @classmethod
+    def normalize_justification(cls, value: str) -> str:
+        normalized = value.strip()
+        if len(normalized) < 5:
+            raise ValueError("Informe uma justificativa com ao menos 5 caracteres.")
+        return normalized
+
+
 class DeliveryParticipantResponse(BaseModel):
     id_pessoa: int
     codigo_pessoa: UUID
@@ -109,6 +142,8 @@ class DeliveryItemResponse(BaseModel):
     nome_localidade: str
     quantidade_realizada: int
     quantidade_nao_realizada: int
+    quantidade_entregas_no_prazo: int | None
+    quantidade_entregas_completas: int | None
     observacao: str | None
     participantes: list[DeliveryParticipantResponse]
     motivos: list[DeliveryReasonResponse]
@@ -151,6 +186,8 @@ class DeliveryLaunchSummary(BaseModel):
     quantidade_itens: int
     quantidade_realizada: int
     quantidade_nao_realizada: int
+    quantidade_entregas_no_prazo: int | None
+    quantidade_entregas_completas: int | None
     itens: list[DeliveryItemResponse]
 
 
@@ -159,3 +196,15 @@ class DeliveryLaunchPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class DeliveryEventResponse(BaseModel):
+    id_evento: int
+    codigo_revisao: UUID
+    numero_revisao: int
+    tipo_evento: str
+    estado_anterior: str | None
+    estado_novo: str | None
+    ator_usuario_id: int
+    ocorrido_em: datetime
+    comentario: str | None

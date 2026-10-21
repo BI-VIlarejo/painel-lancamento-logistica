@@ -33,11 +33,14 @@ from app.modules.deliveries.models import (
 from app.modules.deliveries.schemas import (
     DeliveryDraftCreateRequest,
     DeliveryDraftUpdateRequest,
+    DeliveryEventResponse,
     DeliveryItemInput,
     DeliveryItemResponse,
     DeliveryLaunchDetail,
     DeliveryLaunchPage,
     DeliveryLaunchSummary,
+    DeliveryParticipantInput,
+    DeliveryReasonInput,
     DeliveryParticipantResponse,
     DeliveryReasonResponse,
 )
@@ -186,6 +189,8 @@ def _build_details(
                 nome_localidade=locality.nome_localidade,
                 quantidade_realizada=delivery.quantidade_realizada,
                 quantidade_nao_realizada=delivery.quantidade_nao_realizada,
+                quantidade_entregas_no_prazo=delivery.quantidade_entregas_no_prazo,
+                quantidade_entregas_completas=delivery.quantidade_entregas_completas,
                 observacao=delivery.observacao,
                 participantes=participants_by_item[delivery.id_entrega_diaria],
                 motivos=reasons_by_item[delivery.id_entrega_diaria],
@@ -210,6 +215,36 @@ def _build_details(
             )
         )
     return details
+
+
+def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
+    return [
+        DeliveryItemInput(
+            codigo_item_lancamento=item.codigo_item_lancamento,
+            data_entrega=item.data_entrega,
+            id_localidade=item.id_localidade,
+            quantidade_realizada=item.quantidade_realizada,
+            quantidade_nao_realizada=item.quantidade_nao_realizada,
+            quantidade_entregas_no_prazo=item.quantidade_entregas_no_prazo,
+            quantidade_entregas_completas=item.quantidade_entregas_completas,
+            observacao=item.observacao,
+            participantes=[
+                DeliveryParticipantInput(
+                    id_pessoa=participant.id_pessoa,
+                    papel_participante=participant.papel_participante,
+                )
+                for participant in item.participantes
+            ],
+            motivos=[
+                DeliveryReasonInput(
+                    id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
+                    quantidade=reason.quantidade,
+                )
+                for reason in item.motivos
+            ],
+        )
+        for item in detail.itens
+    ]
 
 
 def _require_visible_launch(
@@ -250,6 +285,8 @@ def _create_item_rows(
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
             quantidade_nao_realizada=item.quantidade_nao_realizada,
+            quantidade_entregas_no_prazo=item.quantidade_entregas_no_prazo,
+            quantidade_entregas_completas=item.quantidade_entregas_completas,
             observacao=item.observacao,
             criado_em=now,
             atualizado_em=now,
@@ -438,6 +475,22 @@ def list_drafts(
                     quantidade_nao_realizada=sum(
                         item.quantidade_nao_realizada for item in detail.itens
                     ),
+                    quantidade_entregas_no_prazo=(
+                        sum(item.quantidade_entregas_no_prazo for item in detail.itens)
+                        if all(
+                            item.quantidade_entregas_no_prazo is not None
+                            for item in detail.itens
+                        )
+                        else None
+                    ),
+                    quantidade_entregas_completas=(
+                        sum(item.quantidade_entregas_completas for item in detail.itens)
+                        if all(
+                            item.quantidade_entregas_completas is not None
+                            for item in detail.itens
+                        )
+                        else None
+                    ),
                     itens=detail.itens,
                 )
             )
@@ -554,6 +607,200 @@ def update_draft(
         raise _database_unavailable(db, exc) from exc
 
 
+def start_correction_draft(
+    db: Session,
+    *,
+    codigo_lancamento: UUID,
+    justificativa: str,
+    idempotency_key: UUID,
+    access: AuthorizationContext,
+) -> DeliveryLaunchDetail:
+    """Abre uma nova revisão editável sem alterar a revisão confirmada."""
+    now = _utc_now()
+    try:
+        launch, revision, sector = _require_visible_launch(
+            db,
+            codigo_lancamento=codigo_lancamento,
+            access=access,
+            lock=True,
+        )
+        prior_event = repository.get_launch_event_by_idempotency_key(
+            db,
+            idempotency_key=idempotency_key,
+        )
+        if prior_event is not None:
+            if (
+                prior_event.tipo_evento == "CORRECAO_INICIADA"
+                and prior_event.ator_usuario_id == access.id_usuario
+                and prior_event.id_lancamento == launch.id_lancamento
+            ):
+                revision_row = repository.get_revision_for_launch(
+                    db,
+                    id_lancamento=launch.id_lancamento,
+                    id_lancamento_revisao=prior_event.id_lancamento_revisao,
+                )
+                if revision_row is not None:
+                    return _build_details(
+                        db,
+                        launch_rows=[(launch, revision_row[0], revision_row[1])],
+                    )[0]
+            raise ConflictError("A chave de idempotência já foi utilizada.")
+
+        if revision.estado not in {"ENVIADA", "APROVADA"}:
+            raise ConflictError("Só é possível corrigir um lançamento confirmado.")
+        detail = _build_details(db, launch_rows=[(launch, revision, sector)])[0]
+        items = _copy_detail_items(detail)
+        new_revision = LancamentoRevisao(
+            id_lancamento=launch.id_lancamento,
+            codigo_revisao=str(uuid4()),
+            id_formulario_versao=revision.id_formulario_versao,
+            numero_revisao=revision.numero_revisao + 1,
+            chave_idempotencia=str(idempotency_key),
+            estado="RASCUNHO",
+            hash_conteudo=None,
+            criado_por=access.id_usuario,
+            criado_em=now,
+        )
+        db.add(new_revision)
+        db.flush()
+        _create_item_rows(db, revision=new_revision, items=items, now=now)
+        launch.atualizado_em = now
+        db.add(
+            LancamentoEvento(
+                id_lancamento=launch.id_lancamento,
+                id_lancamento_revisao=new_revision.id_lancamento_revisao,
+                chave_idempotencia=str(idempotency_key),
+                tipo_evento="CORRECAO_INICIADA",
+                estado_anterior=revision.estado,
+                estado_novo="RASCUNHO",
+                ator_usuario_id=access.id_usuario,
+                ocorrido_em=now,
+                comentario=justificativa,
+                campos_alterados={"revisao": "nova revisão de correção"},
+            )
+        )
+        db.commit()
+        row = _require_visible_launch(
+            db,
+            codigo_lancamento=codigo_lancamento,
+            access=access,
+        )
+        return _build_details(db, launch_rows=[row])[0]
+    except APIError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError("Já existe uma ação concorrente para este lançamento.") from exc
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def cancel_confirmed_launch(
+    db: Session,
+    *,
+    codigo_lancamento: UUID,
+    justificativa: str,
+    idempotency_key: UUID,
+    access: AuthorizationContext,
+) -> None:
+    """Cancela um lançamento confirmado sem apagar revisões ou eventos anteriores."""
+    now = _utc_now()
+    try:
+        launch, revision, _ = _require_visible_launch(
+            db,
+            codigo_lancamento=codigo_lancamento,
+            access=access,
+            lock=True,
+        )
+        prior_event = repository.get_launch_event_by_idempotency_key(
+            db,
+            idempotency_key=idempotency_key,
+        )
+        if prior_event is not None:
+            if (
+                prior_event.tipo_evento == "LANCAMENTO_CANCELADO"
+                and prior_event.ator_usuario_id == access.id_usuario
+                and prior_event.id_lancamento == launch.id_lancamento
+            ):
+                return
+            raise ConflictError("A chave de idempotência já foi utilizada.")
+
+        if revision.estado not in {"ENVIADA", "APROVADA", "RASCUNHO"}:
+            raise ConflictError("O lançamento não está em um estado que permita cancelamento.")
+        confirmed = repository.get_latest_confirmed_revision(
+            db,
+            id_lancamento=launch.id_lancamento,
+            before_revision=(
+                revision.numero_revisao
+                if revision.estado == "RASCUNHO"
+                else revision.numero_revisao + 1
+            ),
+        )
+        if confirmed is None:
+            raise ConflictError("Somente lançamentos já confirmados podem ser cancelados.")
+
+        prior_state = revision.estado
+        revision.estado = "CANCELADA"
+        launch.atualizado_em = now
+        db.add(
+            LancamentoEvento(
+                id_lancamento=launch.id_lancamento,
+                id_lancamento_revisao=revision.id_lancamento_revisao,
+                chave_idempotencia=str(idempotency_key),
+                tipo_evento="LANCAMENTO_CANCELADO",
+                estado_anterior=prior_state,
+                estado_novo="CANCELADA",
+                ator_usuario_id=access.id_usuario,
+                ocorrido_em=now,
+                comentario=justificativa,
+                campos_alterados={"estado": "CANCELADA"},
+            )
+        )
+        db.commit()
+    except APIError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError("O cancelamento conflita com uma ação já registrada.") from exc
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def list_launch_events(
+    db: Session,
+    *,
+    codigo_lancamento: UUID,
+    access: AuthorizationContext,
+) -> list[DeliveryEventResponse]:
+    try:
+        launch, _, _ = _require_visible_launch(
+            db,
+            codigo_lancamento=codigo_lancamento,
+            access=access,
+        )
+        rows = repository.list_launch_events(db, id_lancamento=launch.id_lancamento)
+        return [
+            DeliveryEventResponse(
+                id_evento=event.id_evento,
+                codigo_revisao=UUID(revision.codigo_revisao),
+                numero_revisao=revision.numero_revisao,
+                tipo_evento=event.tipo_evento,
+                estado_anterior=event.estado_anterior,
+                estado_novo=event.estado_novo,
+                ator_usuario_id=event.ator_usuario_id,
+                ocorrido_em=event.ocorrido_em,
+                comentario=event.comentario,
+            )
+            for event, revision in rows
+        ]
+    except APIError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
 def discard_draft(
     db: Session,
     *,
@@ -645,12 +892,24 @@ def confirm_draft(
 
         if revision.estado != "RASCUNHO":
             raise ConflictError("Somente rascunhos podem ser confirmados como lançamentos.")
-        if launch.criado_por != access.id_usuario:
+        if revision.criado_por != access.id_usuario:
             raise ConflictError(
-                "Somente quem criou o rascunho pode confirmar o lançamento."
+                "Somente quem criou este rascunho pode confirmar o lançamento."
             )
 
         detail = _build_details(db, launch_rows=[(launch, revision, sector)])[0]
+        if any(
+            item.quantidade_entregas_no_prazo is None
+            or item.quantidade_entregas_completas is None
+            for item in detail.itens
+        ):
+            raise APIError(
+                status_code=422,
+                code="validation_error",
+                message=(
+                    "Informe as contagens de entregas no prazo e completas antes de confirmar."
+                ),
+            )
         canonical_content = json.dumps(
             detail.model_dump(mode="json", include={"id_setor", "itens"}),
             sort_keys=True,
