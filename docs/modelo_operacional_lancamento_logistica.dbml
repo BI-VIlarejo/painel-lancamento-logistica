@@ -6,7 +6,7 @@ Project LancamentoLogistica_Operacional {
 // Nomes físicos em snake_case. Todas as datas de auditoria são armazenadas em UTC.
 // Os detalhes são tipados por formulário. Não transformar este modelo em EAV nem guardar linhas em JSON genérico.
 // Rascunhos, nomes de clientes e relatos ficam neste modelo; consumidores de BI não recebem leitura ampla dele.
-// Não apagar registros de negócio/histórico por cascata: desativar cadastros e manter revisões/eventos/publicações.
+// Não apagar registros de negócio/histórico por cascata: desativar cadastros e manter revisões/eventos.
 
 // ==========================================
 // CADASTROS E AUTORIZAÇÃO
@@ -29,7 +29,7 @@ Table op_logistica_localidade {
   ativo boolean [not null]
   sincronizado_em datetime [not null]
 
-  Note: 'Espelho somente leitura do cadastro canônico de localidades, atualizado por sincronização a partir de dim_localidade. Não criar códigos neste portal. codigo_localidade é a chave exata de integração com dim_localidade/mapeamentos analíticos.'
+  Note: 'Catálogo local de localidades usado pelo portal, sem sincronização automática com sistemas externos. codigo_localidade é uma chave interna do catálogo operacional.'
 }
 
 Table op_logistica_perfil {
@@ -178,7 +178,7 @@ Table op_logistica_usuario_escopo {
 
 Table op_logistica_autorizacao_evento {
   id_evento_autorizacao bigint [pk, increment]
-  tipo_evento varchar(40) [not null, note: 'Concessões/revogações: PERFIL_PERMISSAO_CONCEDIDA, PERFIL_PERMISSAO_REVOGADA, USUARIO_ESCOPO_CONCEDIDO, USUARIO_ESCOPO_REVOGADO. Cadastro de autorização: PERFIL/RECURSO/PERMISSAO com eventos de CRIADO, ATUALIZADO, ATIVADO e DESATIVADO. Conta: USUARIO_CRIADO, USUARIO_ATIVADO, USUARIO_DESATIVADO e USUARIO_SENHA_ALTERADA. Catálogos: LOCALIDADES_SINCRONIZADAS_BI, PESSOA_CRIADA/VERSIONADA/DESATIVADA e MOTIVO_CRIADO/VERSIONADO/DESATIVADO.']
+  tipo_evento varchar(40) [not null, note: 'Concessões/revogações: PERFIL_PERMISSAO_CONCEDIDA, PERFIL_PERMISSAO_REVOGADA, USUARIO_ESCOPO_CONCEDIDO, USUARIO_ESCOPO_REVOGADO. Cadastro de autorização: PERFIL/RECURSO/PERMISSAO com eventos de CRIADO, ATUALIZADO, ATIVADO e DESATIVADO. Conta: USUARIO_CRIADO, USUARIO_ATIVADO, USUARIO_DESATIVADO e USUARIO_SENHA_ALTERADA. Catálogos locais: LOCALIDADE_CRIADA/ATIVADA/DESATIVADA, PESSOA_CRIADA/VERSIONADA/DESATIVADA e MOTIVO_CRIADO/VERSIONADO/DESATIVADO.']
   id_usuario_ator bigint [not null]
   id_perfil int [note: 'Preenchido para eventos de alteração do perfil ou de concessão/revogação de suas permissões.']
   id_permissao int [note: 'Preenchido para eventos de alteração da permissão ou de concessão/revogação a perfis.']
@@ -198,8 +198,8 @@ Table op_logistica_autorizacao_evento {
   }
 
   checks {
-    `tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO', 'PERFIL_CRIADO', 'PERFIL_ATUALIZADO', 'PERFIL_ATIVADO', 'PERFIL_DESATIVADO', 'RECURSO_CRIADO', 'RECURSO_ATUALIZADO', 'RECURSO_ATIVADO', 'RECURSO_DESATIVADO', 'PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', 'PERMISSAO_DESATIVADA', 'USUARIO_CRIADO', 'USUARIO_ATIVADO', 'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', 'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', 'LOCALIDADES_SINCRONIZADAS_BI', 'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')` [name: 'ck_op_logistica_autorizacao_evento_tipo']
-    `((tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA') and id_perfil is not null and id_permissao is not null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO') and id_perfil is null and id_permissao is null and id_recurso is null and id_usuario_escopo is not null) or (tipo_evento in ('PERFIL_CRIADO', 'PERFIL_ATUALIZADO', 'PERFIL_ATIVADO', 'PERFIL_DESATIVADO') and id_perfil is not null and id_permissao is null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('RECURSO_CRIADO', 'RECURSO_ATUALIZADO', 'RECURSO_ATIVADO', 'RECURSO_DESATIVADO') and id_perfil is null and id_permissao is null and id_recurso is not null and id_usuario_escopo is null) or (tipo_evento in ('PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', 'PERMISSAO_DESATIVADA') and id_perfil is null and id_permissao is not null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_CRIADO', 'USUARIO_ATIVADO', 'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', 'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', 'LOCALIDADES_SINCRONIZADAS_BI', 'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') and id_perfil is null and id_permissao is null and id_recurso is null and id_usuario_escopo is null))` [name: 'ck_op_logistica_autorizacao_evento_alvo']
+    `tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO', 'PERFIL_CRIADO', 'PERFIL_ATUALIZADO', 'PERFIL_ATIVADO', 'PERFIL_DESATIVADO', 'RECURSO_CRIADO', 'RECURSO_ATUALIZADO', 'RECURSO_ATIVADO', 'RECURSO_DESATIVADO', 'PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', 'PERMISSAO_DESATIVADA', 'USUARIO_CRIADO', 'USUARIO_ATIVADO', 'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', 'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', 'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')` [name: 'ck_op_logistica_autorizacao_evento_tipo']
+    `((tipo_evento in ('PERFIL_PERMISSAO_CONCEDIDA', 'PERFIL_PERMISSAO_REVOGADA') and id_perfil is not null and id_permissao is not null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_ESCOPO_CONCEDIDO', 'USUARIO_ESCOPO_REVOGADO') and id_perfil is null and id_permissao is null and id_recurso is null and id_usuario_escopo is not null) or (tipo_evento in ('PERFIL_CRIADO', 'PERFIL_ATUALIZADO', 'PERFIL_ATIVADO', 'PERFIL_DESATIVADO') and id_perfil is not null and id_permissao is null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('RECURSO_CRIADO', 'RECURSO_ATUALIZADO', 'RECURSO_ATIVADO', 'RECURSO_DESATIVADO') and id_perfil is null and id_permissao is null and id_recurso is not null and id_usuario_escopo is null) or (tipo_evento in ('PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', 'PERMISSAO_DESATIVADA') and id_perfil is null and id_permissao is not null and id_recurso is null and id_usuario_escopo is null) or (tipo_evento in ('USUARIO_CRIADO', 'USUARIO_ATIVADO', 'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', 'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', 'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') and id_perfil is null and id_permissao is null and id_recurso is null and id_usuario_escopo is null))` [name: 'ck_op_logistica_autorizacao_evento_alvo']
     `tipo_evento not in ('PERFIL_PERMISSAO_REVOGADA', 'USUARIO_ESCOPO_REVOGADO') or (motivo is not null and length(trim(motivo)) > 0)` [name: 'ck_op_logistica_autorizacao_evento_motivo_revogacao']
   }
 
@@ -385,13 +385,6 @@ Table op_logistica_motivo_nao_entrega {
   Note: 'codigo_motivo e vigente_desde são definidos pelo servidor. A interface pede apenas a descrição e preserva versões anteriores.'
 }
 
-Table op_logistica_tipo_feedback {
-  id_tipo_feedback int [pk, increment]
-  codigo_tipo varchar(30) [not null, unique]
-  descricao_tipo varchar(100) [not null]
-  ativo boolean [not null]
-}
-
 // ==========================================
 // DADOS TIPADOS DOS FORMULÁRIOS
 // ==========================================
@@ -404,6 +397,8 @@ Table op_logistica_entrega_diaria {
   id_localidade bigint [not null]
   quantidade_realizada int [not null]
   quantidade_nao_realizada int [not null]
+  quantidade_entregas_no_prazo int [note: 'Nulo somente em registros legados sem este dado. Subconjunto das realizadas.']
+  quantidade_entregas_completas int [note: 'Nulo somente em registros legados sem este dado. Subconjunto das realizadas.']
   observacao text
   criado_em datetime [not null]
   atualizado_em datetime [not null]
@@ -417,9 +412,10 @@ Table op_logistica_entrega_diaria {
 
   checks {
     `quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 and (quantidade_realizada > 0 or quantidade_nao_realizada > 0)` [name: 'ck_op_logistica_entrega_quantidades']
+    `((quantidade_entregas_no_prazo is null and quantidade_entregas_completas is null) or (quantidade_entregas_no_prazo is not null and quantidade_entregas_completas is not null and quantidade_entregas_no_prazo >= 0 and quantidade_entregas_completas >= 0 and quantidade_entregas_no_prazo <= quantidade_realizada and quantidade_entregas_completas <= quantidade_realizada))` [name: 'ck_op_logistica_entrega_otif_quantidades']
   }
 
-  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. A soma de realizadas e não realizadas é o total registrado e alimenta a taxa de realização; não é uma previsão independente. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia. Este resumo não permite calcular OTIF: para isso será necessário capturar pedido/parada, prazo prometido, conclusão real e quantidade completa esperada/entregue. Observação fica fora do modelo analítico.'
+  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. A soma de realizadas e não realizadas é o total registrado e alimenta as taxas. As contagens no prazo e completas são subconjuntos de realizadas; o OTIF do produto é o percentual no prazo multiplicado pelo percentual completo, usando o total registrado como denominador de ambas. Registros legados podem ter ambas as contagens nulas até serem corrigidos. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia. Observação fica fora do modelo analítico.'
 }
 
 Table op_logistica_entrega_participante {
@@ -461,98 +457,32 @@ Table op_logistica_entrega_motivo {
 
 Table op_logistica_feedback {
   id_feedback bigint [pk, increment]
+  chave_idempotencia char(36) [not null, unique, note: 'Uma chave por submissão; retries repetem a chave.']
   id_lancamento_revisao bigint [not null]
   codigo_item_lancamento char(36) [not null, note: 'UUID estável preservado entre revisões; identifica este evento lógico.']
-  id_tipo_feedback int [not null]
+  tipo varchar(20) [not null, note: 'Código fixo no contrato: RECLAMACAO ou ELOGIO.']
   data_feedback date [not null]
   id_localidade bigint [not null]
-  id_entrega_diaria bigint
+  id_entrega_diaria bigint [not null]
   identificador_cliente varchar(120)
   nome_cliente varchar(160)
   relato text [not null]
+  criado_por bigint [note: 'Autor do registro; nulo somente para dados legados anteriores à trilha.']
   criado_em datetime [not null]
   atualizado_em datetime [not null]
 
   indexes {
-    (id_lancamento_revisao, codigo_item_lancamento) [unique, name: 'uq_op_logistica_feedback_revisao_item']
-    (id_localidade, data_feedback, id_tipo_feedback) [name: 'ix_op_logistica_feedback_localidade_data_tipo']
+    (id_lancamento_revisao) [name: 'ix_op_logistica_feedback_revisao']
+    (id_localidade, data_feedback, tipo) [name: 'ix_op_logistica_feedback_localidade_data_tipo']
     (id_entrega_diaria, id_lancamento_revisao, id_localidade) [name: 'ix_op_logistica_feedback_entrega_revisao_localidade']
-    (id_tipo_feedback) [name: 'ix_op_logistica_feedback_tipo']
-  }
-
-  Note: 'Armazena dados pessoais e texto livre. Restringir a leitura a perfis autorizados, definir retenção/expurgo e não copiar identificador/nome/relato para fatos ou logs técnicos.'
-}
-
-Table op_logistica_feedback_participante {
-  id_feedback bigint [not null]
-  id_pessoa bigint [not null]
-  papel_participante varchar(20) [not null]
-
-  indexes {
-    (id_feedback, id_pessoa) [pk]
-    (id_feedback, papel_participante) [name: 'ix_op_logistica_feedback_participante_papel']
-    (id_pessoa) [name: 'ix_op_logistica_feedback_participante_pessoa']
+    (tipo) [name: 'ix_op_logistica_feedback_tipo']
   }
 
   checks {
-    `papel_participante in ('MOTORISTA', 'AJUDANTE')` [name: 'ck_op_logistica_feedback_papel']
+    `tipo in ('RECLAMACAO', 'ELOGIO')` [name: 'ck_op_logistica_feedback_tipo']
   }
 
-  Note: 'codigo_participante é estável no registro de feedback; participantes apontam para a versão válida da pessoa.'
-}
-
-// ==========================================
-// PUBLICAÇÃO E LINHAGEM DE DADOS
-// ==========================================
-
-Table op_logistica_publicacao {
-  id_publicacao bigint [pk, increment]
-  codigo_execucao char(36) [not null, unique, note: 'UUID de correlação com etl_logistica_execucao no DBML analítico; sem FK entre catálogos.']
-  chave_idempotencia char(36) [not null, unique]
-  codigo_alvo varchar(80) [not null]
-  status varchar(20) [not null]
-  iniciado_por bigint
-  iniciado_em datetime [not null]
-  concluido_em datetime
-  lancamentos_lidos int [not null]
-  lancamentos_publicados int [not null]
-  lancamentos_rejeitados int [not null]
-  erro_resumido text
-
-  indexes {
-    (status, iniciado_em) [name: 'ix_op_logistica_publicacao_status_inicio']
-    (codigo_alvo, iniciado_em) [name: 'ix_op_logistica_publicacao_alvo_inicio']
-    (iniciado_por, iniciado_em) [name: 'ix_op_logistica_publicacao_iniciador_data']
-  }
-
-  checks {
-    `status in ('INICIADA', 'CONCLUIDA', 'FALHOU', 'CANCELADA')` [name: 'ck_op_logistica_publicacao_status']
-    `lancamentos_lidos >= 0 and lancamentos_publicados >= 0 and lancamentos_rejeitados >= 0` [name: 'ck_op_logistica_publicacao_contagens']
-    `lancamentos_publicados + lancamentos_rejeitados <= lancamentos_lidos` [name: 'ck_op_logistica_publicacao_contagens_soma']
-    `concluido_em is null or concluido_em >= iniciado_em` [name: 'ck_op_logistica_publicacao_periodo']
-    `(status = 'INICIADA' and concluido_em is null) or (status in ('CONCLUIDA', 'FALHOU', 'CANCELADA') and concluido_em is not null)` [name: 'ck_op_logistica_publicacao_conclusao']
-  }
-
-  Note: 'Uma execução técnica de publicação, idempotente e auditável. Erros armazenados aqui devem ser resumidos e sem PII. A tabela não substitui a fato nem deve ser consultada como fonte dos indicadores.'
-}
-
-Table op_logistica_publicacao_lancamento {
-  id_publicacao bigint [not null]
-  id_lancamento_revisao bigint [not null]
-  hash_revisao char(64) [not null, note: 'Snapshot do hash_conteudo da revisão; a aplicação valida que os valores coincidem no momento da publicação.']
-  resultado varchar(20) [not null]
-  processado_em datetime [not null]
-
-  indexes {
-    (id_publicacao, id_lancamento_revisao) [pk]
-    (id_lancamento_revisao, processado_em) [name: 'ix_op_logistica_publicacao_revisao_data']
-  }
-
-  checks {
-    `resultado in ('PUBLICADO', 'IGNORADO', 'REJEITADO', 'SUBSTITUIDO')` [name: 'ck_op_logistica_publicacao_lancamento_resultado']
-  }
-
-  Note: 'Registra exatamente qual revisão foi considerada em cada execução. Uma revisão pode aparecer em novas execuções idempotentes; cada combinação execução/revisão é única.'
+  Note: 'Cada registro aponta obrigatoriamente para uma entrega confirmada; equipe, pessoa e cidade vêm dessa entrega. tipo usa somente RECLAMACAO ou ELOGIO, fixados pelo contrato e CHECK. Armazena dados pessoais e texto livre: restringir leitura, definir retenção/expurgo e não copiar identificador/nome/relato para fatos ou logs técnicos.'
 }
 
 // ==========================================
@@ -604,12 +534,7 @@ Ref: op_logistica_entrega_motivo.id_entrega_diaria > op_logistica_entrega_diaria
 Ref: op_logistica_entrega_motivo.id_motivo_nao_entrega > op_logistica_motivo_nao_entrega.id_motivo_nao_entrega
 
 Ref: op_logistica_feedback.id_lancamento_revisao > op_logistica_lancamento_revisao.id_lancamento_revisao
-Ref: op_logistica_feedback.id_tipo_feedback > op_logistica_tipo_feedback.id_tipo_feedback
 Ref: op_logistica_feedback.id_localidade > op_logistica_localidade.id_localidade
-Ref: op_logistica_feedback.(id_entrega_diaria, id_lancamento_revisao, id_localidade) >? op_logistica_entrega_diaria.(id_entrega_diaria, id_lancamento_revisao, id_localidade)
-Ref: op_logistica_feedback_participante.id_feedback > op_logistica_feedback.id_feedback
-Ref: op_logistica_feedback_participante.id_pessoa > op_logistica_pessoa.id_pessoa
+Ref: op_logistica_feedback.criado_por >? op_logistica_usuario.id_usuario
+Ref: op_logistica_feedback.(id_entrega_diaria, id_lancamento_revisao, id_localidade) > op_logistica_entrega_diaria.(id_entrega_diaria, id_lancamento_revisao, id_localidade)
 
-Ref: op_logistica_publicacao.iniciado_por >? op_logistica_usuario.id_usuario
-Ref: op_logistica_publicacao_lancamento.id_publicacao > op_logistica_publicacao.id_publicacao
-Ref: op_logistica_publicacao_lancamento.id_lancamento_revisao > op_logistica_lancamento_revisao.id_lancamento_revisao

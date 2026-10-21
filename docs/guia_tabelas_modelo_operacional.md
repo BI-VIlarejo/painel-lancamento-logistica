@@ -1,10 +1,10 @@
 # Guia das tabelas do modelo operacional de Logística
 
-**Status:** modelos ORM mapeados no backend do portal; migrations incrementais preparadas no fluxo do VilarejoBI, ainda não aplicadas ao banco.
+**Status:** o modelo ORM revisado tem 21 tabelas. O staging ainda está na `d7c9a4f2b610` e mantém as quatro tabelas que a revisão `f3c8a1d6b907` vai retirar; essa migration está preparada, mas não foi aplicada.
 
-Este guia explica o papel de cada tabela `op_logistica_*` definida no [DBML operacional](./modelo_operacional_lancamento_logistica.dbml). O modelo dá suporte à autenticação e às sessões, aos cadastros, às permissões, ao preenchimento de formulários, ao histórico de versões e à publicação dos lançamentos confirmados.
+Este guia explica o papel de cada tabela `op_logistica_*` definida no [DBML operacional](./modelo_operacional_lancamento_logistica.dbml). O modelo dá suporte à autenticação e às sessões, aos cadastros, às permissões, ao preenchimento de formulários e ao histórico de versões.
 
-As tabelas operacionais guardam o processo e seu histórico. As tabelas `dim_*` e `fato_*` do VilarejoBI são voltadas à análise. O prefixo `op_logistica_` identifica a camada operacional; não significa, por si só, que ela esteja em outro servidor, banco ou catálogo. O DBML mantém clara essa responsabilidade. As migrations para as tabelas-base e para as sessões estão preparadas na cadeia compartilhada de Logística do VilarejoBI, mas ainda dependem da aplicação planejada ao banco.
+As tabelas operacionais guardam o processo e seu histórico. As tabelas `dim_*` e `fato_*` do VilarejoBI são voltadas à análise. O prefixo `op_logistica_` identifica a camada operacional; não significa, por si só, que ela esteja em outro servidor, banco ou catálogo. O DBML mantém clara essa responsabilidade. As migrations-base e de sessão já foram aplicadas em staging; a revisão de simplificação permanece pendente.
 
 ## Visão geral do fluxo
 
@@ -13,7 +13,7 @@ As tabelas operacionais guardam o processo e seu histórico. As tabelas `dim_*` 
 3. O usuário inicia um lançamento usando uma versão publicada do formulário.
 4. O sistema grava uma ou mais revisões e os dados tipados do formulário.
 5. Quem preenche confere e confirma o lançamento. Eventos registram essa confirmação; correções futuras criam uma nova versão e preservam o histórico.
-6. Uma execução de publicação processa lançamentos confirmados, registra o resultado de cada um e envia os dados ao modelo analítico.
+6. O Portal mantém os dados neste catálogo operacional e não os publica no modelo analítico.
 
 ```mermaid
 flowchart LR
@@ -27,17 +27,14 @@ flowchart LR
     E[Pessoas, motivos e localidades] --> D
     B --> F[Eventos de auditoria de lançamentos]
     J --> L[Eventos de autorização]
-    B --> G[Execução de publicação]
-    G --> H[Resultado por revisão]
-    G --> I[Tabelas analíticas do BI]
 ```
 
 ## Setores, localidades e autorização
 
 | Tabela | O que guarda | Por que é importante |
 |---|---|---|
-| `op_logistica_setor` | Os setores ou módulos da operação, como Entregas. | Organiza os lançamentos por área e permite limitar o acesso a cada setor. |
-| `op_logistica_localidade` | Espelho sincronizado das localidades usadas pelo portal, com código, nome e tipo. | Evita variações de texto livre. `codigo_localidade` relaciona a localidade ao BI e precisa vir da dimensão oficial `dim_localidade`; o portal não inventa, edita ou apaga essas chaves. A sincronização atualiza dados e desativa no portal as localidades removidas ou inativas na origem. |
+| `op_logistica_setor` | Os setores ou módulos da operação, como Entregas. | Organiza os lançamentos e os escopos de acesso por área. No lançamento inicial, o provisionamento cria apenas o setor `ENTREGAS`; ele não é uma localidade nem um cadastro de cada loja. |
+| `op_logistica_localidade` | Catálogo local de localidades usadas pelo portal, com código, nome e tipo. | Evita variações de texto livre. O catálogo pertence a este projeto e não sincroniza com o VilarejoBI. |
 | `op_logistica_perfil` | Os papéis do sistema, como operador, gestor ou administrador. | Agrupa as regras de acesso que serão concedidas aos usuários. |
 | `op_logistica_recurso` | Áreas ou páginas funcionais do portal, como Entregas, Frota e Painel Gerencial. | Permite configurar quais perfis podem acessar cada área. Um recurso associado a um setor respeita o escopo daquele setor; páginas transversais continuam sujeitas aos escopos dos dados. |
 | `op_logistica_permissao` | Uma ação dentro de um recurso, como `ENTREGAS_DIARIAS:ACESSAR`, `ENTREGAS_DIARIAS:VER` ou `ENTREGAS_DIARIAS:CRIAR`. | Separa acesso à página das ações feitas nela. A API verifica a ação específica em cada chamada; mostrar/ocultar menu não substitui autorização no servidor. Confirmar um lançamento exige a permissão de criação, não uma permissão de aprovador. |
@@ -76,9 +73,9 @@ As definições e concessões atuais têm papéis distintos do histórico. `op_l
 
 | Tabela | O que guarda | Por que é importante |
 |---|---|---|
-| `op_logistica_formulario_versao` | Versões de cada formulário, vinculadas a um setor, com status, período de vigência, hash do contrato de campos e responsáveis pela publicação. | Permite identificar qual versão e quais validações se aplicavam a um lançamento histórico. A API confere se o setor da versão corresponde ao setor do lançamento. A definição tipada dos campos fica no código validado, não em um JSON genérico. |
+| `op_logistica_formulario_versao` | Versões de cada formulário, vinculadas a um setor, com status, período de vigência, hash do contrato de campos e responsáveis pela publicação. | Permite identificar qual versão e quais validações se aplicavam a um lançamento histórico. A API confere se o setor da versão corresponde ao setor do lançamento. A definição tipada dos campos fica no código validado, não em um JSON genérico. O provisionamento cria uma versão inicial; a tabela só precisa de novas linhas quando o contrato do formulário mudar. |
 | `op_logistica_lancamento` | Cabeçalho estável do processo: setor, criador, UUID público e chave de idempotência. | Agrupa as revisões de um mesmo processo. Não guarda o estado atual; esse estado é derivado da revisão mais recente. |
-| `op_logistica_lancamento_revisao` | Cada versão do conteúdo lançado, com número, estado, formulário usado, hash e responsáveis/datas de criação e confirmação. Campos de aprovação/devolução dão suporte somente a registros legados. | Preserva o que foi confirmado. A versão confirmada é imutável; uma correção futura cria outra revisão. O UUID da revisão ajuda a rastrear a publicação no BI. |
+| `op_logistica_lancamento_revisao` | Cada versão do conteúdo lançado, com número, estado, formulário usado, hash e responsáveis/datas de criação e confirmação. Campos de aprovação/devolução dão suporte somente a registros legados. | Preserva o que foi confirmado. A versão confirmada é imutável; uma correção futura cria outra revisão. O UUID da revisão identifica cada versão dentro do Portal. |
 | `op_logistica_lancamento_evento` | Ações e mudanças de estado, com ator, data, comentário e nomes dos campos alterados. | Mantém a trilha de auditoria. Deve ser append-only: a aplicação não deve alterar nem apagar eventos antigos. `campos_alterados` guarda metadados, não valores sensíveis do formulário. |
 
 Para novos lançamentos, `RASCUNHO` é editável e `ENVIADA` significa confirmado e registrado; não há fila de aprovação. `CANCELADA` pode ser usada conforme a política de cancelamento. `EM_REVISAO`, `DEVOLVIDA` e `APROVADA` permanecem no esquema apenas para leitura de registros legados, sem novas transições para esses estados. A revisão registra o estado e as datas; a tabela de eventos explica as ações que levaram a essas mudanças.
@@ -89,58 +86,50 @@ Para novos lançamentos, `RASCUNHO` é editável e `ENVIADA` significa confirmad
 |---|---|---|
 | `op_logistica_pessoa` | Pessoas que podem participar dos registros, com nome, função e período de vigência. Pode incluir o código correspondente no sistema de origem. | Evita nomes digitados livremente e preserva qual versão de nome/função valia na data do registro. A vigência e os horários de criação/alteração são preenchidos pelo servidor. Contém dados identificáveis; o BI deve receber apenas os dados autorizados e necessários, com pseudonimização quando aplicável. |
 | `op_logistica_motivo_nao_entrega` | Motivos controlados para uma entrega não realizada, com código, descrição e vigência. | Padroniza o preenchimento e preserva o significado histórico dos motivos. O código interno e o início da vigência são definidos pelo servidor. Um motivo usado não deve ser apagado nem reutilizado com outro significado. |
-| `op_logistica_tipo_feedback` | Categorias controladas de feedback, como elogio ou reclamação. | Padroniza a classificação. O tipo deve ser escolhido no cadastro; não deve ser inferido automaticamente do texto livre. |
-
 Pessoas e motivos são versionados por período. Quando uma descrição, função ou nome muda e a mudança precisa ser preservada, cria-se uma nova versão em vez de sobrescrever o registro histórico.
 
 ## Dados preenchidos
 
 | Tabela | O que guarda | Por que é importante |
 |---|---|---|
-| `op_logistica_entrega_diaria` | Resumo de entregas realizadas e não realizadas por data, localidade e equipe, dentro de uma revisão. Pode conter uma observação operacional. | É a linha principal do formulário de Entregas. O grão é por equipe; por isso, podem existir vários registros para a mesma data e localidade. Ambas as quantidades são não negativas e sua soma precisa ser maior que zero. A soma é o total registrado e o denominador da taxa de realização, não uma previsão independente. A observação fica fora do modelo analítico proposto. |
+| `op_logistica_entrega_diaria` | Resumo de entregas realizadas e não realizadas por data, localidade e equipe, dentro de uma revisão. Registra também quantas ficaram no prazo e quantas foram completas. | É a linha principal do formulário de Entregas. O grão é por equipe; por isso, podem existir vários registros para a mesma data e localidade. Ambas as contagens OTIF são subconjuntos das realizadas. A soma de realizadas e não realizadas é o total registrado e o denominador das taxas, não uma previsão independente. Registros legados podem não ter as contagens OTIF; nesse caso, o painel não mostra OTIF para um período que os inclua. A observação fica fora do modelo analítico proposto. |
 | `op_logistica_entrega_participante` | Associação de cada resumo de entrega às pessoas participantes e seus papéis, como motorista ou ajudante. | Permite atribuir a entrega à equipe sem repetir as quantidades para cada pessoa. O serviço deve validar as regras da equipe, incluindo limite de motorista e ajudantes. |
 | `op_logistica_entrega_motivo` | Quantidade de entregas não realizadas para cada motivo associado a uma linha de entrega. | Explica a composição das não realizadas. Na mesma transação, o serviço deve validar que a soma das quantidades por motivo coincide com `quantidade_nao_realizada`. |
-| `op_logistica_feedback` | Feedback com tipo, data, localidade, relato e, quando necessário, nome/identificador do cliente e vínculo com uma entrega. | Registra elogios e reclamações com contexto. Pode conter dados pessoais e texto livre; o acesso deve ser restrito, a retenção definida e o conteúdo não deve ser copiado para fatos ou logs técnicos. |
-| `op_logistica_feedback_participante` | Associação entre um feedback e as pessoas relacionadas a ele, incluindo o papel de cada pessoa. | Permite relacionar o feedback aos participantes sem duplicar o relato. O acesso a essas associações também precisa respeitar as permissões do feedback. |
+| `op_logistica_feedback` | Feedback com tipo, data, nome do cliente, localidade, relato e vínculo a uma entrega confirmada. A equipe e a data da entrega são derivadas do registro relacionado. | Registra elogios e reclamações com cliente e equipe de referência. O tipo usa um dos dois códigos fixos `ELOGIO` ou `RECLAMACAO`, validado no contrato e por `CHECK`; a equipe vem dos participantes da entrega ligada ao feedback, sem gravar a mesma associação outra vez. Nome e texto são dados identificáveis; acesso e exportação exigem permissão e não são copiados para fatos nem logs técnicos. O bootstrap local concede as ações a DEV, GESTOR e DIRETORIA. |
 
-`op_logistica_entrega_participante`, `op_logistica_entrega_motivo` e `op_logistica_feedback_participante` são tabelas de ligação: cada uma representa relações que podem envolver várias pessoas ou motivos sem guardar listas dentro de uma única coluna.
+`op_logistica_entrega_participante` e `op_logistica_entrega_motivo` são tabelas de ligação: cada uma representa relações que podem envolver várias pessoas ou motivos sem guardar listas dentro de uma única coluna.
 
-O resumo agregado por equipe não registra o prazo prometido nem confirma se cada pedido foi entregue
-por completo. Portanto, ele suporta volumes realizados/não realizados e taxa de realização, mas não
-o OTIF oficial. Para calcular OTIF, será necessário um modelo no grão de pedido ou parada que
-registre prazo prometido, horário real de conclusão e quantidade total esperada e entregue (ou uma
-confirmação confiável de entrega integral). Até esses dados existirem, não interpretar a taxa de
-realização como OTIF.
+Uma simplificação futura possível é incorporar a versão/hash do formulário diretamente na revisão e remover `op_logistica_formulario_versao`. Mantive-a porque o backend hoje consulta uma versão publicada antes de aceitar lançamentos e usa essa referência no histórico. Se o produto decidir que o formulário será sempre uma constante do código, sem ciclo próprio de publicação, podemos eliminar essa tabela numa migration separada.
 
-## Publicação e linhagem para o BI
-
-| Tabela | O que guarda | Por que é importante |
-|---|---|---|
-| `op_logistica_publicacao` | Cada execução técnica de publicação: destino, status, horários, usuário iniciador, contagens e erro resumido. | Permite acompanhar e auditar a carga, inclusive tentativas com falha. Não é a fonte dos indicadores; estes vêm das tabelas analíticas. Erros devem ser resumidos e não conter dados pessoais. |
-| `op_logistica_publicacao_lancamento` | As revisões consideradas em cada execução, com hash, horário e resultado: publicado, ignorado, rejeitado ou substituído. | Registra exatamente o que aconteceu com cada revisão em cada execução. Ajuda a explicar reprocessamentos e evita perder a linhagem da carga. |
+O painel calcula o OTIF aprovado para este produto usando as duas contagens do formulário:
+`percentual no prazo = entregas no prazo / total registrado`, `percentual completo = entregas
+completas / total registrado` e `OTIF = percentual no prazo × percentual completo`. As contagens
+precisam estar preenchidas nas linhas confirmadas; registros anteriores à inclusão dos campos
+permanecem com OTIF indisponível até uma correção informar os valores. A taxa de realização continua
+sendo uma medida separada.
 
 ## Relação com o modelo analítico
 
-O DBML operacional não declara FKs diretas para as dimensões e fatos do BI. A localidade é sincronizada por código estável; versões confirmadas são publicadas e transformadas pelo processo de carga. O identificador da execução pode ser correlacionado com `etl_logistica_execucao` no modelo analítico, sem depender de uma FK entre as camadas.
+O DBML operacional não declara FKs diretas para dimensões ou fatos do BI. O Portal mantém seus próprios catálogos operacionais e não envia versões confirmadas ao modelo analítico neste release.
 
-Essa separação mantém rascunhos, histórico de versões e dados pessoais na camada operacional, enquanto o BI recebe os dados necessários às análises, no grão adequado, após a confirmação do autor. As tabelas podem estar no mesmo banco físico sem misturar suas responsabilidades: as consultas analíticas continuam usando as dimensões e fatos; o portal usa as tabelas `op_logistica_*` para login, autorização, formulários e histórico.
+Essa separação mantém rascunhos, histórico de versões e dados pessoais na camada operacional. As tabelas podem estar no mesmo banco físico sem misturar suas responsabilidades: o Portal usa as tabelas `op_logistica_*` para login, autorização, formulários e histórico.
 
 ## Estado das migrations do banco de Logística
 
-**Preparadas, ainda não aplicadas.** Este documento e o DBML descrevem o modelo, mas não significam
-que as tabelas já existam no banco. A cadeia Alembic do VilarejoBI contém a migration
-e2b6d4a1c903 para as tabelas operacionais-base, a92f7c31de04 para `op_logistica_sessao` e
-c41d8e6f2b70 para alinhar eventos de autorização e validar as quantidades das entregas. A última
-depende da migration de sessões, que depende das tabelas-base; estas partem de f4a7c9d2e1b6.
+Conforme o último retorno do responsável, staging está na revisão `d7c9a4f2b610`. A revisão
+`f3c8a1d6b907` remove duas tabelas de publicação adiadas, o catálogo fixo de tipos de feedback e a
+tabela de participantes de feedback duplicada; ainda não foi aplicada. Ela converte o tipo de
+feedback para código fixo e passa a derivar a equipe pela entrega vinculada. A revisão depende da
+cadeia existente e não altera tabelas `dim_*` ou `fato_*` do VilarejoBI.
 
-A aplicação continua adiada. Quando for autorizada e planejada, a execução deverá seguir a cadeia existente, sem criar uma tabela `alembic_version` ou uma cadeia paralela para o Portal:
+A aplicação da nova revisão deve seguir a cadeia existente, sem criar uma tabela `alembic_version` ou uma cadeia paralela para o Portal:
 
 1. Confirmar o banco/alvo, o mecanismo e a versão, o schema/catálogo e a revisão Alembic atual de Logística.
-2. Revisar as migrations contra este DBML e confirmar que as revisões da cadeia estão versionadas e disponíveis no ambiente de execução.
-3. Aplicar primeiro em desenvolvimento/staging e comparar a estrutura criada com o DBML. Preservar as tabelas `dim_*` e `fato_*`; as migrations operacionais só acrescentam `op_logistica_*`.
-4. Antes de produção, validar backup/restauração e planejar a janela de aplicação.
-5. Implementar e validar as regras append-only de concessões/revogações e os escopos no servidor.
+2. Revisar a migration `f3c8a1d6b907` e confirmar que a revisão está versionada e disponível no ambiente de execução.
+3. A migration interrompe antes das alterações se houver publicações, tipos de feedback não previstos, feedback sem entrega ou divergência entre os participantes do feedback e os da entrega.
+4. Aplicar primeiro em staging e comparar a estrutura criada com o DBML. Preservar as tabelas `dim_*` e `fato_*`.
+5. Antes de produção, validar backup/restauração e planejar a janela de aplicação.
 
-As tabelas de autorização e cadastros de referência poderão receber dados iniciais controlados em uma etapa de seed. Não criar usuários reais nem senhas padrão dentro da migration de schema. Contas são criadas por uma pessoa administradora autenticada, com senha temporária e troca obrigatória no primeiro acesso; não existe auto cadastro público. A página registra concessões e revogações com evento de auditoria.
+As tabelas de autorização e cadastros de referência poderão receber dados iniciais controlados em uma etapa de seed. Não criar usuários reais nem senhas padrão dentro da migration de schema. Contas são criadas por uma pessoa administradora autenticada, com senha aleatória numérica de seis dígitos exibida uma vez; não existe auto cadastro público nem troca obrigatória no primeiro acesso. A pessoa pode trocar a senha autenticada ou redefini-la com nome completo e username. A página registra concessões e revogações com evento de auditoria.
 
-**Evolução pendente da migration compartilhada:** incluir os novos tipos de evento de usuário e de catálogos no CHECK de `op_logistica_autorizacao_evento`. A mudança está refletida nos modelos ORM/DBML do Portal; não aplicar no banco até planejar a migration na cadeia `logistica` do VilarejoBI.
+**Migration anterior aplicada em staging:** a revisão `d7c9a4f2b610` adicionou as contagens de OTIF, a autoria/idempotência dos feedbacks e alinhou os CHECKs de auditoria aos eventos de usuário e dos catálogos locais. O downgrade de `f3c8a1d6b907` recria as tabelas removidas e reconstrói os participantes dos feedbacks a partir das equipes das entregas.

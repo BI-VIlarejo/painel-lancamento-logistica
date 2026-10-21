@@ -157,14 +157,3 @@ class MotivoNaoEntrega(Base):
     )
     criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     atualizado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-
-
-class TipoFeedback(Base):
-    __tablename__ = "op_logistica_tipo_feedback"
-
-    id_tipo_feedback: Mapped[int] = mapped_column(
-        Integer, primary_key=True, autoincrement=True
-    )
-    codigo_tipo: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
-    descricao_tipo: Mapped[str] = mapped_column(String(100), nullable=False)
-    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)

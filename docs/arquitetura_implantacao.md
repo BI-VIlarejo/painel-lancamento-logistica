@@ -90,7 +90,6 @@ LancamentoLogistica/
         deliveries/           # Lançamentos diários de Entregas
         workflow/             # Transições legadas; correções e cancelamentos auditáveis
         feedback/             # Reclamações/elogios, após aprovar política de dados
-        publication/          # Publicação analítica, após definir contrato com BI/ETL
         audit/                # Trilha de ações
     migrations/               # Ambiente Alembic e revisões incrementais
   frontend/

@@ -1,25 +1,53 @@
 # Migrations do backend
 
-Os modelos ORM operacionais estão mapeados em app/modules/*/models.py e registrados por app/model_registry.py. A migration física pertence à cadeia logistica do Alembic do VilarejoBI, porque as tabelas operacionais e analíticas compartilham o mesmo catálogo MySQL. Esta pasta não deve iniciar uma segunda cadeia nem criar outra tabela alembic_version para esse catálogo.
+Os modelos ORM operacionais estão em `app/modules/*/models.py` e são registrados por
+`app/model_registry.py`. A migration física pertence à cadeia Alembic `logistica` do repositório
+VilarejoBI, que administra o catálogo MySQL compartilhado. Não crie uma segunda cadeia ou outra
+tabela `alembic_version` para o Portal. Essa responsabilidade pelo schema não conecta as aplicações:
+o Portal não consulta nem publica dados no VilarejoBI neste release.
 
-Antes da primeira migration:
+A cadeia operacional começa em `f4a7c9d2e1b6`; `e2b6d4a1c903` cria as tabelas operacionais,
+`a92f7c31de04` acrescenta sessões, `c41d8e6f2b70` alinha a auditoria e valida as quantidades de
+entrega, e `d7c9a4f2b610` atualiza OTIF, feedback e os tipos de auditoria. As migrations devem ser
+revisadas contra o DBML e os modelos ORM.
 
-1. Aplicar a cadeia `logistica` do VilarejoBI em ordem: `e2b6d4a1c903` cria as tabelas
-   operacionais-base, `a92f7c31de04` cria sessões e `c41d8e6f2b70` alinha a auditoria de
-   autorização e as validações de quantidades. A cadeia começa em `f4a7c9d2e1b6`.
-2. Confirmar que o ambiente é staging e que o MySQL é 8.0.16 ou superior, pois o DBML usa CHECK.
-3. Usar a credencial de migration separada da credencial de runtime. Revisar o estado e aplicar
-   primeiro em staging; não executar migrations automaticamente no startup da API ou no build.
-4. Para evoluções futuras, manter o DBML e os modelos do Portal sincronizados e criar revisões
-   incrementais na mesma cadeia `logistica` do VilarejoBI.
+`d7c9a4f2b610` adiciona `quantidade_entregas_no_prazo` e
+`quantidade_entregas_completas`, ambas nullable para preservar registros legados sem inferir dados.
+O CHECK `ck_op_logistica_entrega_otif_quantidades` exige ambas nulas ou ambas preenchidas entre zero
+e `quantidade_realizada`.
 
-`c41d8e6f2b70` mantém `op_logistica_autorizacao_evento` sincronizada com o ORM: acrescenta
-`id_recurso`, `detalhes`, a FK e o índice do recurso e atualiza os checks de tipo/alvo dos eventos.
-Também impede uma linha de entrega sem contagens. A migration preserva a cadeia existente; não foi
-aplicada ao banco.
+A mesma revisão adiciona `criado_por` nullable e sua FK para usuários, e adiciona
+`chave_idempotencia CHAR(36) NOT NULL` aos feedbacks. Ela preenche chaves UUID para os registros
+existentes, cria `uq_op_logistica_feedback_idempotencia`, mantém o índice de suporte à FK de revisão
+e remove a restrição que impedia vários feedbacks por item. `POST /api/v1/feedbacks` exige
+`Idempotency-Key`: use uma chave UUID nova por manifestação e reutilize-a apenas ao repetir a mesma
+submissão.
 
-A sincronização de localidades registra `LOCALIDADES_SINCRONIZADAS_BI`; antes de habilitá-la em um
-banco já existente, a próxima revisão da cadeia `logistica` do VilarejoBI deve incluir esse tipo nos
-checks de `op_logistica_autorizacao_evento`. Bases locais recém-criadas pelo ORM já incluem o tipo.
+A revisão também alinha os CHECKs de autorização aos eventos de usuário e dos catálogos locais. Não
+inclui evento nem endpoint para sincronização com o VilarejoBI. O downgrade é bloqueado se houver
+feedbacks repetidos, autores, contagens OTIF ou eventos novos que seriam perdidos/rejeitados.
 
-Não executar migrations automaticamente no startup da API ou durante o build Docker.
+A revisão `f3c8a1d6b907` retira duas tabelas de publicação que não têm uso neste release, substitui
+o catálogo de dois tipos fixos de feedback pelo campo `tipo` com CHECK e remove a tabela de
+participantes do feedback, pois a equipe é derivada da entrega vinculada. Antes de qualquer DDL,
+ela verifica se as tabelas de publicação estão vazias, se o catálogo contém apenas `ELOGIO` e
+`RECLAMACAO`, se todo feedback está ligado a uma entrega e se as associações de pessoas coincidem
+com as da entrega. Se alguma validação falhar, a migration para sem apagar essas informações. O
+downgrade recria as tabelas e restaura a associação de participantes a partir da equipe da entrega.
+
+Antes de aplicar, confirme a configuração de ambiente, a conexão de migration e a revisão atual. Use
+MySQL 8.0.16 ou superior para aplicar os CHECKs. Aplique primeiro em staging, com credencial de
+migration separada da credencial de runtime. Não execute Alembic no startup da API ou durante o build
+Docker.
+
+```bash
+cd /home/vilarejo/projetos/ProjetoLogistica/VilarejoBI
+backend/.venv/bin/alembic --name logistica current
+backend/.venv/bin/alembic --name logistica upgrade head
+backend/.venv/bin/alembic --name logistica current
+```
+
+Não execute o `upgrade` até confirmar que `ENVIRONMENT=staging`,
+`LOGISTICA_DATABASE_NAME=vilarejo_bi_logistica_staging` e
+`LOGISTICA_MIGRATION_DATABASE_URL` aponta para esse mesmo catálogo. Se `current` não corresponder
+ao estado esperado, pare e reconcilie o histórico antes de qualquer `stamp` ou `upgrade`.
