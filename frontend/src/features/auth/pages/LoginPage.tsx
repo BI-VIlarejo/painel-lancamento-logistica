@@ -9,10 +9,11 @@ import { BrandMark } from "../../../shared/components/BrandMark";
 
 type LoginPageProps = {
   onLogin: (username: string, password: string) => Promise<void>;
+  onResetPassword?: () => void;
   bootstrapMessage?: string;
 };
 
-export function LoginPage({ onLogin, bootstrapMessage = "" }: LoginPageProps) {
+export function LoginPage({ onLogin, onResetPassword, bootstrapMessage = "" }: LoginPageProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -148,6 +149,7 @@ export function LoginPage({ onLogin, bootstrapMessage = "" }: LoginPageProps) {
                 {busy ? <><span className={cx(styles, commonStyles, "spinner")} /> Entrando...</> : <>Entrar <span aria-hidden="true">→</span></>}
               </button>
               <p className={cx(styles, commonStyles, "login-security")}><span aria-hidden="true">◈</span> Sua sessão é protegida e não fica salva neste navegador.</p>
+              {onResetPassword && <a className={cx(styles, commonStyles, "login-reset-link")} href="/redefinir-senha" onClick={(event) => { event.preventDefault(); onResetPassword(); }}>Esqueci minha senha</a>}
             </form>
           )}
 

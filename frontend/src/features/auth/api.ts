@@ -38,6 +38,14 @@ export const authApi = {
     });
   },
 
+  async resetPassword(name: string, username: string, newPassword: string): Promise<void> {
+    if (isDemoMode) return;
+    await apiRequest<void>("/auth/reset-password", {
+      method: "POST",
+      body: { nome_completo: name, username, nova_senha: newPassword },
+    });
+  },
+
   async logout(): Promise<void> {
     if (isDemoMode) {
       await demoApi.logout();

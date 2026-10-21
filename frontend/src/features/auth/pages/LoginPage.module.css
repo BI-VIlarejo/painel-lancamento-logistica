@@ -34,6 +34,8 @@
 .field-label-row { display: flex; align-items: center; justify-content: space-between; }
 .login-submit { min-height: 48px; margin-top: 4px; }
 .login-security { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 17px 0 0; color: #63748a; font-size: 13px; }
+.login-reset-link { display: block; margin: 14px auto 0; color: var(--brand-navy); font-size: 13px; font-weight: 700; text-align: center; text-decoration: underline; text-underline-offset: 3px; }
+.login-reset-link:hover { color: var(--primary); }
 .login-help { display: flex; align-items: flex-start; gap: 10px; margin-top: 40px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
 .help-mark { display: grid; width: 21px; height: 21px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: var(--primary); background: var(--primary-soft); font-size: 14px; font-weight: 700; }
 .login-help p { margin: 0; color: #63748a; font-size: 14px; line-height: 1.55; }
