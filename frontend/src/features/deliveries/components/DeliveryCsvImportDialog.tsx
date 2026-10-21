@@ -30,6 +30,8 @@ type CsvPreviewRow = {
   driver: string;
   completed: string;
   notCompleted: string;
+  onTime: string;
+  inFull: string;
   errors: string[];
 };
 
@@ -40,7 +42,6 @@ type CsvPreview = {
 };
 
 const templateHeader = [
-  "setor",
   "data_entrega",
   "loja",
   "motorista",
@@ -48,12 +49,57 @@ const templateHeader = [
   "ajudante_2",
   "quantidade_realizada",
   "quantidade_nao_realizada",
+  "quantidade_entregas_no_prazo",
+  "quantidade_entregas_completas",
   "motivos",
   "observacao",
 ];
 
+const headerAliases: Record<string, string> = {
+  data: "data_entrega",
+  data_entrega: "data_entrega",
+  setor: "setor",
+  codigo_setor: "setor",
+  loja: "codigo_localidade",
+  filial: "codigo_localidade",
+  localidade: "codigo_localidade",
+  codigo_localidade: "codigo_localidade",
+  motorista: "motorista",
+  ajudante_1: "ajudante_1",
+  entregador_1: "ajudante_1",
+  entregador1: "ajudante_1",
+  ajudante_2: "ajudante_2",
+  entregador_2: "ajudante_2",
+  entregador2: "ajudante_2",
+  quantidade_realizada: "quantidade_realizada",
+  realizadas: "quantidade_realizada",
+  quantidade_de_realizadas_pelo_motorista: "quantidade_realizada",
+  quantidade_realizadas_pelo_motorista: "quantidade_realizada",
+  quantidade_realizada_pelo_motorista: "quantidade_realizada",
+  quantidade_nao_realizada: "quantidade_nao_realizada",
+  nao_realizadas: "quantidade_nao_realizada",
+  quantidade_de_nao_realizadas_pelo_motorista: "quantidade_nao_realizada",
+  quantidade_de_nao_realizada_pelo_motorista: "quantidade_nao_realizada",
+  quantidade_de_nao_relizada_pelo_motorista: "quantidade_nao_realizada",
+  quantidade_nao_realizadas_pelo_motorista: "quantidade_nao_realizada",
+  quantidade_nao_realizada_pelo_motorista: "quantidade_nao_realizada",
+  quantidade_entregas_no_prazo: "quantidade_entregas_no_prazo",
+  entregas_no_prazo: "quantidade_entregas_no_prazo",
+  quantidade_entregas_completas: "quantidade_entregas_completas",
+  entregas_completas: "quantidade_entregas_completas",
+  motivos: "motivos",
+  motivo: "motivos",
+  observacao: "observacao",
+  observacoes: "observacao",
+};
+
 function normalize(value: string): string {
   return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+}
+
+function normalizeHeader(value: string): string {
+  const key = normalize(value).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return headerAliases[key] ?? key;
 }
 
 function delimiterFor(text: string): ";" | "," {
@@ -119,6 +165,14 @@ function validDate(value: string): boolean {
   return !Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value;
 }
 
+function normalizeDate(value: string): string | undefined {
+  if (validDate(value)) return value;
+  const match = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(value.trim());
+  if (!match) return undefined;
+  const iso = `${match[3]}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`;
+  return validDate(iso) ? iso : undefined;
+}
+
 function quantity(value: string): number | undefined {
   if (!/^\d+$/.test(value)) return undefined;
   const parsed = Number(value);
@@ -145,12 +199,21 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
 
   if (records.length < 2) return { rows: [], errors: ["O arquivo precisa ter o cabeçalho e ao menos uma linha de entrega."] };
 
-  const headers = records[0].map((header) => normalize(header));
+  const headers = records[0].map(normalizeHeader);
   const required = ["data_entrega", "motorista", "quantidade_realizada", "quantidade_nao_realizada"];
-  const allowed = [...required, "setor", "codigo_setor", "loja", "codigo_localidade", "ajudante_1", "ajudante_2", "motivos", "observacao"];
+  const allowed = [
+    ...required,
+    "setor",
+    "codigo_localidade",
+    "ajudante_1",
+    "ajudante_2",
+    "quantidade_entregas_no_prazo",
+    "quantidade_entregas_completas",
+    "motivos",
+    "observacao",
+  ];
   const missing = required.filter((header) => !headers.includes(header));
-  if (!headers.includes("setor") && !headers.includes("codigo_setor")) missing.push("setor");
-  if (!headers.includes("loja") && !headers.includes("codigo_localidade")) missing.push("loja");
+  if (!headers.includes("codigo_localidade")) missing.push("loja");
   const duplicates = headers.filter((header, index) => headers.indexOf(header) !== index);
   const unexpected = headers.filter((header) => !allowed.includes(header));
   if (missing.length || duplicates.length || unexpected.length) {
@@ -164,11 +227,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     };
   }
 
-  const aliases: Record<string, string[]> = {
-    codigo_setor: ["setor", "codigo_setor"],
-    codigo_localidade: ["loja", "codigo_localidade"],
-  };
-  const column = (name: string) => (aliases[name] ?? [name]).map((alias) => headers.indexOf(alias)).find((index) => index >= 0) ?? -1;
+  const column = (name: string) => headers.indexOf(name);
   const rows: CsvPreviewRow[] = [];
   const items: DeliveryItemInput[] = [];
   const sectorIds = new Set<number>();
@@ -177,11 +236,14 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
   records.slice(1).forEach((cells, index) => {
     const line = index + 2;
     const get = (name: string) => (cells[column(name)] ?? "").trim();
-    const date = get("data_entrega");
+    const rawDate = get("data_entrega");
+    const date = normalizeDate(rawDate) ?? rawDate;
     const localityValue = get("codigo_localidade");
     const driverValue = get("motorista");
     const completedValue = get("quantidade_realizada");
     const notCompletedValue = get("quantidade_nao_realizada");
+    const onTimeValue = get("quantidade_entregas_no_prazo");
+    const inFullValue = get("quantidade_entregas_completas");
     const previewRow: CsvPreviewRow = {
       line,
       date,
@@ -189,19 +251,32 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
       driver: driverValue,
       completed: completedValue,
       notCompleted: notCompletedValue,
+      onTime: onTimeValue,
+      inFull: inFullValue,
       errors: [],
     };
     rows.push(previewRow);
 
-    const sectorValue = get("codigo_setor");
-    const sectorMatches = catalogs.sectors.filter((item) =>
-      normalize(item.codigo) === normalize(sectorValue) || normalize(item.nome) === normalize(sectorValue),
-    );
+    const sectorValue = get("setor");
+    const sectorMatches = catalogs.sectors.filter((item) => {
+      const isEntregas = item.codigo === "ENTREGAS" || normalize(item.nome) === "entregas";
+      if (!isEntregas) return false;
+      return !sectorValue || normalize(item.codigo) === normalize(sectorValue) || normalize(item.nome) === normalize(sectorValue);
+    });
     const sector = sectorMatches.length === 1 ? sectorMatches[0] : undefined;
-    if (!sector) previewRow.errors.push(sectorMatches.length > 1 ? `Setor "${sectorValue}" ambíguo.` : `Setor "${sectorValue}" não encontrado.`);
-    else sectorIds.add(sector.id_setor);
+    if (!sector) {
+      previewRow.errors.push(
+        sectorMatches.length > 1
+          ? "O setor Entregas está duplicado no catálogo."
+          : sectorValue
+            ? `O setor "${sectorValue}" não corresponde ao setor Entregas deste Portal.`
+            : "O setor Entregas não está cadastrado ou disponível no seu acesso.",
+      );
+    } else {
+      sectorIds.add(sector.id_setor);
+    }
 
-    if (!validDate(date)) previewRow.errors.push("Data inválida; use AAAA-MM-DD.");
+    if (!validDate(date)) previewRow.errors.push("Data inválida; use AAAA-MM-DD ou DD/MM/AAAA.");
     const localityMatches = catalogs.localities.filter((item) => normalize(item.nome_localidade) === normalize(localityValue) || normalize(item.codigo_localidade) === normalize(localityValue));
     const locality = localityMatches.length === 1 ? localityMatches[0] : undefined;
     if (!locality) previewRow.errors.push(localityMatches.length > 1 ? `Loja "${localityValue}" ambígua; confira o nome no cadastro.` : `Loja "${localityValue}" não encontrada.`);
@@ -221,6 +296,23 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
       previewRow.errors.push("Informe ao menos uma entrega realizada ou não realizada.");
     }
 
+    let onTime: number | null = null;
+    let inFull: number | null = null;
+    if (Boolean(onTimeValue) !== Boolean(inFullValue)) {
+      previewRow.errors.push("Preencha as duas contagens de OTIF ou deixe ambas vazias.");
+    } else if (onTimeValue && inFullValue) {
+      const parsedOnTime = quantity(onTimeValue);
+      const parsedInFull = quantity(inFullValue);
+      if (parsedOnTime === undefined || parsedInFull === undefined) {
+        previewRow.errors.push("As contagens de OTIF devem ser inteiros não negativos.");
+      } else if (completed !== undefined && (parsedOnTime > completed || parsedInFull > completed)) {
+        previewRow.errors.push("As contagens no prazo e completas não podem superar as realizadas.");
+      } else {
+        onTime = parsedOnTime;
+        inFull = parsedInFull;
+      }
+    }
+
     const reasonValue = get("motivos");
     if (get("observacao").length > 5000) previewRow.errors.push("A observação não pode ultrapassar 5.000 caracteres.");
     const reasons: DeliveryItemInput["motivos"] = [];
@@ -232,14 +324,16 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
       const reasonEntries = reasonValue.split("|").map((entry) => entry.trim()).filter(Boolean);
       for (const entry of reasonEntries) {
         const separator = entry.lastIndexOf(":");
-        const reasonLabel = separator >= 0 ? entry.slice(0, separator).trim() : "";
-        const amount = separator >= 0 ? quantity(entry.slice(separator + 1).trim()) : undefined;
-        const reasonMatches = catalogs.reasons.filter((item) => normalize(item.descricao_motivo) === normalize(reasonLabel) || normalize(item.codigo_motivo) === normalize(reasonLabel));
-        if (!reasonLabel || amount === undefined || amount <= 0 || reasonMatches.length !== 1) {
-          previewRow.errors.push(`Motivo "${entry}" inválido ou não encontrado; use descrição:quantidade.`);
+        const explicitAmount = separator >= 0 ? quantity(entry.slice(separator + 1).trim()) : undefined;
+        const useWholeReasonAsLabel = reasonEntries.length === 1 && notCompleted !== undefined && notCompleted > 0 && explicitAmount === undefined;
+        const amount = useWholeReasonAsLabel ? notCompleted : explicitAmount;
+        const resolvedReasonLabel = useWholeReasonAsLabel || separator < 0 ? entry : entry.slice(0, separator).trim();
+        const resolvedMatches = catalogs.reasons.filter((item) => normalize(item.descricao_motivo) === normalize(resolvedReasonLabel) || normalize(item.codigo_motivo) === normalize(resolvedReasonLabel));
+        if (!resolvedReasonLabel || amount === undefined || amount <= 0 || resolvedMatches.length !== 1) {
+          previewRow.errors.push(`Motivo "${entry}" inválido ou não encontrado. Use uma descrição ou descrição:quantidade; em vários motivos, informe a quantidade de cada um.`);
           continue;
         }
-        reasons.push({ id_motivo_nao_entrega: reasonMatches[0].id_motivo_nao_entrega, quantidade: amount });
+        reasons.push({ id_motivo_nao_entrega: resolvedMatches[0].id_motivo_nao_entrega, quantidade: amount });
       }
       if (new Set(reasons.map((reason) => reason.id_motivo_nao_entrega)).size !== reasons.length) {
         previewRow.errors.push("Cada motivo deve aparecer uma vez por linha.");
@@ -267,6 +361,8 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
         id_localidade: locality.id_localidade,
         quantidade_realizada: completed,
         quantidade_nao_realizada: notCompleted,
+        quantidade_entregas_no_prazo: onTime,
+        quantidade_entregas_completas: inFull,
         observacao: get("observacao") || null,
         participantes: participants,
         motivos: reasons,
@@ -361,14 +457,14 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
           <div><p className={cx(styles, commonStyles, "eyebrow")}>HISTÓRICO DE ENTREGAS</p><h2 id="csv-import-title">Importar CSV como rascunho</h2></div>
           <button className={cx(styles, commonStyles, "icon-button dialog-close")} type="button" aria-label="Fechar importação" onClick={onClose}>×</button>
         </div>
-        <p className={cx(styles, commonStyles, "csv-import-description")}>O arquivo inteiro será validado antes de criar um único rascunho. Cada arquivo aceita até 100 linhas de um setor.</p>
+        <p className={cx(styles, commonStyles, "csv-import-description")}>O CSV histórico de Entregas pode ser validado antes de criar um rascunho. Importamos até 100 linhas por vez; nenhuma linha é gravada se houver erro.</p>
 
         <div className={cx(styles, commonStyles, "csv-template-help")}>
-          <div><strong>Prepare o arquivo</strong><span>Use os códigos ativos do sistema. Separe vários motivos com | e informe cada um como CODIGO_MOTIVO:QUANTIDADE.</span></div>
+          <div><strong>Prepare o arquivo</strong><span>O setor é fixo como Entregas. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Um motivo sem quantidade recebe o total não realizado; para vários motivos, informe CODIGO_MOTIVO:QUANTIDADE e separe com |. As duas colunas OTIF são opcionais.</span></div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={downloadTemplate}>Baixar modelo CSV</button>
         </div>
         <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Colunas:</strong> {templateHeader.join(" · ")}</p>
-          <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Motorista, ajudantes e loja:</strong> use os nomes do cadastro. <strong>Motivos:</strong> descrição:quantidade (separe vários com |). Códigos de arquivos antigos continuam aceitos. <strong>Data:</strong> AAAA-MM-DD.</p>
+          <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Motorista, entregadores e loja:</strong> use os nomes do cadastro. Também aceitamos as colunas do histórico (“Data”, “Loja”, “Entregador 1/2” e quantidades pelo motorista). <strong>OTIF:</strong> informe as duas contagens ou deixe ambas vazias.</p>
 
         {catalogError ? <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">Não foi possível carregar os cadastros necessários: {catalogError}</div> : !catalogs ? (
           <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando cadastros para validar o CSV...</div>
@@ -383,8 +479,8 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
             <span>{preview.payload ? "Será criado um rascunho para conferência; depois você confirma o lançamento." : `${preview.rows.length} linhas lidas; corrija os problemas antes de gravar.`}</span>
           </div>
           {preview.errors.map((error) => <p className={cx(styles, commonStyles, "csv-import-error")} key={error}>{error}</p>)}
-          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "csv-preview-scroll")}><table className={cx(styles, commonStyles, "csv-preview-table")}><thead><tr><th>Linha</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Realizadas</th><th>Não realizadas</th><th>Validação</th></tr></thead><tbody>
-            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.completed || "0"}</td><td>{row.notCompleted || "0"}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
+          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "csv-preview-scroll")}><table className={cx(styles, commonStyles, "csv-preview-table")}><thead><tr><th>Linha</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Realizadas</th><th>Não realizadas</th><th>No prazo</th><th>Completas</th><th>Validação</th></tr></thead><tbody>
+            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.completed || "0"}</td><td>{row.notCompleted || "0"}</td><td>{row.onTime || "—"}</td><td>{row.inFull || "—"}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
           </tbody></table>{preview.rows.length > 15 && <small>Exibindo as 15 primeiras de {preview.rows.length} linhas.</small>}</div>}
         </>}
 

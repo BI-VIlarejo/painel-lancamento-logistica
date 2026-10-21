@@ -6,10 +6,11 @@ import { deliveriesApi } from "../api";
 import { catalogsApi } from "../../catalogs/api";
 import { DeliveryCsvImportDialog } from "../components/DeliveryCsvImportDialog";
 import { messageFromApiError } from "../../../shared/api/apiError";
-import type { DeliveryHistoryFilters, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem } from "../types";
+import type { DeliveryEvent, DeliveryHistoryFilters, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem } from "../types";
 
-type DeliveryHistoryPageProps = { onNavigate: (path: string) => void; canCreate: boolean; canEditDraft: boolean; currentUserId: number };
+type DeliveryHistoryPageProps = { onNavigate: (path: string) => void; canCreate: boolean; canEditDraft: boolean; canCorrect: boolean; canCancel: boolean; currentUserId: number };
 const pageSize = 25;
+const percentageFormat = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
 const statusLabels: Record<DeliveryStatus, string> = {
   RASCUNHO: "Rascunho",
@@ -30,6 +31,21 @@ function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+function otifValues(item: DeliveryItemResponse) {
+  const onTime = item.quantidade_entregas_no_prazo;
+  const inFull = item.quantidade_entregas_completas;
+  if (onTime == null || inFull == null) return null;
+  const total = item.quantidade_realizada + item.quantidade_nao_realizada;
+  if (!total) return null;
+  const onTimeRate = (onTime / total) * 100;
+  const inFullRate = (inFull / total) * 100;
+  return { onTimeRate, inFullRate, otif: (onTimeRate * inFullRate) / 100 };
+}
+
+function rateText(value: number): string {
+  return `${percentageFormat.format(value)}%`;
+}
+
 function statusClass(status: DeliveryStatus): string {
   return `status-pill status-${status.toLowerCase()}`;
 }
@@ -46,7 +62,7 @@ function reasonDescription(item: DeliveryItemResponse): string {
     : "Sem ocorrências";
 }
 
-function DetailDialog({ detail, onClose, onEdit }: { detail: DeliveryLaunchDetail; onClose: () => void; onEdit?: () => void }) {
+function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: { detail: DeliveryLaunchDetail; events: DeliveryEvent[]; onClose: () => void; onEdit?: () => void; onCorrect?: () => void; onCancel?: () => void }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     closeButton.current?.focus();
@@ -65,24 +81,33 @@ function DetailDialog({ detail, onClose, onEdit }: { detail: DeliveryLaunchDetai
           <button ref={closeButton} className={cx(styles, commonStyles, "icon-button dialog-close")} type="button" aria-label="Fechar detalhes" onClick={onClose}>×</button>
         </div>
         <div className={cx(styles, commonStyles, "dialog-meta")}><span className={cx(styles, commonStyles, statusClass(detail.estado))}><i />{statusLabels[detail.estado]}</span><span>Criado em {formatDateTime(detail.criado_em)}</span></div>
+        <section className={cx(styles, commonStyles, "detail-audit")} aria-label="Histórico de alterações">
+          <h3>Histórico de alterações</h3>
+          {events.length ? <ol>{events.map((event) => <li key={event.id_evento}>
+            <strong>Versão {event.numero_revisao} · {event.tipo_evento.replaceAll("_", " ").toLocaleLowerCase("pt-BR")}</strong>
+            <time dateTime={event.ocorrido_em}>{formatDateTime(event.ocorrido_em)}</time>
+            {event.comentario && <p>{event.comentario}</p>}
+          </li>)}</ol> : <p>Nenhum evento disponível.</p>}
+        </section>
         <div className={cx(styles, commonStyles, "detail-items")}>
           {detail.itens.map((item, index) => (
             <article className={cx(styles, commonStyles, "detail-item")} key={item.codigo_item_lancamento}>
               <div className={cx(styles, commonStyles, "detail-item-heading")}><span className={cx(styles, commonStyles, "delivery-index")}>{String(index + 1).padStart(2, "0")}</span><div><strong>{item.nome_localidade}</strong><small>{formatDate(item.data_entrega)}</small></div></div>
               <div className={cx(styles, commonStyles, "detail-metrics")}><div><strong>{item.quantidade_realizada}</strong><span>realizadas</span></div><div><strong>{item.quantidade_nao_realizada}</strong><span>não realizadas</span></div></div>
+              {(() => { const otif = otifValues(item); return <div className={cx(styles, commonStyles, "detail-otif")}><strong>OTIF</strong>{otif ? <span>{rateText(otif.otif)} · No prazo {rateText(otif.onTimeRate)} · Completas {rateText(otif.inFullRate)}</span> : <span>Sem contagens para calcular</span>}</div>; })()}
               <div className={cx(styles, commonStyles, "detail-team")}><span>Equipe</span>{item.participantes.map((person) => <span className={cx(styles, commonStyles, "team-chip")} key={`${person.id_pessoa}-${person.papel_participante}`}>{person.nome_exibicao}<small>{person.papel_participante === "MOTORISTA" ? "Motorista" : "Ajudante"}</small></span>)}</div>
               {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivos</span>{item.motivos.map((reason) => <span key={reason.id_motivo_nao_entrega}>{reason.descricao_motivo} <b>{reason.quantidade}</b></span>)}</div>}
               {item.observacao && <p className={cx(styles, commonStyles, "detail-observation")}>{item.observacao}</p>}
             </article>
           ))}
         </div>
-        <div className={cx(styles, commonStyles, "dialog-footer")}><span>{onEdit ? "Este rascunho ainda pode ser editado." : "Este registro está em modo de consulta."}</span><div className={cx(styles, commonStyles, "dialog-actions")}>{onEdit && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={onEdit}>Editar rascunho</button>}<button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={onClose}>Fechar</button></div></div>
+        <div className={cx(styles, commonStyles, "dialog-footer")}><span>{onEdit ? "Este rascunho ainda pode ser editado." : "Este registro está em modo de consulta."}</span><div className={cx(styles, commonStyles, "dialog-actions")}>{onEdit && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={onEdit}>Editar rascunho</button>}{onCorrect && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={onCorrect}>Criar revisão de correção</button>}{onCancel && <button className={cx(styles, commonStyles, "button button-secondary table-action-danger")} type="button" onClick={onCancel}>Cancelar lançamento</button>}<button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={onClose}>Fechar</button></div></div>
       </section>
     </div>
   );
 }
 
-export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, currentUserId }: DeliveryHistoryPageProps) {
+export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCorrect, canCancel, currentUserId }: DeliveryHistoryPageProps) {
   const [items, setItems] = useState<DeliveryLaunchSummary[]>([]);
   const [localities, setLocalities] = useState<LocalityCatalogItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -96,6 +121,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, curre
   const [reloadVersion, setReloadVersion] = useState(0);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<DeliveryLaunchDetail | null>(null);
+  const [selectedEvents, setSelectedEvents] = useState<DeliveryEvent[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [discardingId, setDiscardingId] = useState<string | null>(null);
   const [failedDetail, setFailedDetail] = useState<DeliveryLaunchSummary | null>(null);
@@ -150,15 +176,57 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, curre
   async function openDetail(item: DeliveryLaunchSummary) {
     setDetailLoading(true);
     setSelected(null);
+    setSelectedEvents([]);
     setFailedDetail(item);
     setError("");
     try {
-      setSelected(await deliveriesApi.get(item.codigo_lancamento));
+      const [detail, events] = await Promise.all([
+        deliveriesApi.get(item.codigo_lancamento),
+        deliveriesApi.events(item.codigo_lancamento),
+      ]);
+      setSelected(detail);
+      setSelectedEvents(events);
       setFailedDetail(null);
     } catch (detailError) {
       setError(messageFromApiError(detailError));
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function startCorrection(item: DeliveryLaunchSummary | DeliveryLaunchDetail) {
+    const justification = window.prompt("Informe por que este lançamento precisa ser corrigido:");
+    if (justification === null || justification.trim().length < 5) return;
+    setDiscardingId(item.codigo_lancamento);
+    setError("");
+    try {
+      await deliveriesApi.startCorrection(item.codigo_lancamento, justification.trim(), crypto.randomUUID());
+      setNotice("Nova revisão criada como rascunho. Confira os dados antes de confirmar.");
+      onNavigate(`/entregas/${item.codigo_lancamento}`);
+    } catch (correctionError) {
+      setError(messageFromApiError(correctionError));
+      setReloadVersion((value) => value + 1);
+    } finally {
+      setDiscardingId(null);
+    }
+  }
+
+  async function cancelConfirmed(item: DeliveryLaunchSummary | DeliveryLaunchDetail) {
+    const justification = window.prompt("Informe a justificativa obrigatória para cancelar este lançamento:");
+    if (justification === null || justification.trim().length < 5) return;
+    if (!window.confirm("Cancelar este lançamento? Ele deixará de compor os indicadores e permanecerá no histórico de auditoria.")) return;
+    setDiscardingId(item.codigo_lancamento);
+    setError("");
+    try {
+      await deliveriesApi.cancel(item.codigo_lancamento, justification.trim(), crypto.randomUUID());
+      setSelected(null);
+      setNotice("Lançamento cancelado e preservado no histórico.");
+      setReloadVersion((value) => value + 1);
+    } catch (cancelError) {
+      setError(messageFromApiError(cancelError));
+      setReloadVersion((value) => value + 1);
+    } finally {
+      setDiscardingId(null);
     }
   }
 
@@ -211,7 +279,11 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, curre
         ["equipe", (row) => teamDescription(row.delivery)],
         ["realizadas", (row) => row.delivery.quantidade_realizada],
         ["nao_realizadas", (row) => row.delivery.quantidade_nao_realizada],
-        ["otif", () => "Não calculável com os dados atuais"],
+        ["quantidade_entregas_no_prazo", (row) => row.delivery.quantidade_entregas_no_prazo ?? ""],
+        ["quantidade_entregas_completas", (row) => row.delivery.quantidade_entregas_completas ?? ""],
+        ["percentual_entregas_no_prazo", (row) => { const values = otifValues(row.delivery); return values ? rateText(values.onTimeRate) : ""; }],
+        ["percentual_entregas_completas", (row) => { const values = otifValues(row.delivery); return values ? rateText(values.inFullRate) : ""; }],
+        ["otif_percentual", (row) => { const values = otifValues(row.delivery); return values ? rateText(values.otif) : ""; }],
         ["lancamento", (row) => row.launch.codigo_lancamento],
         ["status", (row) => statusLabels[row.launch.estado]],
         ["motivos_das_ocorrencias", (row) => reasonDescription(row.delivery)],
@@ -272,16 +344,16 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, curre
           {activeFilterCount > 0 && <button className={cx(styles, commonStyles, "text-button clear-filters")} type="button" onClick={() => { setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button>}
         </div>}
 
-        <div className={cx(styles, commonStyles, "notice notice-warning history-otif-note")} role="note">
+        <div className={cx(styles, commonStyles, "notice notice-info history-otif-note")} role="note">
           <span className={cx(styles, commonStyles, "otif-note-icon")} aria-hidden="true">i</span>
-          <div><strong>OTIF oficial ainda não calculável.</strong> O lançamento atual registra quantidades realizadas e não realizadas, mas não informa prazo prometido nem se cada pedido foi entregue por completo.</div>
+          <div><strong>Registros antigos podem não ter dados de OTIF.</strong> Nos novos lançamentos, informe as quantidades que chegaram no prazo e as que foram entregues completas; ambas são opcionais quando a informação não estiver disponível.</div>
         </div>
 
         {error && <div className={cx(styles, commonStyles, "notice notice-error history-error")} role="alert">{error}<button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => failedDetail ? void openDetail(failedDetail) : setReloadVersion((value) => value + 1)}>Tentar novamente</button></div>}
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lançamentos...</div> : items.length === 0 ? (
           <div className={cx(styles, commonStyles, "history-empty")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌕</div><h3>Nenhum lançamento encontrado</h3><p>{canCreate ? "Ajuste os filtros ou crie um novo lançamento de Entregas." : "Ajuste os filtros para localizar outros lançamentos."}</p><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button></div>
         ) : (
-          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Loja</th><th>Equipe</th><th>Realizadas</th><th>Não realizadas</th><th><span title="Não calculável com os dados atualmente coletados">OTIF</span></th><th>Lançamento</th><th>Motivos das ocorrências</th><th>Observações</th><th>Ações</th></tr></thead><tbody>
+          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Loja</th><th>Equipe</th><th>Realizadas</th><th>Não realizadas</th><th><span title="Contagens de entregas que chegaram no prazo e foram completas">Dados OTIF</span></th><th>Lançamento</th><th>Motivos das ocorrências</th><th>Observações</th><th>Ações</th></tr></thead><tbody>
           {items.flatMap((launch) => launch.itens.map((delivery) => {
               const driver = delivery.participantes.find((person) => person.papel_participante === "MOTORISTA");
               const helpers = delivery.participantes.filter((person) => person.papel_participante === "AJUDANTE");
@@ -295,7 +367,9 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, curre
                 </div></td>
                 <td><span className={cx(styles, commonStyles, "table-count count-positive")}>{delivery.quantidade_realizada}</span></td>
                 <td><span className={cx(styles, commonStyles, `table-count${delivery.quantidade_nao_realizada > 0 ? " count-muted" : ""}`)}>{delivery.quantidade_nao_realizada}</span></td>
-                <td><span className={cx(styles, commonStyles, "history-otif-unavailable")} title="Faltam prazo prometido e confirmação de entrega integral" aria-label="OTIF não calculável">N/D</span></td>
+                <td>{(() => { const otif = otifValues(delivery); return !otif
+                  ? <span className={cx(styles, commonStyles, "history-otif-unavailable")} aria-label="Contagens de OTIF não informadas">Sem dados</span>
+                  : <span className={cx(styles, commonStyles, "history-otif-values")}>OTIF: {rateText(otif.otif)}<br />No prazo: {rateText(otif.onTimeRate)} ({delivery.quantidade_entregas_no_prazo?.toLocaleString("pt-BR")})<br />Completas: {rateText(otif.inFullRate)} ({delivery.quantidade_entregas_completas?.toLocaleString("pt-BR")})</span>; })()}</td>
                 <td><div className={cx(styles, commonStyles, "history-launch-cell")}><strong title={launch.codigo_lancamento}>{launch.codigo_lancamento.slice(0, 8).toUpperCase()}</strong><span className={cx(styles, commonStyles, statusClass(launch.estado))}><i />{statusLabels[launch.estado]}</span><small>Versão {launch.numero_revisao}</small></div></td>
                 <td>{delivery.motivos.length ? <ul className={cx(styles, commonStyles, "history-reasons")}>{delivery.motivos.map((reason) => <li key={reason.id_motivo_nao_entrega}>{reason.descricao_motivo} <b>({reason.quantidade})</b></li>)}</ul> : <span className={cx(styles, commonStyles, "history-muted-cell")}>Sem ocorrências</span>}</td>
                 <td><span className={cx(styles, commonStyles, "history-observation")}>{delivery.observacao || "Sem observações"}</span></td>
@@ -303,6 +377,8 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, curre
                   <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => void openDetail(launch)} disabled={detailLoading || discardingId === launch.codigo_lancamento}>{detailLoading ? "Abrindo..." : "Detalhes"}</button>
                   {canEdit && <button className={cx(styles, commonStyles, "table-action")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => onNavigate(`/entregas/${launch.codigo_lancamento}`)}>Editar rascunho</button>}
                   {canEdit && <button className={cx(styles, commonStyles, "table-action table-action-danger")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void discardDraft(launch)}>{discardingId === launch.codigo_lancamento ? "Excluindo..." : "Excluir rascunho"}</button>}
+                  {canCorrect && (launch.estado === "ENVIADA" || launch.estado === "APROVADA") && <button className={cx(styles, commonStyles, "table-action")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void startCorrection(launch)}>Corrigir</button>}
+                  {canCancel && ((launch.estado === "ENVIADA" || launch.estado === "APROVADA") || (launch.estado === "RASCUNHO" && launch.numero_revisao > 1)) && <button className={cx(styles, commonStyles, "table-action table-action-danger")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void cancelConfirmed(launch)}>Cancelar lançamento</button>}
                 </div></td>
               </tr>;
             }))}
@@ -310,7 +386,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, curre
         )}
         <div className={cx(styles, commonStyles, "table-footer")}><span>{pageDeliveryCount} entregas em {items.length} lançamentos nesta página · {total} lançamentos no histórico</span><div className={cx(styles, commonStyles, "pagination-controls")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Anterior</button><span>Página {currentPage} de {pageCount}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset + items.length >= total} onClick={() => setOffset((value) => value + pageSize)}>Próxima</button></div><span className={cx(styles, commonStyles, "table-footer-note")}>A lista respeita seu escopo de acesso.</span></div>
       </section>
-      {selected && <DetailDialog detail={selected} onClose={() => setSelected(null)} onEdit={canEditDraft && selected.estado === "RASCUNHO" ? () => onNavigate(`/entregas/${selected.codigo_lancamento}`) : undefined} />}
+      {selected && <DetailDialog detail={selected} events={selectedEvents} onClose={() => setSelected(null)} onEdit={canEditDraft && selected.estado === "RASCUNHO" ? () => onNavigate(`/entregas/${selected.codigo_lancamento}`) : undefined} onCorrect={canCorrect && (selected.estado === "ENVIADA" || selected.estado === "APROVADA") ? () => void startCorrection(selected) : undefined} onCancel={canCancel && ((selected.estado === "ENVIADA" || selected.estado === "APROVADA") || (selected.estado === "RASCUNHO" && selected.numero_revisao > 1)) ? () => void cancelConfirmed(selected) : undefined} />}
       {importOpen && <DeliveryCsvImportDialog onClose={() => setImportOpen(false)} onImported={() => { setImportOpen(false); setNotice("CSV importado como rascunho. O registro já aparece no histórico."); setOffset(0); setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setReloadVersion((value) => value + 1); }} />}
     </div>
   );

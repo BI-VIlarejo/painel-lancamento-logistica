@@ -3,6 +3,7 @@ import { demoApi } from "./demoApi";
 import type {
   DeliveryDraftRequest,
   DeliveryDraftUpdateRequest,
+  DeliveryEvent,
   DeliveryHistoryFilters,
   DeliveryLaunchDetail,
   DeliveryLaunchPage,
@@ -34,6 +35,10 @@ export const deliveriesApi = {
     }
     return apiRequest<DeliveryLaunchDetail>(`/deliveries/${encodeURIComponent(id)}`);
   },
+  events(id: string): Promise<DeliveryEvent[]> {
+    if (isDemoMode) return demoApi.listDeliveryEvents(id);
+    return apiRequest<DeliveryEvent[]>(`/deliveries/${encodeURIComponent(id)}/events`);
+  },
   createDraft(payload: DeliveryDraftRequest, idempotencyKey: string): Promise<DeliveryLaunchDetail> {
     if (isDemoMode) return demoApi.createDraft(payload);
     return apiRequest<DeliveryLaunchDetail>("/deliveries", {
@@ -61,6 +66,22 @@ export const deliveriesApi = {
     if (isDemoMode) return demoApi.confirmDraft(id);
     return apiRequest<DeliveryLaunchDetail>(`/deliveries/${encodeURIComponent(id)}/confirm`, {
       method: "POST",
+      idempotencyKey,
+    });
+  },
+  startCorrection(id: string, justificativa: string, idempotencyKey: string): Promise<DeliveryLaunchDetail> {
+    if (isDemoMode) return demoApi.startCorrection(id, justificativa);
+    return apiRequest<DeliveryLaunchDetail>(`/deliveries/${encodeURIComponent(id)}/corrections`, {
+      method: "POST",
+      body: { justificativa },
+      idempotencyKey,
+    });
+  },
+  cancel(id: string, justificativa: string, idempotencyKey: string): Promise<void> {
+    if (isDemoMode) return demoApi.cancelDelivery(id, justificativa);
+    return apiRequest<void>(`/deliveries/${encodeURIComponent(id)}/cancel`, {
+      method: "POST",
+      body: { justificativa },
       idempotencyKey,
     });
   },

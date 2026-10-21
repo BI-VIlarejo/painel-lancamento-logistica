@@ -39,6 +39,9 @@
 .history-launch-cell .status-pill { align-self: flex-start; }
 .history-launch-cell small { margin-top: -4px !important; }
 .history-otif-unavailable { display: inline-flex; align-items: center; padding: 4px 7px; border: 1px solid #e6e9e6; border-radius: 5px; color: #78827b; background: #f7f8f7; font-size: 11px; font-weight: 700; }
+.history-otif-values { display: inline-block; color: var(--brand-navy); font-size: 12px; line-height: 1.5; white-space: nowrap; }
+.detail-otif { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid #dce8e4; border-radius: 7px; color: #536b65; background: #f7faf8; font-size: 12px; }
+.detail-otif strong { color: #344b66; }
 .history-reasons { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .history-reasons li { overflow-wrap: anywhere; color: #735d37; }
 .history-reasons b { color: #604a26; white-space: nowrap; }
@@ -68,6 +71,14 @@
 .table-action:hover { color: var(--primary-hover); }
 .table-action-danger { color: #a44b45; }
 .table-action-danger:hover { color: #81332f; }
+.detail-audit { max-height: 180px; overflow: auto; padding: 12px 22px; border-bottom: 1px solid #eef1ee; background: #fbfcfb; }
+.detail-audit h3 { margin: 0 0 9px; color: #344b66; font-size: 13px; }
+.detail-audit ol { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.detail-audit li { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; padding-left: 10px; border-left: 2px solid #d8e2d8; color: #63748a; font-size: 11px; }
+.detail-audit li strong { color: #43564a; font-size: 11px; text-transform: capitalize; }
+.detail-audit li time { white-space: nowrap; }
+.detail-audit li p { grid-column: 1 / -1; margin: 0; overflow-wrap: anywhere; }
+.detail-audit > p { margin: 0; color: #87948b; font-size: 11px; }
 .table-action:disabled { cursor: wait; opacity: .55; }
 .table-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 19px; border-top: 1px solid var(--line); color: #63748a; font-size: 12px; }
 .pagination-controls { display: flex; align-items: center; gap: 8px; }
@@ -116,5 +127,6 @@
 .table-footer { gap: 6px; flex-direction: column; padding: 11px 13px; }
 .pagination-controls { width: 100%; justify-content: space-between; }
 .detail-items { padding-right: 13px; padding-left: 13px; }
+.detail-audit { padding-right: 13px; padding-left: 13px; }
 .dialog-meta { padding-right: 13px; padding-left: 13px; }
 }

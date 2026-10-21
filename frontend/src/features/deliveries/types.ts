@@ -45,6 +45,8 @@ export type DeliveryItemInput = {
   id_localidade: number;
   quantidade_realizada: number;
   quantidade_nao_realizada: number;
+  quantidade_entregas_no_prazo?: number | null;
+  quantidade_entregas_completas?: number | null;
   observacao?: string | null;
   participantes: DeliveryParticipantInput[];
   motivos: DeliveryReasonInput[];
@@ -104,6 +106,18 @@ export type DeliveryLaunchPage = {
   total: number;
   limit: number;
   offset: number;
+};
+
+export type DeliveryEvent = {
+  id_evento: number;
+  codigo_revisao: string;
+  numero_revisao: number;
+  tipo_evento: string;
+  estado_anterior: DeliveryStatus | null;
+  estado_novo: DeliveryStatus | null;
+  ator_usuario_id: number;
+  ocorrido_em: string;
+  comentario: string | null;
 };
 
 export type DeliveryHistoryFilters = {

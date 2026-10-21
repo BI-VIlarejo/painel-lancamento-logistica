@@ -3,6 +3,7 @@ import type {
   CatalogPage,
   DeliveryDraftRequest,
   DeliveryDraftUpdateRequest,
+  DeliveryEvent,
   DeliveryHistoryFilters,
   DeliveryItemResponse,
   DeliveryLaunchDetail,
@@ -17,6 +18,7 @@ import type {
 
 const DEMO_SESSION_KEY = "lancamento-logistica:demo-session";
 const DEMO_HISTORY_KEY = "lancamento-logistica:demo-history";
+const DEMO_EVENTS_KEY = "lancamento-logistica:demo-events";
 
 export const demoUser: AuthenticatedUser = {
   id_usuario: 7,
@@ -140,6 +142,38 @@ function saveHistory(history: DeliveryLaunchDetail[]): void {
   window.localStorage.setItem(DEMO_HISTORY_KEY, JSON.stringify(history));
 }
 
+function getEvents(): Record<string, DeliveryEvent[]> {
+  try {
+    return JSON.parse(window.localStorage.getItem(DEMO_EVENTS_KEY) ?? "{}") as Record<string, DeliveryEvent[]>;
+  } catch {
+    return {};
+  }
+}
+
+function addEvent(
+  launch: DeliveryLaunchDetail,
+  type: string,
+  previous: DeliveryEvent["estado_anterior"],
+  next: DeliveryEvent["estado_novo"],
+  comment: string | null = null,
+): void {
+  const all = getEvents();
+  const items = all[launch.codigo_lancamento] ?? [];
+  items.push({
+    id_evento: Date.now(),
+    codigo_revisao: launch.codigo_revisao,
+    numero_revisao: launch.numero_revisao,
+    tipo_evento: type,
+    estado_anterior: previous,
+    estado_novo: next,
+    ator_usuario_id: demoUser.id_usuario,
+    ocorrido_em: new Date().toISOString(),
+    comentario: comment,
+  });
+  all[launch.codigo_lancamento] = items;
+  window.localStorage.setItem(DEMO_EVENTS_KEY, JSON.stringify(all));
+}
+
 function summarize(launch: DeliveryLaunchDetail): DeliveryLaunchSummary {
   const dates = launch.itens.map((item) => item.data_entrega).sort();
   return {
@@ -189,7 +223,7 @@ export const demoApi = {
   async identity(): Promise<MeResponse> {
     return {
       user: demoUser,
-      permissions: ["ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "CADASTROS:ADMINISTRAR", "CONTROLE_ACESSO:ADMINISTRAR"],
+      permissions: ["ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "ENTREGAS_DIARIAS:CORRIGIR", "ENTREGAS_DIARIAS:CANCELAR", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "PAINEL_GERENCIAL:ACESSAR", "AUDITORIA:VER", "CADASTROS:ADMINISTRAR", "CONTROLE_ACESSO:ADMINISTRAR"],
       scopes: [],
     };
   },
@@ -235,6 +269,10 @@ export const demoApi = {
     await pause();
     return getHistory().find((item) => item.codigo_lancamento === id) ?? null;
   },
+  async listDeliveryEvents(id: string): Promise<DeliveryEvent[]> {
+    await pause();
+    return getEvents()[id] ?? [];
+  },
   async createDraft(payload: DeliveryDraftRequest): Promise<DeliveryLaunchDetail> {
     await pause();
     const now = new Date().toISOString();
@@ -252,6 +290,7 @@ export const demoApi = {
       itens: payload.itens.map(toResponseItem),
     };
     saveHistory([launch, ...getHistory()]);
+    addEvent(launch, "RASCUNHO_CRIADO", null, "RASCUNHO");
     return launch;
   },
   async updateDraft(id: string, payload: DeliveryDraftUpdateRequest): Promise<DeliveryLaunchDetail> {
@@ -264,6 +303,7 @@ export const demoApi = {
     const updated = { ...current, atualizado_em: new Date().toISOString(), itens: payload.itens.map(toResponseItem) };
     history[index] = updated;
     saveHistory(history);
+    addEvent(updated, "RASCUNHO_ATUALIZADO", "RASCUNHO", "RASCUNHO");
     return updated;
   },
   async discardDraft(id: string): Promise<void> {
@@ -273,8 +313,10 @@ export const demoApi = {
     if (index < 0) throw new Error("Rascunho não encontrado.");
     const current = history[index];
     if (current.estado !== "RASCUNHO") throw new Error("Somente rascunhos podem ser descartados.");
-    history[index] = { ...current, estado: "CANCELADA", atualizado_em: new Date().toISOString() };
+    const discarded = { ...current, estado: "CANCELADA" as const, atualizado_em: new Date().toISOString() };
+    history[index] = discarded;
     saveHistory(history);
+    addEvent(discarded, "RASCUNHO_DESCARTADO", "RASCUNHO", "CANCELADA");
   },
   async confirmDraft(id: string): Promise<DeliveryLaunchDetail> {
     await pause();
@@ -287,6 +329,45 @@ export const demoApi = {
     const confirmed = { ...current, estado: "ENVIADA" as const, atualizado_em: new Date().toISOString() };
     history[index] = confirmed;
     saveHistory(history);
+    addEvent(confirmed, "RASCUNHO_CONFIRMADO", "RASCUNHO", "ENVIADA");
     return confirmed;
+  },
+  async startCorrection(id: string, justification: string): Promise<DeliveryLaunchDetail> {
+    await pause();
+    const history = getHistory();
+    const index = history.findIndex((item) => item.codigo_lancamento === id);
+    if (index < 0) throw new Error("Lançamento não encontrado.");
+    const current = history[index];
+    if (current.estado !== "ENVIADA" && current.estado !== "APROVADA") {
+      throw new Error("Só é possível corrigir um lançamento confirmado.");
+    }
+    const draft = {
+      ...current,
+      codigo_revisao: uuid(),
+      numero_revisao: current.numero_revisao + 1,
+      estado: "RASCUNHO" as const,
+      atualizado_em: new Date().toISOString(),
+      itens: current.itens.map((item) => ({ ...item, participantes: [...item.participantes], motivos: [...item.motivos] })),
+    };
+    history[index] = draft;
+    saveHistory(history);
+    addEvent(draft, "CORRECAO_INICIADA", current.estado, "RASCUNHO", justification);
+    return draft;
+  },
+  async cancelDelivery(id: string, justification: string): Promise<void> {
+    await pause();
+    const history = getHistory();
+    const index = history.findIndex((item) => item.codigo_lancamento === id);
+    if (index < 0) throw new Error("Lançamento não encontrado.");
+    const current = history[index];
+    const hadConfirmation = current.estado === "ENVIADA" || current.estado === "APROVADA";
+    const hasCorrection = (getEvents()[id] ?? []).some((event) => event.tipo_evento === "CORRECAO_INICIADA");
+    if (!hadConfirmation && !(current.estado === "RASCUNHO" && hasCorrection)) {
+      throw new Error("Somente lançamentos já confirmados podem ser cancelados.");
+    }
+    const canceled = { ...current, estado: "CANCELADA" as const, atualizado_em: new Date().toISOString() };
+    history[index] = canceled;
+    saveHistory(history);
+    addEvent(canceled, "LANCAMENTO_CANCELADO", current.estado, "CANCELADA", justification);
   },
 };
