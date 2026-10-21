@@ -11,6 +11,7 @@ type AuthContextValue = {
   bootstrapMessage: string;
   login: (username: string, password: string) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  resetPassword: (name: string, username: string, newPassword: string) => Promise<void>;
   refreshIdentity: () => Promise<void>;
   logout: () => Promise<void>;
 };
@@ -79,9 +80,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await refreshIdentity();
   }, [refreshIdentity]);
 
+  const resetPassword = useCallback(async (name: string, username: string, newPassword: string) => {
+    await authApi.resetPassword(name, username, newPassword);
+  }, []);
+
   const value = useMemo(
-    () => ({ user, permissions, loading, bootstrapMessage, login, changePassword, refreshIdentity, logout }),
-    [user, permissions, loading, bootstrapMessage, login, changePassword, refreshIdentity, logout],
+    () => ({ user, permissions, loading, bootstrapMessage, login, changePassword, resetPassword, refreshIdentity, logout }),
+    [user, permissions, loading, bootstrapMessage, login, changePassword, resetPassword, refreshIdentity, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

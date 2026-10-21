@@ -1,8 +1,14 @@
 .app-layout { min-height: 100vh; background: var(--canvas); }
-.app-sidebar { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; display: flex; width: 250px; flex-direction: column; padding: 25px 17px 17px; color: #fff; background: linear-gradient(180deg, var(--brand-navy) 0%, #162741 100%); }
+.app-sidebar { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; display: flex; width: 250px; flex-direction: column; overflow: hidden; padding: 25px 17px 17px; color: #fff; background: linear-gradient(180deg, var(--brand-navy) 0%, #162741 100%); }
 .sidebar-brand { padding: 2px 8px 23px; }
 .sidebar-rule { height: 1px; margin: 0 8px 24px; background: rgba(255,255,255,.12); }
+.sidebar-brand, .sidebar-rule, .sidebar-support, .sidebar-user { flex-shrink: 0; }
 .sidebar-caption { margin: 0 10px 10px; color: rgba(255,255,255,.66); font-size: 12px; font-weight: 700; letter-spacing: 1.2px; }
+.sidebar-navigation { min-height: 0; flex: 1 1 auto; margin-right: -4px; overflow-x: hidden; overflow-y: auto; padding-right: 4px; overscroll-behavior-y: contain; scrollbar-color: rgba(255,255,255,.26) transparent; scrollbar-width: thin; }
+.sidebar-navigation::-webkit-scrollbar { width: 6px; }
+.sidebar-navigation::-webkit-scrollbar-track { background: transparent; }
+.sidebar-navigation::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 8px; background: rgba(255,255,255,.26); background-clip: padding-box; }
+.sidebar-navigation::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.48); background-clip: padding-box; }
 .primary-nav { display: flex; flex-direction: column; gap: 13px; }
 .nav-section { display: flex; flex-direction: column; gap: 4px; }
 .nav-section-toggle { display: flex; min-height: 36px; align-items: center; justify-content: space-between; padding: 0 10px; border: 0; border-radius: 7px; color: rgba(255,255,255,.58); background: transparent; cursor: pointer; font: inherit; font-size: 12px; font-weight: 700; letter-spacing: .8px; text-align: left; text-transform: uppercase; transition: color .18s, background .18s; }
@@ -20,7 +26,6 @@
 .nav-link-active .nav-active-mark { opacity: 1; }
 .nav-icon { display: grid; width: 18px; height: 18px; place-items: center; }
 .nav-icon svg, .sign-out-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
-.sidebar-spacer { flex: 1; }
 .sidebar-support { display: flex; align-items: center; gap: 11px; margin: 14px 2px 15px; padding: 13px 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.055); }
 .support-orbit { display: grid; width: 29px; height: 29px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(255,255,255,.34); border-radius: 50%; color: var(--brand-orange); font-size: 15px; }
 .sidebar-support strong, .sidebar-support span { display: block; }

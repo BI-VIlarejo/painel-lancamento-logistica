@@ -22,12 +22,13 @@ function initials(name: string): string {
 
 export function AppShell({ user, permissions, path, onNavigate, onSignOut, children }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const activeSection = path === "/painel" ? "indicators" : path === "/cadastros" ? "administration" : path === "/feedback" ? "relationships" : "operation";
+  const activeSection = path === "/painel" ? "indicators" : path === "/cadastros" || path === "/auditoria" ? "administration" : path === "/feedback" ? "relationships" : path === "/trocar-senha" ? "account" : "operation";
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => ({
     operation: path !== "/painel",
     relationships: path === "/feedback",
     indicators: path === "/painel",
-    administration: path === "/cadastros",
+    administration: path === "/cadastros" || path === "/auditoria",
+    account: path === "/trocar-senha",
   }));
   const canView = permissions.includes("ENTREGAS_DIARIAS:VER");
   const canCreate = permissions.includes("ENTREGAS_DIARIAS:CRIAR") && canView;
@@ -35,6 +36,7 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
   const canViewDashboard = permissions.includes("PAINEL_GERENCIAL:ACESSAR");
   const canManageCatalogs = permissions.includes("CADASTROS:ADMINISTRAR");
   const canManageAccess = permissions.includes("CONTROLE_ACESSO:ADMINISTRAR");
+  const canViewAudit = permissions.includes("AUDITORIA:VER");
   const sections = [
     {
       id: "operation",
@@ -85,13 +87,32 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
     {
       id: "administration",
       label: "Administração",
-      visible: canManageCatalogs || canManageAccess,
+      visible: canManageCatalogs || canManageAccess || canViewAudit,
       items: [
         {
           path: "/cadastros",
           label: "Cadastros e acessos",
           visible: canManageCatalogs || canManageAccess,
           icon: <svg viewBox="0 0 24 24"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9" /><circle cx="18" cy="17.5" r="2.5" /></svg>,
+        },
+        {
+          path: "/auditoria",
+          label: "Auditoria",
+          visible: canViewAudit,
+          icon: <svg viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.3" /><path d="m15.5 15.5 4.2 4.2M8.5 10.8h4.6M10.8 8.5v4.6" /></svg>,
+        },
+      ],
+    },
+    {
+      id: "account",
+      label: "Conta",
+      visible: true,
+      items: [
+        {
+          path: "/trocar-senha",
+          label: "Minha senha",
+          visible: true,
+          icon: <svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v2" /></svg>,
         },
       ],
     },
@@ -112,64 +133,69 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
       ? "Cadastros e acessos"
     : path === "/feedback"
       ? "Reclamações e elogios"
+    : path === "/auditoria"
+      ? "Auditoria"
+    : path === "/trocar-senha"
+      ? "Minha senha"
     : path === "/historico"
       ? "Histórico de entregas"
       : "Lançar entrega";
-  const pageSection = path === "/painel" ? "Indicadores" : path === "/cadastros" ? "Administração" : path === "/feedback" ? "Relacionamento" : "Entregas";
+  const pageSection = path === "/painel" ? "Indicadores" : path === "/cadastros" || path === "/auditoria" ? "Administração" : path === "/feedback" ? "Relacionamento" : path === "/trocar-senha" ? "Conta" : "Entregas";
 
   return (
     <div className={cx(styles, commonStyles, "app-layout")}>
       <aside className={cx(styles, commonStyles, `app-sidebar${menuOpen ? " app-sidebar-open" : ""}`)}>
         <div className={cx(styles, commonStyles, "sidebar-brand")}><BrandMark light /></div>
         <div className={cx(styles, commonStyles, "sidebar-rule")} />
-        <p className={cx(styles, commonStyles, "sidebar-caption")}>MENU PRINCIPAL</p>
-        <nav className={cx(styles, commonStyles, "primary-nav")} aria-label="Navegação principal">
-          {sections.map((section) => {
-            const expanded = Boolean(expandedSections[section.id]);
-            const sectionActive = section.id === activeSection;
-            const panelId = `nav-section-${section.id}`;
+        <div className={cx(styles, commonStyles, "sidebar-navigation")}>
+          <p className={cx(styles, commonStyles, "sidebar-caption")}>MENU PRINCIPAL</p>
+          <nav className={cx(styles, commonStyles, "primary-nav")} aria-label="Navegação principal">
+            {sections.map((section) => {
+              const expanded = Boolean(expandedSections[section.id]);
+              const sectionActive = section.id === activeSection;
+              const panelId = `nav-section-${section.id}`;
 
-            return (
-              <div className={cx(styles, commonStyles, "nav-section")} key={section.id}>
-                <button
-                  className={cx(styles, commonStyles, `nav-section-toggle${sectionActive ? " nav-section-toggle-active" : ""}`)}
-                  type="button"
-                  aria-expanded={expanded}
-                  aria-controls={panelId}
-                  onClick={() => setExpandedSections((current) => ({ ...current, [section.id]: !current[section.id] }))}
-                >
-                  <span>{section.label}</span>
-                  <svg className={cx(styles, commonStyles, `nav-section-chevron${expanded ? " nav-section-chevron-open" : ""}`)} viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>
-                </button>
-                <div
-                  className={cx(styles, commonStyles, "nav-section-items")}
-                  id={panelId}
-                  hidden={!expanded}
-                >
-                  {"groupLabel" in section && <div className={cx(styles, commonStyles, "nav-subgroup-label")}>{section.groupLabel}</div>}
-                  {section.items.filter((item) => item.visible).map((item) => {
-                    const active = path === item.path;
-                    return (
-                      <a
-                        className={cx(styles, commonStyles, `nav-link nav-link-nested${active ? " nav-link-active" : ""}`)}
-                        href={item.path}
-                        key={item.path}
-                        aria-current={active ? "page" : undefined}
-                        onClick={(event) => navigate(event, item.path)}
-                      >
-                        <span className={cx(styles, commonStyles, "nav-icon")} aria-hidden="true">{item.icon}</span>
-                        <span>{item.label}</span>
-                        <span className={cx(styles, commonStyles, "nav-active-mark")} />
-                      </a>
-                    );
-                  })}
+              return (
+                <div className={cx(styles, commonStyles, "nav-section")} key={section.id}>
+                  <button
+                    className={cx(styles, commonStyles, `nav-section-toggle${sectionActive ? " nav-section-toggle-active" : ""}`)}
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-controls={panelId}
+                    onClick={() => setExpandedSections((current) => ({ ...current, [section.id]: !current[section.id] }))}
+                  >
+                    <span>{section.label}</span>
+                    <svg className={cx(styles, commonStyles, `nav-section-chevron${expanded ? " nav-section-chevron-open" : ""}`)} viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>
+                  </button>
+                  <div
+                    className={cx(styles, commonStyles, "nav-section-items")}
+                    id={panelId}
+                    hidden={!expanded}
+                  >
+                    {"groupLabel" in section && <div className={cx(styles, commonStyles, "nav-subgroup-label")}>{section.groupLabel}</div>}
+                    {section.items.filter((item) => item.visible).map((item) => {
+                      const active = path === item.path;
+                      return (
+                        <a
+                          className={cx(styles, commonStyles, `nav-link nav-link-nested${active ? " nav-link-active" : ""}`)}
+                          href={item.path}
+                          key={item.path}
+                          aria-current={active ? "page" : undefined}
+                          onClick={(event) => navigate(event, item.path)}
+                        >
+                          <span className={cx(styles, commonStyles, "nav-icon")} aria-hidden="true">{item.icon}</span>
+                          <span>{item.label}</span>
+                          <span className={cx(styles, commonStyles, "nav-active-mark")} />
+                        </a>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </nav>
+              );
+            })}
+          </nav>
+        </div>
 
-        <div className={cx(styles, commonStyles, "sidebar-spacer")} />
         <div className={cx(styles, commonStyles, "sidebar-support")}>
           <div className={cx(styles, commonStyles, "support-orbit")}><span>?</span></div>
           <div><strong>Precisa de ajuda?</strong><span>Fale com a liderança do setor.</span></div>
