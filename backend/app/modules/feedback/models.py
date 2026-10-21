@@ -1,4 +1,4 @@
-"""Modelos ORM opcionais para feedback e participantes relacionados."""
+"""Modelo ORM opcional para feedback relacionado a entregas."""
 
 from __future__ import annotations
 
@@ -39,15 +39,19 @@ class Feedback(Base):
             name="fk_op_logistica_feedback_entrega_revisao_localidade",
         ),
         UniqueConstraint(
-            "id_lancamento_revisao",
-            "codigo_item_lancamento",
-            name="uq_op_logistica_feedback_revisao_item",
+            "chave_idempotencia",
+            name="uq_op_logistica_feedback_idempotencia",
         ),
+        CheckConstraint(
+            "tipo in ('RECLAMACAO', 'ELOGIO')",
+            name="ck_op_logistica_feedback_tipo",
+        ),
+        Index("ix_op_logistica_feedback_revisao", "id_lancamento_revisao"),
         Index(
             "ix_op_logistica_feedback_localidade_data_tipo",
             "id_localidade",
             "data_feedback",
-            "id_tipo_feedback",
+            "tipo",
         ),
         Index(
             "ix_op_logistica_feedback_entrega_revisao_localidade",
@@ -55,12 +59,15 @@ class Feedback(Base):
             "id_lancamento_revisao",
             "id_localidade",
         ),
-        Index("ix_op_logistica_feedback_tipo", "id_tipo_feedback"),
+        Index("ix_op_logistica_feedback_tipo", "tipo"),
     )
 
     id_feedback: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
+    chave_idempotencia: Mapped[str] = mapped_column(CHAR(36), nullable=False)
     id_lancamento_revisao: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey(
@@ -70,14 +77,7 @@ class Feedback(Base):
         nullable=False,
     )
     codigo_item_lancamento: Mapped[str] = mapped_column(CHAR(36), nullable=False)
-    id_tipo_feedback: Mapped[int] = mapped_column(
-        Integer,
-        ForeignKey(
-            "op_logistica_tipo_feedback.id_tipo_feedback",
-            name="fk_op_logistica_feedback_tipo",
-        ),
-        nullable=False,
-    )
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
     data_feedback: Mapped[date] = mapped_column(Date, nullable=False)
     id_localidade: Mapped[int] = mapped_column(
         BigInteger,
@@ -87,50 +87,19 @@ class Feedback(Base):
         ),
         nullable=False,
     )
-    id_entrega_diaria: Mapped[int | None] = mapped_column(
-        BigInteger, nullable=True
-    )
+    id_entrega_diaria: Mapped[int] = mapped_column(BigInteger, nullable=False)
     identificador_cliente: Mapped[str | None] = mapped_column(
         String(120), nullable=True
     )
     nome_cliente: Mapped[str | None] = mapped_column(String(160), nullable=True)
     relato: Mapped[str] = mapped_column(Text, nullable=False)
+    criado_por: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "op_logistica_usuario.id_usuario",
+            name="fk_op_logistica_feedback_criador",
+        ),
+        nullable=True,
+    )
     criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     atualizado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-
-
-class FeedbackParticipante(Base):
-    __tablename__ = "op_logistica_feedback_participante"
-    __table_args__ = (
-        Index(
-            "ix_op_logistica_feedback_participante_papel",
-            "id_feedback",
-            "papel_participante",
-        ),
-        Index(
-            "ix_op_logistica_feedback_participante_pessoa",
-            "id_pessoa",
-        ),
-        CheckConstraint(
-            "papel_participante in ('MOTORISTA', 'AJUDANTE')",
-            name="ck_op_logistica_feedback_papel",
-        ),
-    )
-
-    id_feedback: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey(
-            "op_logistica_feedback.id_feedback",
-            name="fk_op_logistica_feedback_participante_feedback",
-        ),
-        primary_key=True,
-    )
-    id_pessoa: Mapped[int] = mapped_column(
-        BigInteger,
-        ForeignKey(
-            "op_logistica_pessoa.id_pessoa",
-            name="fk_op_logistica_feedback_participante_pessoa",
-        ),
-        primary_key=True,
-    )
-    papel_participante: Mapped[str] = mapped_column(String(20), nullable=False)
