@@ -2,7 +2,7 @@
 
 from hashlib import sha256
 from hmac import compare_digest, new as hmac_new
-from secrets import token_urlsafe
+from secrets import randbelow, token_urlsafe
 
 from pwdlib import PasswordHash
 
@@ -10,10 +10,8 @@ _password_hash = PasswordHash.recommended()
 MIN_PASSWORD_LENGTH = 6
 MAX_PASSWORD_LENGTH = 1024
 
-
 class InvalidPassword(ValueError):
     """Senha que não atende à política do Portal."""
-
 
 def validate_new_password(password: str) -> None:
     """Aplica os limites de tamanho definidos para senhas novas."""
@@ -24,12 +22,14 @@ def validate_new_password(password: str) -> None:
     if len(password) > MAX_PASSWORD_LENGTH:
         raise InvalidPassword("A senha excede o tamanho máximo permitido.")
 
-
 def hash_password(password: str) -> str:
     """Gera hash Argon2id para armazenamento; nunca armazena a senha original."""
     validate_new_password(password)
     return _password_hash.hash(password)
 
+def generate_temporary_password() -> str:
+    """Gera uma credencial temporária numérica de seis dígitos."""
+    return f"{randbelow(1_000_000):06d}"
 
 def verify_password(password: str, encoded_hash: str) -> bool:
     """Verifica a senha sem propagar erro de hash malformado."""
@@ -40,22 +40,18 @@ def verify_password(password: str, encoded_hash: str) -> bool:
     except Exception:
         return False
 
-
 def generate_session_token() -> str:
     """Gera um token opaco de sessão com 256 bits de entropia."""
     return token_urlsafe(32)
-
 
 def hash_session_token(session_token: str) -> str:
     """Retorna o SHA-256 hexadecimal do token de sessão."""
     return sha256(session_token.encode("utf-8")).hexdigest()
 
-
 def create_csrf_token(session_token: str, signing_key: bytes) -> str:
     """Assina um token CSRF vinculado à sessão atual."""
     message = b"lancamento-logistica:csrf:v1:" + session_token.encode("utf-8")
     return hmac_new(signing_key, message, sha256).hexdigest()
-
 
 def verify_csrf_token(
     session_token: str,

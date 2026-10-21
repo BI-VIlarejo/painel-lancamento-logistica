@@ -54,7 +54,7 @@ class MeResponse(BaseModel):
 
 
 class ChangePasswordRequest(BaseModel):
-    """Troca de senha autenticada, inclusive para a primeira entrada da conta."""
+    """Troca opcional da senha própria por uma sessão autenticada."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -66,3 +66,28 @@ class ChangePasswordRequest(BaseModel):
         if self.senha_atual.get_secret_value() == self.nova_senha.get_secret_value():
             raise ValueError("A nova senha deve ser diferente da senha atual.")
         return self
+
+
+class ResetPasswordRequest(BaseModel):
+    """Redefinição local com nome completo e username cadastrados."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nome_completo: str = Field(min_length=1, max_length=160)
+    username: str = Field(min_length=1, max_length=80)
+    nova_senha: SecretStr = Field(min_length=6, max_length=1024)
+
+    @field_validator("nome_completo")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("Informe o nome completo.")
+        return normalized
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalize_username(cls, value: object) -> object:
+        if isinstance(value, str):
+            return normalize_username(value)
+        return value

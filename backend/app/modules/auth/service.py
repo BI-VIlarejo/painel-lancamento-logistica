@@ -1,7 +1,10 @@
 """Regras de autenticação local e ciclo de vida das sessões."""
 
 from __future__ import annotations
+
 import hashlib
+import logging
+import unicodedata
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -25,6 +28,8 @@ from app.modules.auth import repository
 from app.modules.auth.normalization import normalize_username
 from app.modules.auth.schemas import AuthenticatedUser
 from app.modules.access_control.models import AutorizacaoEvento
+
+logger = logging.getLogger("lancamento.api.auth")
 
 @dataclass(frozen=True)
 class AuthenticatedSession:
@@ -96,6 +101,7 @@ class _InMemoryLoginLimiter:
             self._attempts.pop(key, None)
 
 _login_limiter = _InMemoryLoginLimiter()
+_password_reset_limiter = _InMemoryLoginLimiter()
 _dummy_password_hash = hash_password("dummy-password-never-used")
 
 def _utc_now() -> datetime:
@@ -107,11 +113,17 @@ def _limiter_key(client_ip: str, username: str) -> str:
     raw_key = f"{client_ip}\x00{username}".encode("utf-8")
     return hashlib.sha256(raw_key).hexdigest()
 
+def _normalize_full_name(name: str) -> str:
+    """Compara o nome sem diferenças de caixa ou espaços repetidos."""
+    normalized = unicodedata.normalize("NFKC", name)
+    return " ".join(normalized.split()).casefold()
+
 def _raise_database_unavailable(db: Session, exc: SQLAlchemyError) -> NoReturn:
     try:
         db.rollback()
     except SQLAlchemyError:
         pass
+    logger.error("auth_database_failure exception_type=%s", type(exc).__name__)
     raise ServiceUnavailableError(
         "Autenticação temporariamente indisponível."
     ) from exc
@@ -200,7 +212,7 @@ def login(
         id_usuario=user.id_usuario,
         username=user.username,
         nome_completo=user.nome_completo,
-        troca_senha_obrigatoria=bool(user.troca_senha_obrigatoria),
+        troca_senha_obrigatoria=False,
     )
     return LoginResult(
         user=public_user,
@@ -238,7 +250,7 @@ def find_session(
                 id_usuario=user.id_usuario,
                 username=user.username,
                 nome_completo=user.nome_completo,
-                troca_senha_obrigatoria=bool(user.troca_senha_obrigatoria),
+                troca_senha_obrigatoria=False,
             ),
             session_id=session.id_sessao,
         )
@@ -328,5 +340,75 @@ def change_password(
     except AuthenticationError:
         db.rollback()
         raise
+    except SQLAlchemyError as exc:
+        _raise_database_unavailable(db, exc)
+
+
+def reset_password(
+    db: Session,
+    *,
+    nome_completo: str,
+    username: str,
+    nova_senha: str,
+    client_ip: str,
+) -> None:
+    """Redefine a senha local após conferir nome completo e username."""
+    settings = get_settings()
+    canonical_username = normalize_username(username)
+    limiter_key = _limiter_key(client_ip, canonical_username)
+    retry_after = _password_reset_limiter.retry_after(
+        limiter_key,
+        max_attempts=settings.login_rate_limit_attempts,
+        window_seconds=settings.login_rate_limit_window_seconds,
+    )
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas tentativas de redefinição. Tente novamente mais tarde.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    _password_reset_limiter.record_failure(
+        limiter_key,
+        window_seconds=settings.login_rate_limit_window_seconds,
+    )
+
+    try:
+        user = repository.get_user_by_username_for_update(db, canonical_username)
+        if (
+            user is None
+            or not user.ativo
+            or _normalize_full_name(user.nome_completo) != _normalize_full_name(nome_completo)
+        ):
+            db.rollback()
+            return
+
+        try:
+            encoded_hash = hash_password(nova_senha)
+        except ValueError:
+            db.rollback()
+            return
+
+        now = _utc_now()
+        user.hash_senha = encoded_hash
+        user.senha_alterada_em = now
+        user.troca_senha_obrigatoria = False
+        user.atualizado_em = now
+        repository.revoke_user_sessions(
+            db,
+            id_usuario=user.id_usuario,
+            revogado_em=now,
+        )
+        db.add(
+            AutorizacaoEvento(
+                tipo_evento="USUARIO_SENHA_ALTERADA",
+                id_usuario_ator=user.id_usuario,
+                ocorrido_em=now,
+                detalhes={
+                    "id_usuario": user.id_usuario,
+                    "tipo_alteracao": "SENHA_REDEFINIDA_DADOS_CADASTRAIS",
+                },
+            )
+        )
+        db.commit()
     except SQLAlchemyError as exc:
         _raise_database_unavailable(db, exc)

@@ -23,6 +23,7 @@ from app.modules.auth.schemas import (
     LoginRequest,
     LoginResponse,
     MeResponse,
+    ResetPasswordRequest,
 )
 
 logger = logging.getLogger("lancamento.api.auth")
@@ -127,6 +128,33 @@ def change_password(
     )
     response.status_code = status.HTTP_204_NO_CONTENT
     _no_store(response)
+    return response
+
+
+@router.post(
+    "/auth/reset-password",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+    response_model=None,
+)
+def reset_password(
+    payload: ResetPasswordRequest,
+    request: Request,
+    response: Response,
+    db: DatabaseSession,
+) -> Response:
+    """Redefine a senha no portal sem depender de envio de e-mail."""
+    validate_request_origin(request)
+    client_ip = request.client.host if request.client is not None else "unknown"
+    service.reset_password(
+        db,
+        nome_completo=payload.nome_completo,
+        username=payload.username,
+        nova_senha=payload.nova_senha.get_secret_value(),
+        client_ip=client_ip,
+    )
+    _no_store(response)
+    response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
 

@@ -10,6 +10,15 @@ def get_user_by_username(db: Session, username: str) -> Usuario | None:
     statement = select(Usuario).where(Usuario.username == username)
     return db.scalar(statement)
 
+def get_user_by_username_for_update(db: Session, username: str) -> Usuario | None:
+    """Busca uma conta pelo username e bloqueia sua linha para atualização."""
+    statement = (
+        select(Usuario)
+        .where(Usuario.username == username)
+        .with_for_update()
+    )
+    return db.scalar(statement)
+
 def create_session_for_user(
     db: Session,
     *,
