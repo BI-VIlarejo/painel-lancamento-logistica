@@ -32,7 +32,6 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = Field(default=5, ge=1, le=100)
     login_rate_limit_window_seconds: int = Field(default=900, ge=1, le=86_400)
     op_logistica_database_url: str | None = Field(default=None, repr=False)
-    vilarejo_bi_logistica_database_url: str | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def validate_auth_settings(self) -> "Settings":

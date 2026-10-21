@@ -18,13 +18,6 @@ class LocalityAdminItem(BaseModel):
     ativo: bool
 
 
-class LocalitySyncResult(BaseModel):
-    total_origem: int
-    criadas: int
-    atualizadas: int
-    desativadas: int
-
-
 class PersonAdminItem(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

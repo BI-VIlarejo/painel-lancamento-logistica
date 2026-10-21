@@ -57,8 +57,11 @@ const profiles: Profile[] = [
 const sectors: SectorCatalogItem[] = [{ id_setor: 1, codigo: "ENTREGAS", nome: "Entregas" }];
 
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 90));
-const newDemoCredential = () => btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(15))))
-  .replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+const newDemoCredential = () => {
+  const random = new Uint32Array(1);
+  crypto.getRandomValues(random);
+  return String((random[0] ?? 0) % 1_000_000).padStart(6, "0");
+};
 const generatedCode = (prefix: string, label: string, taken: string[], maxLength: number) => {
   const slug = label.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "ITEM";
   const base = `${prefix}_${slug}`.slice(0, maxLength).replace(/_+$/g, "");
@@ -79,10 +82,6 @@ const demoScopeCode = (input: UserScopeGrantInput) => {
 
 export const demoAdministrationApi = {
   async localities() { await pause(); return [...localities]; },
-  async syncLocalities() {
-    await pause();
-    return { total_origem: localities.length, criadas: 0, atualizadas: localities.length, desativadas: 0 };
-  },
   async people() { await pause(); return [...people]; },
   async createPerson(input: Omit<PersonAdminItem, "id_pessoa" | "ativo" | "vigente_desde" | "vigente_ate">) {
     await pause();
@@ -119,7 +118,7 @@ export const demoAdministrationApi = {
     const profile = profiles.find((item) => item.id_perfil === input.acesso_inicial.id_perfil && item.ativo);
     if (!profile) throw new Error("Selecione um perfil ativo.");
     if (profile.codigo === "DEV" && input.acesso_inicial.tipo_escopo !== "GLOBAL") throw new Error("O perfil DEV exige escopo global.");
-    const user: UserAccount = { username: input.username, nome_completo: input.nome_completo, id_usuario: nextId++, ativo: true, troca_senha_obrigatoria: true, criado_em: now(), ultimo_login_em: null };
+    const user: UserAccount = { username: input.username, nome_completo: input.nome_completo, id_usuario: nextId++, ativo: true, troca_senha_obrigatoria: false, criado_em: now(), ultimo_login_em: null };
     const senha_inicial = newDemoCredential();
     const acesso_inicial: UserAccessGrant = {
       ...input.acesso_inicial,
@@ -143,10 +142,10 @@ export const demoAdministrationApi = {
     await pause();
     const user = users.find((item) => item.id_usuario === id);
     if (!user) throw new Error("Conta não encontrada.");
-    if (!user.ativo) throw new Error("Ative a conta antes de gerar uma nova senha temporária.");
+    if (!user.ativo) throw new Error("Ative a conta antes de gerar uma nova senha.");
     if (user.id_usuario === demoUser.id_usuario) throw new Error("Use a troca de senha da própria conta.");
-    users = users.map((item) => item.id_usuario === id ? { ...item, troca_senha_obrigatoria: true } : item);
-    return { ...user, troca_senha_obrigatoria: true, senha_inicial: newDemoCredential() };
+    users = users.map((item) => item.id_usuario === id ? { ...item, troca_senha_obrigatoria: false } : item);
+    return { ...user, troca_senha_obrigatoria: false, senha_inicial: newDemoCredential() };
   },
   async setUserActive(id: number, ativo: boolean) { await pause(); users = users.map((user) => user.id_usuario === id ? { ...user, ativo } : user); },
   async profiles() { await pause(); return profiles.filter((profile) => profile.ativo); },

@@ -6,11 +6,10 @@ from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.core.config import get_settings
 from app.core.exceptions import (
     APIError,
     ConflictError,
@@ -21,7 +20,6 @@ from app.modules.access_control.models import AutorizacaoEvento
 from app.modules.catalogs import repository
 from app.modules.catalogs.admin_schemas import (
     LocalityAdminItem,
-    LocalitySyncResult,
     PersonAdminItem,
     PersonCreateRequest,
     PersonStatusRequest,
@@ -29,7 +27,7 @@ from app.modules.catalogs.admin_schemas import (
     ReasonCreateRequest,
     ReasonStatusRequest,
 )
-from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa
+from app.modules.catalogs.models import MotivoNaoEntrega, Pessoa
 
 
 def _now() -> datetime:
@@ -100,147 +98,6 @@ def list_localities(db: Session) -> list[LocalityAdminItem]:
         ]
     except SQLAlchemyError as exc:
         raise _db_unavailable(db, exc) from exc
-
-
-def sync_localities_from_bi(
-    db: Session,
-    *,
-    actor_id: int,
-) -> LocalitySyncResult:
-    """Espelha a dimensão canônica do BI sem inventar códigos de integração."""
-    database_url = get_settings().vilarejo_bi_logistica_database_url
-    if not database_url:
-        raise ServiceUnavailableError(
-            "A conexão de leitura do catálogo do Vilarejo BI não está configurada."
-        )
-
-    now = _now()
-    source_engine = None
-    try:
-        source_engine = create_engine(database_url, pool_pre_ping=True)
-        with source_engine.connect() as connection:
-            source_rows = connection.execute(
-                text(
-                    "SELECT codigo_localidade, nome_localidade, tipo_localidade, ativo "
-                    "FROM dim_localidade "
-                    "WHERE codigo_localidade IS NOT NULL "
-                    "AND TRIM(codigo_localidade) <> '' "
-                    "AND UPPER(TRIM(tipo_localidade)) <> 'CONSOLIDADO' "
-                    "AND UPPER(TRIM(nome_localidade)) <> 'CONSOLIDADO'"
-                )
-            ).mappings().all()
-
-        source_by_code: dict[str, dict[str, object]] = {}
-        for row in source_rows:
-            code = str(row["codigo_localidade"])
-            if code != code.strip():
-                raise ConflictError(
-                    "A dimensão do BI contém um código de localidade com espaços nas extremidades."
-                )
-            name = " ".join(str(row["nome_localidade"]).split())
-            if not code or not name:
-                continue
-            source_type = str(row["tipo_localidade"]).strip().upper()
-            if source_type == "CD":
-                locality_type = "CD"
-            elif source_type in {"FILIAL", "LOJA"}:
-                locality_type = "LOJA"
-            elif source_type == "CONSOLIDADO":
-                continue
-            else:
-                raise ConflictError(
-                    "A dimensão do BI contém uma classificação de localidade não reconhecida."
-                )
-            item = {
-                "codigo_localidade": code,
-                "nome_localidade": name,
-                "tipo_localidade": locality_type,
-                "ativo": bool(row["ativo"]),
-            }
-            if code in source_by_code:
-                raise ConflictError(
-                    "A dimensão do BI contém códigos de localidade duplicados."
-                )
-            source_by_code[code] = item
-
-        if not source_by_code:
-            raise ServiceUnavailableError(
-                "O catálogo do BI não retornou localidades com códigos válidos."
-            )
-
-        codes = list(source_by_code)
-        existing = {
-            item.codigo_localidade: item
-            for item in db.scalars(
-                select(Localidade).where(Localidade.codigo_localidade.in_(codes))
-            ).all()
-        }
-        created = 0
-        updated = 0
-        deactivated = 0
-        for code, source_item in source_by_code.items():
-            item = existing.get(code)
-            if item is None:
-                item = Localidade(
-                    codigo_localidade=code,
-                    nome_localidade=str(source_item["nome_localidade"]),
-                    tipo_localidade=str(source_item["tipo_localidade"]),
-                    ativo=bool(source_item["ativo"]),
-                    sincronizado_em=now,
-                )
-                db.add(item)
-                created += 1
-                continue
-            item.nome_localidade = str(source_item["nome_localidade"])
-            item.tipo_localidade = str(source_item["tipo_localidade"])
-            item.ativo = bool(source_item["ativo"])
-            item.sincronizado_em = now
-            updated += 1
-
-        stale_items = db.scalars(
-            select(Localidade).where(Localidade.codigo_localidade.not_in(codes))
-        ).all()
-        for item in stale_items:
-            if item.ativo:
-                item.ativo = False
-                item.sincronizado_em = now
-                deactivated += 1
-
-        db.flush()
-        _event(
-            db,
-            kind="LOCALIDADES_SINCRONIZADAS_BI",
-            actor_id=actor_id,
-            details={
-                "total_origem": len(source_by_code),
-                "criadas": created,
-                "atualizadas": updated,
-                "desativadas": deactivated,
-            },
-        )
-        db.commit()
-        return LocalitySyncResult(
-            total_origem=len(source_by_code),
-            criadas=created,
-            atualizadas=updated,
-            desativadas=deactivated,
-        )
-    except APIError:
-        db.rollback()
-        raise
-    except IntegrityError as exc:
-        db.rollback()
-        raise ConflictError(
-            "O catálogo de localidades mudou durante a sincronização. Tente novamente."
-        ) from exc
-    except SQLAlchemyError as exc:
-        db.rollback()
-        raise ServiceUnavailableError(
-            "Não foi possível sincronizar o catálogo do BI."
-        ) from exc
-    finally:
-        if source_engine is not None:
-            source_engine.dispose()
 
 
 def list_people(db: Session) -> list[PersonAdminItem]:

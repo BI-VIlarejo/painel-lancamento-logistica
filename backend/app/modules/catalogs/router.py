@@ -10,10 +10,10 @@ from app.api.v1.dependencies import (
     require_global_permission,
     require_permission,
 )
+from app.modules.access_control.catalog import PermissionCode
 from app.modules.catalogs import admin_service
 from app.modules.catalogs.admin_schemas import (
     LocalityAdminItem,
-    LocalitySyncResult,
     PersonAdminItem,
     PersonCreateRequest,
     PersonStatusRequest,
@@ -32,8 +32,8 @@ from app.modules.catalogs.schemas import (
 )
 
 router = APIRouter(tags=["Catálogos"])
-_delivery_read_access = require_permission("ENTREGAS_DIARIAS:VER")
-_catalog_admin_access = require_global_permission("CADASTROS:ADMINISTRAR")
+_delivery_read_access = require_permission(PermissionCode.DELIVERY_VIEW)
+_catalog_admin_access = require_global_permission(PermissionCode.CATALOG_ADMIN)
 
 
 def _no_store(response: Response) -> None:
@@ -126,23 +126,6 @@ def get_admin_localities(
 ) -> list[LocalityAdminItem]:
     _no_store(response)
     return admin_service.list_localities(db)
-
-
-@router.post(
-    "/cadastros/localidades/sincronizar",
-    response_model=LocalitySyncResult,
-)
-def sync_localities(
-    db: DatabaseSession,
-    auth: CsrfProtectedAuth,
-    response: Response,
-    access: AuthorizationContext = Depends(_catalog_admin_access),
-) -> LocalitySyncResult:
-    _no_store(response)
-    return admin_service.sync_localities_from_bi(
-        db,
-        actor_id=auth.user.id_usuario,
-    )
 
 
 @router.get("/cadastros/pessoas", response_model=list[PersonAdminItem])
