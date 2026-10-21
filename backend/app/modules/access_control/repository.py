@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.access_control.models import (
@@ -23,14 +23,30 @@ def get_effective_access_rows(
     id_usuario: int,
     agora: datetime,
 ) -> list[tuple[Permissao, Recurso, Perfil, UsuarioEscopo, Escopo]]:
-    """Busca permissões de perfis associados por concessões ativas e vigentes."""
+    """Busca permissões efetivas, incluindo acesso total para DEV global."""
+    has_profile_permission = (
+        select(PerfilPermissao.id_permissao)
+        .where(
+            PerfilPermissao.id_perfil == Perfil.id_perfil,
+            PerfilPermissao.id_permissao == Permissao.id_permissao,
+        )
+        .exists()
+    )
     statement = (
         select(Permissao, Recurso, Perfil, UsuarioEscopo, Escopo)
         .select_from(UsuarioEscopo)
         .join(Perfil, Perfil.id_perfil == UsuarioEscopo.id_perfil)
         .join(Escopo, Escopo.id_escopo == UsuarioEscopo.id_escopo)
-        .join(PerfilPermissao, PerfilPermissao.id_perfil == Perfil.id_perfil)
-        .join(Permissao, Permissao.id_permissao == PerfilPermissao.id_permissao)
+        .join(
+            Permissao,
+            and_(
+                Permissao.ativo.is_(True),
+                or_(
+                    and_(Perfil.codigo == "DEV", Escopo.tipo_escopo == "GLOBAL"),
+                    has_profile_permission,
+                ),
+            ),
+        )
         .join(Recurso, Recurso.id_recurso == Permissao.id_recurso)
         .where(
             UsuarioEscopo.id_usuario == id_usuario,

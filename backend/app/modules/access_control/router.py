@@ -9,6 +9,7 @@ from app.api.v1.dependencies import (
     require_global_permission,
 )
 from app.modules.access_control import service
+from app.modules.access_control.catalog import PermissionCode
 from app.modules.access_control.schemas import (
     PermissionCreateRequest,
     PermissionSummary,
@@ -33,8 +34,7 @@ from app.modules.access_control.schemas import (
 from app.modules.access_control.service import AuthorizationContext
 
 router = APIRouter(prefix="/access", tags=["Controle de acesso"])
-_admin_access = require_global_permission("CONTROLE_ACESSO:ADMINISTRAR")
-
+_admin_access = require_global_permission(PermissionCode.ACCESS_ADMIN)
 
 def _require_dev_global(
     access: AuthorizationContext = Depends(_admin_access),
@@ -48,9 +48,7 @@ def _require_dev_global(
         )
     return access
 
-
 _dev_access = _require_dev_global
-
 
 @router.get("/users", response_model=UserAccountPage)
 def get_users(
@@ -70,7 +68,6 @@ def get_users(
         limit=limit,
         offset=offset,
     )
-
 
 @router.post(
     "/users",
@@ -92,7 +89,6 @@ def create_user(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.post("/users/{id_usuario}/temporary-password", response_model=UserAccountCreated)
 def reset_user_temporary_password(
     id_usuario: int,
@@ -109,7 +105,6 @@ def reset_user_temporary_password(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.patch("/users/{id_usuario}", response_model=UserAccountSummary)
 def update_user(
     id_usuario: int,
@@ -125,7 +120,6 @@ def update_user(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.get("/scope-options", response_model=AccessScopeOptions)
 def get_scope_options(
     db: DatabaseSession,
@@ -134,7 +128,6 @@ def get_scope_options(
 ) -> AccessScopeOptions:
     response.headers["Cache-Control"] = "no-store"
     return service.list_scope_options(db)
-
 
 @router.get("/profiles", response_model=list[ProfileSummary])
 def get_profiles(
@@ -150,7 +143,6 @@ def get_profiles(
         id_usuario_ator=access.id_usuario,
     )
 
-
 @router.get(
     "/profiles/{id_perfil}/permissions",
     response_model=list[PermissionSummary],
@@ -163,7 +155,6 @@ def get_profile_permissions(
 ) -> list[PermissionSummary]:
     response.headers["Cache-Control"] = "no-store"
     return service.list_profile_permissions(db, id_perfil=id_perfil)
-
 
 @router.post(
     "/profiles",
@@ -182,7 +173,6 @@ def create_profile(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.patch("/profiles/{id_perfil}", response_model=ProfileSummary)
 def update_profile(
     id_perfil: int,
@@ -198,7 +188,6 @@ def update_profile(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.get("/resources", response_model=list[ResourceSummary])
 def get_resources(
     db: DatabaseSession,
@@ -208,7 +197,6 @@ def get_resources(
 ) -> list[ResourceSummary]:
     response.headers["Cache-Control"] = "no-store"
     return service.list_resources(db, include_inactive=incluir_inativos)
-
 
 @router.post(
     "/resources",
@@ -227,7 +215,6 @@ def create_resource(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.patch("/resources/{id_recurso}", response_model=ResourceSummary)
 def update_resource(
     id_recurso: int,
@@ -243,7 +230,6 @@ def update_resource(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.get("/permissions", response_model=list[PermissionSummary])
 def get_permissions(
     db: DatabaseSession,
@@ -253,7 +239,6 @@ def get_permissions(
 ) -> list[PermissionSummary]:
     response.headers["Cache-Control"] = "no-store"
     return service.list_permissions(db, include_inactive=incluir_inativos)
-
 
 @router.post(
     "/permissions",
@@ -272,7 +257,6 @@ def create_permission(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.patch("/permissions/{id_permissao}", response_model=PermissionSummary)
 def update_permission(
     id_permissao: int,
@@ -288,7 +272,6 @@ def update_permission(
         id_usuario_ator=auth.user.id_usuario,
     )
 
-
 @router.get(
     "/users/{id_usuario}/scopes",
     response_model=list[UserScopeGrantResponse],
@@ -301,7 +284,6 @@ def get_user_scopes(
 ) -> list[UserScopeGrantResponse]:
     response.headers["Cache-Control"] = "no-store"
     return service.list_user_scope_grants(db, id_usuario=id_usuario)
-
 
 @router.post(
     "/users/{id_usuario}/scopes",
@@ -321,7 +303,6 @@ def create_user_scope(
         id_usuario_ator=auth.user.id_usuario,
         payload=payload,
     )
-
 
 @router.delete(
     "/users/{id_usuario}/scopes/{id_usuario_escopo}",
@@ -348,7 +329,6 @@ def delete_user_scope(
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
 
-
 @router.post(
     "/profiles/{id_perfil}/permissions",
     response_model=PermissionSummary,
@@ -367,7 +347,6 @@ def create_profile_permission(
         id_permissao=payload.id_permissao,
         id_usuario_ator=auth.user.id_usuario,
     )
-
 
 @router.delete(
     "/profiles/{id_perfil}/permissions/{id_permissao}",

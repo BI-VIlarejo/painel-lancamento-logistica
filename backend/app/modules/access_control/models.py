@@ -256,7 +256,6 @@ class AutorizacaoEvento(Base):
             "'PERMISSAO_DESATIVADA', 'USUARIO_CRIADO', 'USUARIO_ATIVADO', "
             "'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', "
             "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', "
-            "'LOCALIDADES_SINCRONIZADAS_BI', "
             "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
             "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')",
             name="ck_op_logistica_autorizacao_evento_tipo",
@@ -285,7 +284,6 @@ class AutorizacaoEvento(Base):
             "or (tipo_evento in ('USUARIO_CRIADO', 'USUARIO_ATIVADO', "
             "'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', "
             "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', "
-            "'LOCALIDADES_SINCRONIZADAS_BI', "
             "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
             "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') "
             "and id_perfil is null and id_permissao is null and id_recurso is null "
@@ -301,7 +299,9 @@ class AutorizacaoEvento(Base):
     )
 
     id_evento_autorizacao: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
     )
     tipo_evento: Mapped[str] = mapped_column(String(40), nullable=False)
     id_usuario_ator: Mapped[int] = mapped_column(

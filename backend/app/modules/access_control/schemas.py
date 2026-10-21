@@ -246,9 +246,15 @@ class UserAccountSummary(BaseModel):
     username: str
     nome_completo: str
     ativo: bool
-    troca_senha_obrigatoria: bool | None
+    troca_senha_obrigatoria: bool | None = False
     criado_em: datetime
     ultimo_login_em: datetime | None
+
+    @field_validator("troca_senha_obrigatoria", mode="before")
+    @classmethod
+    def no_first_login_password_gate(cls, _value: object) -> bool:
+        """Mantém o campo legado na API sem sinalizar exigência de troca."""
+        return False
 
 
 class UserAccountCreated(UserAccountSummary):

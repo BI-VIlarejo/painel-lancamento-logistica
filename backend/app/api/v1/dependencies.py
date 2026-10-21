@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.core.exceptions import AuthenticationError, PermissionDeniedError
 from app.core.security import verify_csrf_token
 from app.modules.access_control import service as access_control_service
+from app.modules.access_control.catalog import BUILTIN_PERMISSION_CODES
 from app.modules.access_control.service import AuthorizationContext
 from app.modules.auth.schemas import AuthenticatedUser
 from app.modules.auth.service import AuthenticatedSession, require_session
@@ -115,6 +116,7 @@ def require_permission(
     permission_code: str,
 ) -> Callable[..., AuthorizationContext]:
     """Cria uma dependência que exige permissão vigente para a identidade atual."""
+    _validate_permission_code(permission_code)
 
     def dependency(
         db: DatabaseSession,
@@ -133,6 +135,7 @@ def require_global_permission(
     permission_code: str,
 ) -> Callable[..., AuthorizationContext]:
     """Exige a permissão indicada concedida explicitamente em escopo global."""
+    _validate_permission_code(permission_code)
 
     def dependency(
         db: DatabaseSession,
@@ -148,3 +151,11 @@ def require_global_permission(
         return access
 
     return dependency
+
+
+def _validate_permission_code(permission_code: str) -> None:
+    """Falha ao carregar a API se uma rota referenciar permissão não declarada."""
+    if permission_code not in BUILTIN_PERMISSION_CODES:
+        raise ValueError(
+            f"Código de permissão não declarado no catálogo do backend: {permission_code}"
+        )

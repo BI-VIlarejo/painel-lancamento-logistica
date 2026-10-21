@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from secrets import token_urlsafe
-
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -16,7 +14,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
     ServiceUnavailableError,
 )
-from app.core.security import hash_password
+from app.core.security import generate_temporary_password, hash_password
 from app.modules.access_control import repository
 from app.modules.access_control.models import (
     AutorizacaoEvento,
@@ -412,9 +410,15 @@ def list_profile_permissions(
     id_perfil: int,
 ) -> list[PermissionSummary]:
     try:
-        if repository.get_profile(db, id_perfil=id_perfil) is None:
+        profile = repository.get_profile(db, id_perfil=id_perfil)
+        if profile is None:
             raise NotFoundError("Perfil não encontrado.")
-        rows = repository.list_profile_permission_rows(db, id_perfil=id_perfil)
+        if profile.codigo == "DEV":
+            # DEV global recebe todas as permissões ativas, inclusive as criadas
+            # depois do provisionamento. A resposta representa esse acesso efetivo.
+            rows = repository.list_permissions(db, include_inactive=False)
+        else:
+            rows = repository.list_profile_permission_rows(db, id_perfil=id_perfil)
         return [
             PermissionSummary(
                 id_permissao=permission.id_permissao,
@@ -837,7 +841,7 @@ def create_user_account(
     id_usuario_ator: int,
 ) -> UserAccountCreated:
     now = _utc_now()
-    initial_password = token_urlsafe(12)
+    initial_password = generate_temporary_password()
     try:
         user = Usuario(
             username=payload.username,
@@ -847,7 +851,7 @@ def create_user_account(
             atualizado_em=now,
             hash_senha=hash_password(initial_password),
             senha_alterada_em=now,
-            troca_senha_obrigatoria=True,
+            troca_senha_obrigatoria=False,
         )
         repository.create_user(db, user)
         _add_definition_event(
@@ -892,7 +896,7 @@ def reset_user_temporary_password(
         raise ConflictError("Use a troca de senha da própria conta para alterar seu acesso.")
 
     now = _utc_now()
-    temporary_password = token_urlsafe(12)
+    temporary_password = generate_temporary_password()
     try:
         user = repository.get_user_for_update(db, id_usuario=id_usuario)
         if user is None:
@@ -911,18 +915,21 @@ def reset_user_temporary_password(
                 "Você não pode redefinir a senha de uma conta com perfil de administração superior."
             )
         if not user.ativo:
-            raise ConflictError("Ative a conta antes de gerar uma nova senha temporária.")
+            raise ConflictError("Ative a conta antes de gerar uma nova senha.")
 
         user.hash_senha = hash_password(temporary_password)
         user.senha_alterada_em = now
-        user.troca_senha_obrigatoria = True
+        user.troca_senha_obrigatoria = False
         user.atualizado_em = now
         revoke_user_sessions(db, id_usuario=user.id_usuario, revogado_em=now)
         _add_definition_event(
             db,
-            tipo_evento="SENHA_TEMPORARIA_REDEFINIDA",
+            tipo_evento="USUARIO_SENHA_ALTERADA",
             id_usuario_ator=id_usuario_ator,
-            detalhes={"id_usuario": user.id_usuario},
+            detalhes={
+                "id_usuario": user.id_usuario,
+                "tipo_alteracao": "SENHA_TEMPORARIA_REDEFINIDA",
+            },
         )
         db.commit()
         return UserAccountCreated(
@@ -1181,6 +1188,10 @@ def grant_profile_permission(
         )
         if profile is None or not profile.ativo:
             raise NotFoundError("Perfil ativo não encontrado.")
+        if profile.codigo == "DEV":
+            raise ConflictError(
+                "O perfil DEV recebe automaticamente todas as permissões ativas."
+            )
         if permission_row is None:
             raise NotFoundError("Permissão ativa não encontrada.")
         permission, resource = permission_row
@@ -1241,6 +1252,13 @@ def revoke_profile_permission(
     if not normalized_reason or len(normalized_reason) > 500:
         raise ConflictError("Informe um motivo de revogação com até 500 caracteres.")
     try:
+        profile = repository.get_profile(db, id_perfil=id_perfil)
+        if profile is None:
+            raise NotFoundError("Perfil não encontrado.")
+        if profile.codigo == "DEV":
+            raise ConflictError(
+                "O perfil DEV recebe automaticamente todas as permissões ativas."
+            )
         assignment = repository.get_profile_permission_for_update(
             db,
             id_perfil=id_perfil,
