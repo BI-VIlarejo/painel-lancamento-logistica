@@ -8,12 +8,15 @@ export type FeedbackParticipant = {
 };
 
 export type FeedbackItem = {
-  id_feedback: string;
+  id_feedback: number;
+  codigo_lancamento: string;
+  codigo_revisao: string;
+  codigo_item_lancamento: string;
   data_feedback: string;
+  data_entrega: string;
   tipo: FeedbackType;
   id_localidade: number;
   nome_localidade: string;
-  nome_cliente: string | null;
   participantes: FeedbackParticipant[];
   relato: string;
   criado_em: string;
@@ -22,10 +25,37 @@ export type FeedbackItem = {
 export type FeedbackCreateInput = {
   data_feedback: string;
   tipo: FeedbackType;
-  id_localidade: number;
-  nome_cliente: string | null;
-  participantes: { id_pessoa: number; papel_participante: FeedbackRole }[];
+  codigo_lancamento: string;
+  codigo_revisao: string;
+  codigo_item_lancamento: string;
   relato: string;
+};
+
+export type FeedbackDeliveryItem = {
+  codigo_lancamento: string;
+  codigo_revisao: string;
+  codigo_item_lancamento: string;
+  data_entrega: string;
+  id_localidade: number;
+  nome_localidade: string;
+  quantidade_realizada: number;
+  quantidade_nao_realizada: number;
+  participantes: FeedbackParticipant[];
+};
+
+export type FeedbackListFilters = {
+  q?: string;
+  tipo?: FeedbackType | "TODOS";
+  id_localidade?: number;
+  data_de?: string;
+  data_ate?: string;
+  limit?: number;
+  offset?: number;
+};
+
+export type FeedbackLocality = {
+  id_localidade: number;
+  nome_localidade: string;
 };
 
 export type FeedbackPageResponse = {

@@ -1,12 +1,11 @@
 import { errorFromResponse } from "./apiError";
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-const apiBaseUrl = configuredBaseUrl || (import.meta.env.DEV ? "/api/v1" : "");
-
 export const isDemoMode =
   import.meta.env.DEV &&
   import.meta.env.VITE_DEMO_MODE === "true" &&
   !configuredBaseUrl;
+const apiBaseUrl = isDemoMode ? "" : configuredBaseUrl || (import.meta.env.DEV ? "/api/v1" : "");
 
 let csrfToken = "";
 
@@ -74,4 +73,33 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+export async function apiBlob(path: string): Promise<Blob> {
+  if (!apiBaseUrl) {
+    throw new Error("Configure VITE_API_BASE_URL para conectar o Portal à API.");
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}${path}`, {
+      method: "GET",
+      credentials: "include",
+      headers: { Accept: "text/csv" },
+    });
+  } catch {
+    throw new Error("Não foi possível conectar à API. Confira se o backend está disponível.");
+  }
+
+  if (!response.ok) {
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    if (response.status === 401) clearCsrfToken();
+    throw errorFromResponse(response.status, payload);
+  }
+  return response.blob();
 }
