@@ -1,10 +1,9 @@
 import { errorFromResponse } from "./apiError";
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
-export const isDemoMode =
-  import.meta.env.DEV &&
-  import.meta.env.VITE_DEMO_MODE === "true" &&
-  !configuredBaseUrl;
+// This is a build-time switch for isolated demo deployments (including Vercel Preview).
+// When enabled, all feature APIs use browser-local demo data and never use the configured API URL.
+export const isDemoMode = import.meta.env.VITE_DEMO_MODE === "true";
 const apiBaseUrl = isDemoMode ? "" : configuredBaseUrl || (import.meta.env.DEV ? "/api/v1" : "");
 
 let csrfToken = "";
