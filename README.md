@@ -19,7 +19,7 @@ O frontend usa a API por padrão. A demonstração só é ativada explicitamente
 - Consulta administrativa paginada de auditoria, limitada a metadados.
 - Conta inicial `DEV` para desenvolvimento local, com acesso global às permissões deste portal.
 
-Não existe cadastro público. Contas são provisionadas pelo fluxo administrativo autenticado ou pelo comando local; perfil e escopo são concedidos pela API administrativa documentada no guia. No bootstrap local, feedback, correção e cancelamento ficam disponíveis apenas ao perfil `DEV` até a matriz real de permissões ser aprovada.
+Não existe cadastro público. Contas são provisionadas pelo fluxo administrativo autenticado ou pelo comando local; perfil e escopo são concedidos pela API administrativa documentada no guia. Os perfis `DEV`, `GESTOR` e `DIRETORIA` recebem as permissões de gestão previstas no código. `OPERADOR` mantém catálogos, lança Entregas e registra/importa/consulta/exporta feedback, sem acesso a indicadores, auditoria ou usuários e acessos. `CADASTRADOR` mantém catálogos e consulta/exporta feedback, sem criar feedback ou administrar contas. Consultas e exportações respeitam os escopos concedidos; use somente dados fictícios no desenvolvimento.
 
 A integração com o VilarejoBI não faz parte deste portal neste release. A evolução do schema operacional continua pela cadeia Alembic `logistica`, mantida no repositório responsável pelo catálogo MySQL. Consulte o [plano de implementação](docs/plano_implementacao.md) antes de usar o portal com dados reais.
 
@@ -37,6 +37,8 @@ A integração com o VilarejoBI não faz parte deste portal neste release. A evo
 - [Guia das tabelas operacionais](docs/guia_tabelas_modelo_operacional.md)
 - [Modelo operacional DBML](docs/modelo_operacional_lancamento_logistica.dbml)
 - [Arquitetura de implantação](docs/arquitetura_implantacao.md)
+- [Deploy de staging na EC2](deploy/ec2/README.md)
+- [Roteiro da reunião com o Diretor de Logística](docs/roteiro-reuniao-diretor-logistica.md)
 - [Contexto mestre de Logística](../docs/contexto_projeto_logistica.md)
 
 ## Publicação

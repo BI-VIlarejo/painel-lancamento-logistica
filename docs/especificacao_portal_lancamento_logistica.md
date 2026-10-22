@@ -1,7 +1,7 @@
 # Portal de lançamento de dados de Logística
 
-**Atualizado em:** 15/10/2026  
-**Status:** especificação inicial para validação com o gestor; ainda não é autorização para aplicar migrations ou publicar em produção.  
+**Atualizado em:** 22/10/2026
+**Status:** especificação funcional atualizada com as decisões do responsável pelo produto; ainda não é autorização para publicar em produção.
 **Protótipo de referência:** [Painel de Entregas Vilarejo — Adapta](https://skip-artifacts-snapshots.application.production.adapta.tools/user_3I06ziDncMpG4iCubDFbOkPrTAz/fn575irlp4ibn56ddn5vixzsmq/revisions/a6b1778b-3b65-424d-8a21-2c4c2a51f134/index.html)
 
 ## 1. Resumo da mudança de escopo
@@ -55,7 +55,7 @@ O formulário solicita:
 - até dois ajudantes opcionais;
 - descrição do ocorrido.
 
-O protótipo atribui `+1` por elogio e `-1` por reclamação a cada pessoa informada. Nome do cliente e descrição podem conter dados pessoais; sua coleta, visibilidade, exportação e prazo de retenção precisam ser definidos antes do piloto.
+O protótipo atribui `+1` por elogio e `-1` por reclamação a cada pessoa informada. A decisão de produto de 21/10 mantém o nome do cliente no feedback; não se coletam telefone, documento ou outros identificadores. Todos os perfis do piloto podem consultar e exportar dentro dos escopos; OPERADOR também pode registrar/importar. O prazo e a ação de retenção precisam ser definidos antes de usar dados reais.
 
 ### 2.4 Cadastros e filtros
 
@@ -65,21 +65,17 @@ O painel permite filtrar por mês ou período, loja, motivo, pessoa e equipe. A 
 
 ### 2.5 Indicadores exibidos e decisões de negócio necessárias
 
-O protótipo usa incorretamente a taxa de entregas realizadas como **OTIF**:
+**Regra de negócio vigente para OTIF:**
 
 ```text
-entregas realizadas / (entregas realizadas + entregas não realizadas)
+OTIF (%) = entregas não realizadas / (entregas realizadas + entregas não realizadas) × 100
 ```
 
-O painel também apresenta meta de 95%, faixas abaixo de 90% e entre 90% e 95%, totais por loja/equipe/pessoa e um ranking que ordena primeiro pela taxa, depois pelo score de atendimento e depois pelo volume realizado.
+O indicador é calculado com as quantidades registradas e agregado pelas somas do recorte selecionado. O painel apresenta o resultado geral e por motorista, equipe e loja. A taxa de realização continua disponível como indicador separado.
 
-Essa fórmula mede apenas entregas realizadas dentro do total registrado; não demonstra pontualidade nem completude.
+**Decisão do responsável pelo produto em 22/10/2026:** não coletar nem exibir as contagens de entregas no prazo e completas. As colunas já existentes no banco são mantidas por compatibilidade histórica, mas não participam do cálculo. Como o OTIF usa somente realizadas e não realizadas, registros antigos também podem ser calculados.
 
-**Decisão do responsável pelo produto em 21/10/2026:** o release inclui OTIF, calculado pelo produto entre os percentuais de pontualidade e completude (90% × 80% = 72%). O formulário registra as quantidades entregues no prazo e completas/sem avarias, ambas limitadas às entregas realizadas. O total registrado (`realizadas + não realizadas`) é o denominador das duas taxas. As contagens entraram no backend; registros anteriores podem permanecer sem esses valores e deixam o OTIF indisponível quando incluídos no filtro.
-
-O ranking individual do protótipo precisa ser lido com cautela: o formulário registra contagens por equipe, não por pedido e pessoa. Atribuir a mesma quantidade realizada/não realizada a cada integrante pode duplicar volumes ou produzir uma avaliação individual que os dados não sustentam. A regra de atribuição registrada pelo responsável pelo produto abaixo evita replicar contagens do motorista nos ajudantes.
-
-**Decisão do responsável pelo produto em 21/10/2026:** o release inclui ranking. Seguindo os campos do CSV histórico, as quantidades “pelo motorista” alimentam a taxa e o volume do motorista. Ajudantes recebem o score de feedback por pessoa (`+1` por elogio e `−1` por reclamação), sem copiar para eles as contagens da equipe. O ranking ordena por taxa de realização, score de feedback e volume realizado, nessa ordem.
+Metas e faixas de cor ficam para depois do primeiro piloto. O ranking misto de motoristas e ajudantes está incluído no release. Como o formulário registra contagens por equipe, cada participante recebe os resultados das equipes em que trabalhou; os volumes são coletivos e não devem ser somados entre pessoas. O ranking ordena por taxa de realização, score de atendimento (`+1` por elogio e `−1` por reclamação), volume realizado e nome.
 
 ### 2.6 Limite técnico do protótipo
 
@@ -89,16 +85,14 @@ O HTML consultado salva dados no `localStorage` do navegador e oferece uma confi
 
 ### 3.1 Primeira entrega do portal
 
-Proposta para a versão 1:
+Escopo definido para a primeira versão funcional:
 
 - reproduzir a identidade visual e a navegação geral do protótipo;
-- implementar o módulo **Entregas**, começando pelo formulário de lançamento diário;
-- oferecer histórico e edição somente enquanto o lançamento estiver em rascunho;
-- incluir motivos de não realização e validações;
-- incluir feedbacks, cadastros, painel e ranking apenas após validar os campos, permissões e regras dessas telas;
+- incluir os módulos do protótipo: **Entregas**, **Reclamações e Elogios**, **Cadastros**, **Painel Gerencial** e **Ranking de Pessoas**;
+- oferecer histórico, rascunhos, confirmação, correção e cancelamento auditáveis;
+- manter as validações de motivos de não realização e de escopo na API;
+- manter a administração de catálogos separada da administração de usuários e acessos;
 - deixar pronta a navegação modular para adicionar **Gestão de Frota** e **Operações no CD**.
-
-O gestor deve confirmar se “a primeira página” significa toda a experiência do protótipo (cinco abas) ou se a primeira entrega deve conter apenas o lançamento de entregas e seu histórico. Isso afeta o tamanho e o modelo da primeira migration.
 
 ### 3.2 Módulos posteriores
 
@@ -139,9 +133,9 @@ O login do portal será próprio, por username e senha. A conta, o hash Argon2id
 
 Na Vercel será implantado somente o frontend. A API FastAPI deve executar na AWS/VPC e conectar diretamente ao endpoint privado da RDS pela porta 3306, com regra de Security Group autorizando a origem da API. O navegador chama a API por HTTPS; não há conexão do frontend nem do usuário final ao MySQL.
 
-No desenvolvimento local, é possível usar o túnel SSH via EC2/Tailscale adotado no fluxo do VilarejoBI. O túnel fica no computador do desenvolvedor, e o container local alcança a porta encaminhada pelo host. Essa rota é para desenvolvimento; a API em produção usa rede privada da AWS e não abre túnel SSH para cada acesso. A [arquitetura e guia de conexão](./arquitetura_implantacao.md) registra o desenho e as configurações.
+No desenvolvimento local, a API executada no host pode abrir o túnel SSH via EC2/Tailscale com `USE_DB_TUNNEL=true`. O modo Compose padrão permanece isolado no MySQL local. Essa rota é para desenvolvimento; a API em produção usa rede privada da AWS e não abre túnel SSH para cada acesso. A [arquitetura e guia de conexão](./arquitetura_implantacao.md) registra o desenho e as configurações.
 
-O deploy da API poderá usar EC2 ou serviço de containers, conforme a infraestrutura já disponível e a decisão de Infra. Não configurar VPC peering entre Vercel e AWS para esse desenho: a interface é pública e só precisa alcançar um endpoint HTTPS da API.
+O deploy da API será feito em uma EC2 na VPC aprovada. Não configurar VPC peering entre Vercel e AWS para esse desenho: a interface é pública e só precisa alcançar um endpoint HTTPS da API.
 
 ## 5. Banco de dados: o que adicionar
 
@@ -180,7 +174,7 @@ Os nomes e relacionamentos completos estão no [DBML operacional do portal](./mo
 
 | Tabela | Grão e finalidade | Campos principais sugeridos |
 |---|---|---|
-| `op_logistica_setor` | Um cadastro por setor que lança dados. | `id_setor`, `codigo` (`ENTREGAS`, `FROTA`, `OPERACOES_CD`), `nome`, `ativo`, timestamps. |
+| `op_logistica_setor` | Um cadastro por setor que lança dados. | `id_setor`, `codigo` (`SUPORTE`, `FROTA`, `OPERACOES_CD`), `nome`, `ativo`, timestamps. O módulo de Entregas usa o setor responsável `SUPORTE`. |
 | `op_logistica_localidade` | Cópia controlada das localidades permitidas no portal. | `codigo_localidade` canônico, nome, tipo, ativo e horário da sincronização. |
 | `op_logistica_perfil` | Um registro por perfil funcional da aplicação. | `id_perfil`, `codigo`, `nome`, `ativo`. Exemplos: `ADMIN_PORTAL`, `DONO_VILAREJO`, `DIRETOR_LOGISTICA`, `GESTOR_SETOR`, `LANCADOR`, `LEITOR`. |
 | `op_logistica_recurso` | Catálogo das áreas/páginas funcionais do portal, como Entregas, Frota e Painel Gerencial. | Cada recurso pode pertencer a um setor. Recursos transversais não concedem acesso global aos dados; a consulta continua limitada pelos escopos do usuário. |
@@ -244,15 +238,15 @@ O DBML do VilarejoBI mantém as 15 tabelas analíticas de baseline e adiciona um
 - `dim_pessoa_logistica` preserva versões históricas de função usando chave pseudonimizada; `dim_pessoa_logistica_identidade` guarda o nome em tabela separada com leitura restrita. Pontes e indicadores individuais continuam sujeitos a autorização.
 - `dim_localidade_codigo_origem` associa códigos exatos de cada sistema à localidade canônica em períodos de vigência. A carga valida sobreposições temporalmente, sem usar nome/cidade como chave.
 - `dim_motivo_nao_entrega` e `dim_tipo_feedback` normalizam categorias usadas nos formulários.
-- `fato_entregas_diarias` tem grão de uma linha de resumo diária/localidade/equipe por revisão publicada. Deve carregar também as contagens de entregas no prazo e completas usadas pelo OTIF aprovado. A chave de idempotência é formada por sistema, UUID do lançamento, UUID da revisão e UUID estável do item. Reprocessar a mesma revisão não duplica linhas; uma nova revisão preserva a versão anterior e atualiza `eh_revisao_atual` na mesma transação de publicação.
+- `fato_entregas_diarias` tem grão de uma linha de resumo diária/localidade/equipe por revisão publicada. Deve carregar as quantidades realizadas e não realizadas, que permitem calcular o OTIF aprovado. A chave de idempotência é formada por sistema, UUID do lançamento, UUID da revisão e UUID estável do item. Reprocessar a mesma revisão não duplica linhas; uma nova revisão preserva a versão anterior e atualiza `eh_revisao_atual` na mesma transação de publicação.
 - `fato_entregas_nao_realizadas_motivo` tem grão de uma linha de resumo por motivo e revisão, e guarda a quantidade não realizada daquele motivo. O ETL valida que a soma por linha coincide com o resumo diário.
-- `fato_feedback` tem grão de um evento por revisão e guarda somente contagem, tipo, data e localidade. Nome de cliente, identificador e texto permanecem no banco operacional.
-- `bridge_entrega_pessoa` e `bridge_feedback_pessoa` representam participantes sem atribuir a cada pessoa as medidas totais da equipe/evento. Ranking por entregas individuais exige uma regra de rateio aprovada.
+- `fato_feedback` tem grão de um evento por revisão e guarda somente contagem, tipo, data e localidade. Nome e relato permanecem no banco operacional e não são publicados nos fatos; o Portal coleta o nome do cliente, mas não telefone, documento ou outros identificadores.
+- `bridge_entrega_pessoa` e `bridge_feedback_pessoa` representam participantes no modelo analítico. O ranking do Portal apresenta a cada pessoa as quantidades coletivas das equipes de que participou; esses volumes não podem ser somados entre pessoas nem interpretados como medidas individuais por pedido.
 - `etl_logistica_execucao` registra a execução técnica e as contagens da carga; seu UUID é o mesmo `codigo_execucao` da publicação operacional. Os catálogos podem ficar em databases separados, portanto essa correlação não depende de FK entre eles.
 
 Os fatos novos mantêm versões analíticas de correções confirmadas em vez de apagar a versão anterior. Consultas de indicadores vigentes filtram `eh_revisao_atual = true`; a rotina de publicação garante que somente a última versão confirmada de cada lançamento permaneça marcada nas três fatos. Esse marcador deve ser atualizado transacionalmente para evitar uma janela com duas versões somadas ou nenhuma versão visível. O UUID `codigo_revisao` da camada operacional é gravado como `codigo_revisao_origem` no analítico.
 
-Esses fatos não substituem automaticamente `fato_entregas_mensais`, cujo grão e medidas são diferentes. O OTIF deste produto é calculado no grão agregado aprovado a partir das contagens no prazo e completas; a publicação analítica precisa carregar essas duas medidas. O histórico legado sem as contagens permanece sem OTIF.
+Esses fatos não substituem automaticamente `fato_entregas_mensais`, cujo grão e medidas são diferentes. O OTIF deste produto é calculado a partir das quantidades realizadas e não realizadas. A publicação analítica deve preservar essas medidas para que o indicador possa ser agregado por motorista, equipe e loja.
 
 ### 6.3 Evitar conflito com `VilarejoAutomacaoLogistica`
 
@@ -346,7 +340,7 @@ Este contrato é uma proposta de divisão por responsabilidade; nomes e formatos
 | `POST /api/v1/entregas` | Cria um rascunho com cabeçalho, participantes e motivos. | Exigir setor/localidade permitidos; aceitar `Idempotency-Key` para proteger retries. |
 | `PATCH /api/v1/entregas/{id}` | Atualiza o próprio rascunho ou rascunho autorizado. | Revalidar escopo e estado; não aceitar autor, perfil ou localidade alterados pelo cliente sem permissão. |
 | `POST /api/v1/deliveries/{codigo_lancamento}/confirm` | Valida e registra definitivamente o lançamento conferido pelo autor. | Exigir permissão de criação e escopo compatível; confirmação idempotente. |
-| `POST /api/v1/feedbacks` e `GET /api/v1/feedbacks` | Registra ou consulta reclamações/elogios. | Aplicar permissão mais restrita para nome do cliente e texto; POST exige `Idempotency-Key` e permite vários feedbacks por entrega. |
+| `POST /api/v1/feedbacks` e `GET /api/v1/feedbacks` | Registra ou consulta reclamações/elogios. | Aplicar permissões e escopos para nome e relato; exigir nome do cliente, sem coletar outros identificadores. POST exige `Idempotency-Key`, permite vários feedbacks por entrega e valida o motorista/ajudantes selecionados contra a equipe da entrega confirmada. |
 | `GET /api/v1/indicadores/entregas` | Painel gerencial com filtros. | Indicadores e exportações usam os mesmos escopos e filtros que a listagem. |
 | `POST /api/v1/access/users` | Provisiona funcionários autorizados a entrar no portal com perfil e escopo iniciais. | Exigir `CONTROLE_ACESSO:ADMINISTRAR` global; criar conta e concessão na mesma transação e emitir senha numérica de seis dígitos exibida uma vez. |
 
@@ -369,7 +363,7 @@ LancamentoLogistica/
         catalogs/                         # setor, localidade, pessoa e motivo
         deliveries/                       # lançamentos de Entregas
         workflow/                         # envio, revisão, aprovação e correção
-        feedback/                          # reclamação/elogio, após política aprovada
+        feedback/                          # reclamação/elogio; usar dados fictícios até definir retenção
         audit/                             # trilha de ações
     migrations/                           # Alembic e revisões incrementais
     Dockerfile
@@ -390,20 +384,19 @@ Na Vercel, configurar `frontend/` como Root Directory, executar `npm run build` 
 
 ## 9. Plano de implementação em ordem
 
-### Etapa 0 — Confirmar decisões com o gestor e Infra
+### Etapa 0 — Decisões registradas e pendências de piloto
 
-Antes de definir migration, registrar respostas para:
+As decisões abaixo já orientam a primeira versão funcional:
 
-1. A versão inicial reproduz as cinco abas atuais ou começa apenas por lançamentos de entregas?
-2. O grão é um resumo por data/loja/equipe, por rota ou por pedido? Uma equipe pode lançar duas vezes para a mesma loja/data?
-3. O número chamado OTIF no protótipo deve manter esse nome? Qual é a fórmula e qual a meta oficial?
-4. O ranking individual é aprovado? Como dividir o resultado de uma equipe por motorista/ajudante? Feedback pode ser usado em avaliação individual?
-5. Quem pode criar, confirmar, cancelar e corrigir lançamentos? Como uma correção preserva a versão anterior?
-6. Quais setores e localidades cada gestor pode acessar? O diretor tem escopo global em todos os formulários?
-7. Como as contas serão provisionadas e como será feita a definição/reset de senha? É necessário MFA? Que equipe poderá ativar/desativar contas e conceder perfis/escopos?
-8. Os dados `op_logistica_*` ficarão no catálogo de Logística ou em catálogo operacional separado na mesma instância?
-9. Qual serviço AWS aprovado hospedará a API e fornecerá seu endpoint HTTPS? Quais Security Groups e segredos serão usados para acesso privado à RDS?
-10. Nome do cliente é realmente necessário? Qual retenção, política de exportação e acesso ao histórico de reclamações?
+1. O release inclui as cinco áreas do protótipo: Entregas, feedback, cadastros, painel e ranking.
+2. O lançamento registra quantidades por data, loja e equipe; pode haver mais de uma equipe para a mesma loja/data. O Portal preserva essa granularidade coletiva.
+3. OTIF é calculado como não realizadas ÷ total registrado, no geral e por motorista, equipe e loja. Metas e faixas de cor ficam para depois do primeiro piloto.
+4. O ranking é misto: motoristas e ajudantes recebem os resultados coletivos das equipes em que participaram. A ordem atual usa taxa de realização, score (+1 elogio/−1 reclamação), volume realizado e nome.
+5. OPERADOR pode lançar Entregas, manter catálogos e registrar/importar/consultar/exportar feedback dentro dos escopos; não acessa indicadores, auditoria nem usuários e acessos. Os perfis GESTOR, DIRETORIA e DEV mantêm as permissões já previstas.
+6. O feedback exige nome do cliente. Todos os perfis do piloto podem consultar/exportar dentro dos escopos; OPERADOR também pode registrar/importar. Definir retenção de nome/relato antes de usar dados reais.
+7. O staging usa `vilarejo_bi_logistica_staging`; EC2 hospedará a API, Vercel o frontend e migrations seguem a cadeia `logistica` mantida pelo VilarejoBI.
+
+Antes de iniciar o piloto, ainda falta validar os CSVs com amostras anonimizadas, carregar os catálogos oficiais, provisionar os acessos identificados e concluir DNS/TLS/rede/segredos da infraestrutura.
 
 ### Etapa 1 — Criar repositório e preparar frontend e backend
 
@@ -454,7 +447,7 @@ Antes de definir migration, registrar respostas para:
 1. Usar o catálogo local de localidades para as lojas/filiais; impedir criação duplicada de texto livre.
 2. Restringir criação, alteração e desativação de motoristas, ajudantes e motivos a quem possuir permissão de cadastro.
 3. Desativar motivos/pessoas antigas sem apagar referências históricas.
-4. Implementar feedback com controles de acesso mais restritos a cliente/descrição.
+4. Implementar feedback com controles de acesso por perfil e escopo; dados reais dependem da definição de retenção.
 5. Implementar política de cancelamento e correção por nova revisão. Não criar etapa de aprovação por outra pessoa no fluxo diário.
 6. Registrar cada transição com ator, hora, estado anterior/novo e comentário.
 
@@ -462,11 +455,11 @@ Antes de definir migration, registrar respostas para:
 
 ### Etapa 6 — Indicadores, filtros, CSV e impressão
 
-1. Usar a fórmula aprovada: percentual no prazo × percentual completo, com ambas as taxas calculadas sobre o total registrado.
+1. Usar a fórmula aprovada: entregas não realizadas ÷ total registrado, no geral e por motorista/equipe/loja.
 2. Implementar filtros de competência/período/localidade/motivo/pessoa/equipe com consultas paginadas e escopo de acesso.
-3. Implementar dados por equipe/pessoa sem atribuir todo o volume de uma equipe a cada integrante até regra aprovada.
-4. Implementar feedback score somente após aprovação da política de pontuação e visibilidade.
-5. Confirmar se importação CSV permanece no MVP. Se sim, validar todas as linhas e apresentar prévia/erros antes de gravar.
+3. Implementar dados por equipe/pessoa conforme a regra aprovada: cada integrante recebe as quantidades coletivas das equipes de que participou, sem somar resultados entre pessoas.
+4. Usar o score aprovado no ranking misto: +1 por elogio e −1 por reclamação para cada participante da equipe relacionada.
+5. Importação CSV faz parte da primeira versão; validar todas as linhas e apresentar prévia/erros antes de gravar.
 6. Implementar exportação/impressão com os mesmos filtros e autorização do relatório visual.
 
 **Aceite:** indicadores conferem com casos manuais conhecidos e exportações não ampliam o escopo de dados do usuário.
@@ -495,7 +488,7 @@ Para cada novo setor:
 1. Conectar o repositório Git privado `LancamentoLogistica` ao projeto da equipe na Vercel.
 2. Configurar `frontend/` como Root Directory, `npm run build` como build e `dist` como diretório de saída.
 3. Usar PRs/branches para gerar previews da interface e manter `VITE_API_BASE_URL` apontando para a API de staging; Vercel documenta deploy por Git e previews ([Git deployments](https://vercel.com/docs/git)).
-4. Implantar a imagem Docker do backend no serviço AWS aprovado, dentro da VPC e com endpoint HTTPS para o frontend.
+4. Implantar a imagem Docker do backend na EC2 de staging, dentro da VPC, e disponibilizar um endpoint HTTPS para o frontend.
 5. Configurar o domínio oficial e TLS após liberação de DNS/Infra; confirmar health check, logs e região AWS próxima da RDS.
 
 ### 10.2 Configurar variáveis por ambiente
@@ -512,7 +505,7 @@ Variáveis da Vercel passam a valer em novos deployments. Nenhuma credencial SQL
 ### 10.3 Backend na AWS/VPC e conexão com a RDS
 
 1. Construir a imagem Docker do FastAPI com health check, logs sem PII desnecessária e conexão privada à RDS.
-2. Implantar a API na infraestrutura AWS aprovada (EC2, serviço/container ou outra opção disponível), com endpoint HTTPS autenticado.
+2. Implantar a API na EC2 aprovada, com endpoint HTTPS autenticado.
 3. Configurar o Security Group da RDS para aceitar TCP 3306 a partir do Security Group da API, além de fornecer segredos de runtime e migrations por mecanismo aprovado.
 4. Publicar o frontend estático na Vercel para chamar o endpoint HTTPS; aplicar autenticação, CORS e controles de tráfego no backend/gateway.
 5. Manter a RDS inacessível ao navegador e à internet; somente a API dentro da VPC conecta diretamente ao banco.
@@ -520,7 +513,7 @@ Variáveis da Vercel passam a valer em novos deployments. Nenhuma credencial SQL
 
 ### 10.4 Túnel local de desenvolvimento
 
-Para acesso local ao staging, pode-se abrir um túnel SSH via EC2/Tailscale autorizada, como no fluxo do VilarejoBI. A chave permanece no computador do desenvolvedor; o container local conecta ao host pela porta encaminhada. A aplicação em produção, executada na VPC, usa a rota privada até a RDS e não depende desse túnel. Ver [arquitetura e conexão com a RDS](./arquitetura_implantacao.md) para o formato do comando e as variáveis locais.
+Para acesso local ao staging, a API executada diretamente no host pode abrir um túnel SSH via EC2/Tailscale quando `USE_DB_TUNNEL=true`. A chave permanece no computador do desenvolvedor. A aplicação em produção, executada na VPC, usa a rota privada até a RDS e não depende desse túnel. Ver [arquitetura e conexão com a RDS](./arquitetura_implantacao.md) para as variáveis locais.
 
 ### 10.5 Segredos e releases
 
@@ -560,19 +553,14 @@ Processo de coordenação:
 6. Fazer integração conjunta no staging, com cópia/versão de dados e fonte marcada (`PORTAL`, `SEAC`, `COBLI`, `CTA`, arquivo).
 7. Aprovar a planilha e o portal em paralelo por setor; não retirar a planilha até um ciclo completo ter reconciliação aceita.
 
-## 13. Perguntas que bloqueiam o modelo final
+## 13. Pendências para iniciar o piloto
 
-1. Quais perfis podem lançar, confirmar, cancelar e corrigir registros? A confirmação diária é feita pela própria pessoa que preenche.
-2. Fórmula do OTIF já definida: percentual no prazo × percentual completo. Continua pendente validar a forma operacional de coletar essas contagens e carregar as duas medidas ao BI.
-3. A meta de 95% e os limites 90%/95% são oficiais?
-4. Ranking de pessoas será usado para avaliação? Como atribuir uma entrega coletiva?
-5. Feedback deve manter nome do cliente? Quem pode ler/exportar o texto?
-6. Os motoristas e ajudantes vêm de cadastro corporativo ou serão mantidos pela Logística?
-7. A primeira versão precisa de CSV, impressão/PDF, ranking e gerenciamento de cadastros?
-8. Qual é o grão exato de um lançamento e qual a regra de correção depois da confirmação?
-9. Podemos adicionar as tabelas ao catálogo atual ou o gestor/Infra prefere catálogo operacional separado?
-10. Quais usuários serão provisionados e qual escopo por setor/localidade cada pessoa deve receber?
-11. Qual plano Vercel existe para a equipe e onde a API ficará hospedada?
+1. Definir quanto tempo nomes e relatos de feedback real serão mantidos e se serão apagados ou anonimizados depois.
+2. Receber a lista oficial de lojas/filiais com cidade e UF, pessoas/equipes e motivos de ocorrência, com responsável pela validação.
+3. Validar o formato e o mapeamento dos CSVs de Entregas e feedback com amostras anonimizadas e códigos estáveis para relacionar cada feedback à entrega.
+4. Informar username e nome completo da conta DEV a provisionar e definir as concessões de Suporte/localidade para o piloto.
+5. Concluir o ambiente EC2, endpoint HTTPS, DNS/TLS, Security Groups, secrets do GitHub e variáveis da Vercel conforme o guia de deploy.
+6. Confirmar se impressão/PDF é necessária no piloto. Metas e faixas de cor do OTIF estão adiadas para depois do piloto e não bloqueiam a primeira versão.
 
 ## 14. Critérios de aceite do primeiro módulo
 
@@ -583,7 +571,7 @@ Processo de coordenação:
 - Rascunho e confirmação deixam trilha de auditoria; a confirmação pelo autor registra a entrega imediatamente, sem aprovação de outro usuário. Correções futuras preservam a versão anterior.
 - Repetição de requisição não duplica registros.
 - Feedback e dados pessoais são protegidos segundo a matriz aprovada.
-- A fórmula do indicador e o uso do ranking foram aprovados ou aparecem com rótulos provisórios corretos.
+- A fórmula do OTIF e o ranking misto seguem as regras aprovadas; o painel identifica que os volumes por pessoa são resultados coletivos da equipe.
 - A carga analítica usa somente lançamentos confirmados e não duplica valores do SEAC/ETL.
 - Staging e produção da Vercel usam configurações diferentes; RDS não tem credenciais no frontend.
 - O piloto roda em paralelo à planilha e recebe aceite do gestor antes da adoção oficial.

@@ -1,8 +1,8 @@
 # Testes do backend
 
 Os testes automatizados atuais cobrem autenticação e troca de senha, permissões do bootstrap,
-regras de Entregas, cálculo de OTIF a partir das contagens no prazo/completas, ranking sem duplicar
-contagens nos ajudantes, versionamento e cancelamento, feedback com nome de cliente, escopo, vínculo
+regras de Entregas, cálculo de OTIF como não realizadas ÷ total registrado, ranking misto que exibe
+o resultado coletivo da equipe para cada participante, versionamento e cancelamento, feedback com nome de cliente, escopo, vínculo
 a Entrega confirmada, múltiplos feedbacks por entrega, idempotência e leitura de auditoria. Eles usam
 SQLite isolado e não acessam staging ou produção.
 

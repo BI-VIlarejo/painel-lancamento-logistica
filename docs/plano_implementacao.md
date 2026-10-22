@@ -1,21 +1,35 @@
 # Plano de implementação do portal de lançamento de dados
 
-**Atualizado em:** 21/10/2026
+**Atualizado em:** 22/10/2026
 **Status:** plano de execução; as decisões de negócio e infraestrutura indicadas como pendentes precisam ser aprovadas antes de gravar dados reais ou publicar em produção.
 
 Este documento organiza o trabalho do `LancamentoLogistica` em ordem de implementação. A [especificação do portal](./especificacao_portal_lancamento_logistica.md) continua sendo a referência para campos, regras, arquitetura, segurança e modelo de dados. O [DBML operacional](./modelo_operacional_lancamento_logistica.dbml) é uma proposta, ainda não é uma migration aplicada.
 
 ### Atualização de implementação — 21/10/2026
 
-- Decisões do responsável pelo produto: Entregas, feedback, painel e ranking entram no release. O feedback aponta para uma entrega e inclui o cliente. DEV, GESTOR e DIRETORIA (perfil administrador) podem usar as ações do portal; OPERADOR pode consultar, registrar e editar rascunhos de Entregas. O catálogo de localidades pertence ao portal; integração com o BI fica fora deste projeto e deste release.
+- Decisões do responsável pelo produto: Entregas, feedback, painel e ranking entram no release. O feedback aponta para uma entrega e inclui o cliente. DEV, GESTOR e DIRETORIA podem usar as ações do portal; OPERADOR (Suporte) pode consultar, registrar e editar Entregas e também registrar, consultar, importar e exportar feedback dentro dos escopos concedidos. O catálogo de localidades pertence ao portal; integração automática com o BI fica fora deste projeto e deste release.
 - Os CSVs de referência são: feedback com data, tipo, cliente, loja, motorista, até dois ajudantes e descrição; histórico de Entregas com data, loja, motorista, até dois ajudantes, quantidades realizadas/não realizadas, motivos e observações.
-- O ranking documentado no protótipo ordena por taxa de realização, score de feedback (+1 elogio/−1 reclamação por pessoa) e volume realizado. O backend atribui as quantidades registradas “pelo motorista” ao motorista; ajudantes recebem seu score de feedback, sem duplicação dos volumes da equipe.
-- A definição de OTIF foi informada como produto das taxas de pontualidade e completude (90% × 80% = 72%). O backend agora registra as duas contagens como subconjuntos das realizadas e calcula as taxas sobre o total registrado; dados antigos sem essas contagens deixam OTIF indisponível.
+- A regra inicial do protótipo atribuía quantidades apenas ao motorista; essa regra foi substituída pela decisão de 22/10: ranking misto de motoristas e ajudantes, com o resultado coletivo das equipes em que cada pessoa trabalhou.
+- A regra de OTIF foi atualizada em 22/10/2026: entregas não realizadas ÷ total registrado (realizadas + não realizadas). O indicador será exibido no geral e por motorista, equipe e loja; as antigas contagens de prazo/completude deixam de ser coletadas e usadas.
 - Correções abrem revisão nova com justificativa e preservam a revisão confirmada; cancelamentos também exigem justificativa, têm permissão separada e geram evento. O painel ignora lançamentos cancelados e mantém os números confirmados enquanto a correção está em rascunho.
 - A API de feedback consulta, cria e exporta por páginas; aceita vários registros por entrega e exige chave idempotente por submissão. Cada registro fica ligado a uma entrega confirmada, armazena nome do cliente e não grava relato/nome em logs técnicos.
 - A consulta administrativa de auditoria reúne metadados de Entregas, acessos e feedback, sem devolver comentário, relato ou detalhes livres.
-- Permanecem pendentes: atualizar a interface para coletar as duas contagens de OTIF; definir retenção e tratamento de reclamações; implementar e validar a importação dos dois CSVs de referência; concluir validação do grão; revisar/aplicar a migration incremental em staging; cadastrar localidades no catálogo local; e configurar hospedagem. A integração com o BI não faz parte deste release.
-- Verificações locais atuais: suíte `unittest`, compilação Python, typecheck e build do frontend. Ruff não está disponível no ambiente local.
+- Permanecem pendentes: definir retenção e tratamento de reclamações; validar a importação dos dois CSVs de referência; concluir validação do grão; carregar os cadastros reais no catálogo local a partir de fontes aprovadas; e configurar o deploy na EC2/Vercel. O catálogo de staging é `vilarejo_bi_logistica_staging`, e a migration `b817e6c2a904` já está aplicada. A integração com o BI não faz parte deste release; a conexão ao RDS seguirá o padrão de infraestrutura do VilarejoBI.
+- As verificações registradas antes das alterações de 22/10 incluíram `unittest`, compilação Python, typecheck e build do frontend. Repeti-las após revisar estas alterações é um bloqueio antes de publicar a versão funcional; Ruff não está disponível no ambiente local.
+
+### Atualização de implementação — 22/10/2026
+
+- Regra de OTIF confirmada: quantidade não realizada dividida pelo total registrado. O painel calcula a razão sobre as somas do recorte e apresenta OTIF por motorista, equipe e loja. O formulário e o importador deixam de coletar entregas no prazo e completas; colunas legadas do banco permanecem sem uso.
+- A manutenção de lojas, equipe e motivos foi separada da administração de contas. `OPERADOR` inclui `CADASTROS:ADMINISTRAR`, então a equipe de lançamento precisa de apenas um perfil com escopo de Suporte/loja. `CONTROLE_ACESSO:ADMINISTRAR` continua separado; a aba e as rotas de usuários exigem essa permissão. O catálogo é compartilhado e acessível por inteiro a quem tem permissão de manutenção, sem ampliar o escopo de entregas e feedback.
+
+- Novos lançamentos do módulo Entregas são associados no backend ao setor ativo `SUPORTE` (Suporte); o formulário e seu importador não enviam `id_setor`. Lançamentos históricos que já apontam para `ENTREGAS` não são reatribuídos. Concessões de escopo ligadas ao setor antigo precisam ser revisadas e concedidas explicitamente para Suporte.
+- O formulário, a API e a exportação de feedback incluem `nome_cliente`, conforme a decisão de produto de 21/10; telefone, documento e outros identificadores não são coletados. Nome e relato não entram em logs técnicos.
+- A importação de feedback oferece um modelo ligado a uma entrega por `codigo_lancamento`, `codigo_revisao` e `codigo_item_lancamento`, com prévia por linha e gravação transacional. A prévia não expõe nome ou relato. Nenhum CSV de origem foi encontrado; validar o mapeamento com amostra anonimizada continua pendente.
+- A API separa permissões de criação, consulta e exportação. Por decisão de produto, OPERADOR (Suporte), GESTOR e DIRETORIA poderão registrar, importar, consultar e exportar feedback dentro dos escopos concedidos. A importação usa a permissão de criação. A retenção permanece pendente.
+- A migration `b817e6c2a904` foi aplicada em staging e confirmada como `head`. As tabelas operacionais de localidades, pessoas e motivos estão vazias; a carga aguarda as listas oficiais e a confirmação dos responsáveis.
+- Decisão do responsável pelo produto: todos os perfis do piloto podem consultar e exportar feedback dentro dos escopos concedidos; OPERADOR também pode registrar/importar. A retenção é o tempo que nome do cliente e relato permanecem armazenados e a ação posterior (apagar ou anonimizar); o sistema não faz expurgo automático. Dados fictícios/anonimizados podem ser usados em staging enquanto essa regra é definida para dados reais.
+- O ranking inclui motoristas e ajudantes na mesma classificação, e o score de atendimento participa da ordem. Segue taxa de realização, score, volume realizado e nome; cada pessoa recebe os resultados coletivos das equipes em que participou, portanto os volumes não devem ser somados entre pessoas. A tabela mostra posição, função, realizadas, não realizadas, OTIF, score, elogios, reclamações e status cadastral ativo/inativo.
+- Os perfis atuais atendem ao piloto. OPERADOR pode manter catálogos, lançar Entregas e registrar/importar/consultar/exportar feedback, sem indicadores, auditoria ou administração de usuários. CADASTRADOR mantém catálogos e consulta/exporta feedback, sem criar feedback nem administrar usuários. GESTOR, DIRETORIA e DEV mantêm os acessos já definidos, limitados pelos respectivos escopos.
 
 ## 1. Objetivo e escopo
 
@@ -34,7 +48,7 @@ Até confirmação do gestor, usar como hipótese de planejamento uma primeira e
 - autenticação, autorização por ação e escopo de setor/localidade;
 - persistência operacional, auditoria e validação no servidor.
 
-Feedbacks com dados de clientes, ranking, painel gerencial, importação CSV e impressão/PDF entram depois de suas regras e permissões serem aprovadas. Gestão de Frota e Operações no CD são módulos posteriores, cada um com campos e tabelas tipadas próprias.
+Feedback, ranking, painel gerencial e importação CSV fazem parte do primeiro release conforme as regras já aprovadas. O uso de nome de cliente e relato reais depende de definir retenção; staging pode usar dados fictícios/anonimizados. Gestão de Frota e Operações no CD são módulos posteriores, cada um com campos e tabelas tipadas próprias.
 
 ## 2. Sequência resumida
 
@@ -65,12 +79,12 @@ Feedbacks com dados de clientes, ranking, painel gerencial, importação CSV e i
 3. Definir quem pode criar, confirmar, cancelar e corrigir lançamentos. O fluxo padrão permite que o autor confirme o próprio lançamento; não há aprovação obrigatória por outra pessoa.
 4. Aprovar a matriz de perfis e escopos: ações de cada perfil e setores/localidades disponíveis para cada pessoa. Não inferir autorização apenas pelo cargo.
 5. O login local por username e senha está decidido. O provisionamento administrativo cria contas ativas com senha inicial numérica de seis dígitos; a troca é opcional e a recuperação local usa nome completo e username. A administração concede perfis e escopos. A duração da sessão permanece configurável.
-6. Decidir se nome do cliente é necessário em feedback, quem pode consultar/exportar esses dados e qual é o prazo de retenção. Feedback só entra no escopo quando isso estiver definido.
-7. Fórmula do OTIF aprovada: percentual de entregas no prazo multiplicado pelo percentual de entregas completas; coletar as duas contagens no formulário e manter taxa de realização separada. A meta e as faixas continuam pendentes de confirmação.
-8. Decidir se ranking individual é necessário e qual regra atribui resultados coletivos a cada participante. Sem regra aprovada, mostrar resultados por equipe ou agregados.
+6. O nome do cliente é mantido em feedback por decisão de produto. Todos os perfis do piloto podem consultar/exportar dentro dos escopos; OPERADOR também pode registrar/importar. Definir o prazo e a ação de retenção antes de usar dados reais.
+7. Fórmula do OTIF aprovada em 22/10/2026: entregas não realizadas ÷ total registrado. Exibir o indicador no geral e por motorista, equipe e loja. Metas e faixas de cor ficam para depois do primeiro piloto.
+8. Ranking misto de motoristas e ajudantes aprovado: cada participante recebe os resultados da equipe em que atuou, com essa natureza coletiva explicitada; score de atendimento participa da ordenação.
 9. Definir catálogo/banco operacional, grants de leitura e escrita e forma de sincronizar localidades e pessoas.
-10. Confirmar o serviço AWS/VPC que hospedará a API, endpoint HTTPS, Security Groups e secrets para a RDS privada; a Vercel hospeda o frontend estático.
-11. Aprovar o que fica fora do MVP (CSV, PDF/impressão, painel, ranking e feedback) e registrar responsáveis pelas decisões.
+10. EC2 definida para hospedar a API na AWS/VPC; o Compose do Portal segue o padrão do BI com Nginx na porta 8080 e API interna. O workflow manual de publicação no GHCR e atualização da EC2 está preparado; faltam confirmar o ALB/proxy HTTPS, DNS, Security Groups, acesso de deploy e variáveis privadas da RDS e cadastrar os secrets de staging no GitHub. A Vercel hospeda o frontend estático.
+11. Painel, ranking, feedback e importação/exportação CSV fazem parte da primeira versão funcional. Confirmar se impressão/PDF é necessária para o piloto; metas e faixas de cor permanecem fora do escopo até a avaliação dos resultados.
 
 **Entregáveis:** registro das decisões no contexto mestre do projeto; backlog do MVP; matriz perfil × ação × escopo; diagrama de implantação escolhido.
 
@@ -187,9 +201,11 @@ Depois de concluir a parte 4.1:
 4. Completar `GET /api/v1/me` com permissões e escopos calculados pelo servidor para a navegação do frontend.
 5. Negar por padrão conta inativa, concessão vencida, ausência da permissão exigida ou registro fora do escopo. Limitar tentativas e registrar eventos sem expor credenciais ou dados sensíveis.
 
-**Implementado no backend:** as concessões vigentes são resolvidas em `access_control`; `/api/v1/me` retorna permissões e escopos calculados pelo servidor; as dependências `require_permission` e `require_global_permission` protegem rotas; `/api/v1/access` administra perfis, recursos, permissões, contas, associações e escopos. A área administrativa lista/provisiona contas, desativa contas encerrando sessões, atribui múltiplos perfis/escopos e lista as opções de setor/localidade. Os cadastros operacionais podem ser criados e desativados sob `CADASTROS:ADMINISTRAR`; pessoas e motivos são versionados por vigência. Alterações e revogações são registradas em `op_logistica_autorizacao_evento` na mesma transação. As leituras de formulários continuam em `/api/v1/setores`, `/localidades`, `/pessoas` e `/motivos`.
+**Implementado no backend:** as concessões vigentes são resolvidas em `access_control`; `/api/v1/me` retorna permissões e escopos calculados pelo servidor; as dependências `require_permission` e `require_global_permission` protegem rotas; `/api/v1/access` administra perfis, recursos, permissões, contas, associações e escopos. A área administrativa lista/provisiona contas, desativa contas encerrando sessões, atribui múltiplos perfis/escopos e lista as opções de setor/localidade. Os cadastros operacionais podem ser criados, editados e desativados sob `CADASTROS:ADMINISTRAR`; pessoas e motivos são versionados por vigência. Alterações e revogações são registradas em `op_logistica_autorizacao_evento` na mesma transação. As leituras de formulários continuam em `/api/v1/setores`, `/localidades`, `/pessoas` e `/motivos`.
 
-As rotas de contas e concessões exigem `CONTROLE_ACESSO:ADMINISTRAR` em escopo `GLOBAL`; os cadastros operacionais exigem `CADASTROS:ADMINISTRAR` global. O bootstrap local cria perfis `DEV`, `DIRETORIA`, `GESTOR` e `OPERADOR`: gestores podem lançar, consultar indicadores e administrar acessos/cadastros; diretoria administra acessos/cadastros e consulta entregas/indicadores; os escopos continuam limitando os dados. O perfil `GESTOR` pode conceder até o próprio nível; `DIRETORIA` pode conceder `OPERADOR`, `GESTOR` e `DIRETORIA`; somente uma conta `DEV` global pode conceder o perfil `DEV`, sempre com escopo global. A alteração das definições de perfis, recursos e permissões fica restrita ao perfil `DEV`. Gestores e diretoria também não podem desativar contas nem revogar concessões de nível superior ao seu. Os endpoints de Entregas exigem `ENTREGAS_DIARIAS:VER`, `ENTREGAS_DIARIAS:CRIAR` ou `ENTREGAS_DIARIAS:EDITAR_RASCUNHO`, conforme a operação. A evolução do CHECK de `tipo_evento` para eventos de contas e catálogos precisa entrar na migration compartilhada da cadeia `logistica` do VilarejoBI; a aplicação da migration continua adiada.
+As rotas de contas e concessões exigem `CONTROLE_ACESSO:ADMINISTRAR` em escopo `GLOBAL`; as rotas de catálogo exigem `CADASTROS:ADMINISTRAR`. O perfil `OPERADOR` contém essa permissão, então uma conta de Suporte pode usar uma única concessão com escopos de setor/localidade para operar e manter os catálogos compartilhados. Isso não amplia o acesso do OPERADOR a lançamentos, feedback ou indicadores. `CADASTRADOR` exige escopo global e pode manter catálogos e consultar/exportar feedback; não recebe operações, indicadores, auditoria ou administração de usuários. A tela omite usuários e acessos sem a permissão correspondente, e a API também bloqueia essas rotas. Restringir cadastros por setor exige acrescentar essa relação ao modelo. O bootstrap local e o provisionador de staging mantêm os perfis padrão sem migration adicional.
+
+O bootstrap local também cria perfis `DEV`, `DIRETORIA`, `GESTOR`, `OPERADOR` e `CADASTRADOR`. A concessão de perfis segue os níveis definidos no backend; somente uma conta `DEV` global pode conceder o perfil `DEV`, também global. A alteração das definições de perfis, recursos e permissões fica restrita ao perfil `DEV`. Gestores e diretoria não podem desativar contas nem revogar concessões de nível superior ao seu. Os endpoints de Entregas exigem `ENTREGAS_DIARIAS:VER`, `ENTREGAS_DIARIAS:CRIAR` ou `ENTREGAS_DIARIAS:EDITAR_RASCUNHO`, conforme a operação. Os CHECKs de auditoria e feedback foram incluídos nas revisões `c41d8e6f2b70` e `d7c9a4f2b610`; a revisão `b817e6c2a904` está aplicada em staging.
 
 O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual; a consulta exige contexto autorizado, mas retorna a lista ativa compartilhada de pessoas. O catálogo de localidades também não tem relação com setor; concessões por localidade filtram pelos IDs concedidos, enquanto concessões por setor permitem consultar o catálogo ativo. As rotas iniciais de `deliveries` já limitam cada lançamento ao setor e às localidades autorizadas; quando um lançamento contém itens de vários escopos, ele só aparece para quem pode ver todos os itens.
 
@@ -206,7 +222,7 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 **O que fazer:**
 
 1. Consumir as rotas paginadas de leitura de setores, localidades, pessoas e motivos implementadas na Etapa 4.2; validar a integração e os filtros de escopo no formulário de Entregas. A carga/sincronização dos catálogos e a manutenção administrativa continuam nesta etapa.
-2. Criar formulário de entrega com data, localidade, motorista obrigatório, até dois ajudantes opcionais, realizadas, não realizadas, entregas no prazo e completas, motivos com quantidades e observação, conforme o contrato aprovado.
+2. Criar formulário de entrega com data, localidade, motorista obrigatório, até dois ajudantes opcionais, realizadas, não realizadas, motivos com quantidades e observação, conforme o contrato aprovado.
 3. Não impor chave única apenas por data/localidade/motorista. Gerar UUID estável de item e aplicar somente a regra de duplicidade definida para o grão aprovado.
 4. Criar operação de salvar rascunho e operação de confirmação final pelo próprio autor. Receber chave de idempotência para que retry após timeout não crie lançamento duplicado.
 5. Validar no backend campos obrigatórios, data, escopo, estado ativo dos participantes/motivos, quantidades não negativas, total maior que zero e soma dos motivos igual ao total não realizado quando aplicável.
@@ -230,8 +246,8 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 2. Validar com o gestor as permissões e justificativas de correção/cancelamento já implementadas. O fluxo cria revisão nova ou evento append-only e não cria fila de aprovação para o fluxo diário.
 3. Registrar estado anterior/novo, ator, horário e comentário em log append-only. Não apagar histórico confirmado por operação comum.
 4. A interface administrativa de lojas, pessoas, motivos e contas está implementada. Revisar o catálogo oficial de lojas e a matriz de perfis/escopos antes do piloto; as alterações de pessoas e motivos preservam versões e vigência.
-5. O cadastro e o formulário de feedback já oferecem criação, consulta paginada, filtros e exportação; cada manifestação está ligada a entrega confirmada e deriva localidade/equipe do lançamento. Aprovar a política de coleta, acesso, retenção e tratamento antes de habilitar os perfis reais.
-6. Não habilitar pontuação individual de feedback até a política de uso e visibilidade estar aprovada.
+5. O cadastro e o formulário de feedback já oferecem criação, consulta paginada, filtros, importação e exportação; cada manifestação está ligada a uma entrega confirmada. O formulário permite selecionar motorista e até dois ajudantes, valida a equipe contra a entrega e deriva dela a loja e a data. Todos os perfis do piloto podem consultar/exportar dentro dos escopos; OPERADOR também pode registrar/importar. Definir retenção antes de habilitar feedback com dados reais.
+6. Score de atendimento aprovado para uso no ranking misto; sua fórmula atual é +1 por elogio e −1 por reclamação.
 
 **Entregáveis:** correção e cancelamento auditáveis; manutenção controlada de catálogos; módulo de feedback somente se autorizado.
 
@@ -244,9 +260,9 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 **O que fazer:**
 
 1. Implementar filtros de período/competência, localidade, motivo, pessoa, equipe e situação somente para dimensões presentes e autorizadas.
-2. Calcular o OTIF aprovado como produto dos percentuais no prazo e completo sobre o total registrado; manter taxa de realização como indicador separado.
-3. Paginar consultas e agregar no grão aprovado. Não replicar o volume total da equipe em cada participante para produzir ranking individual.
-4. Adicionar ranking e score de feedback apenas se fórmula, desempate, volume mínimo e público autorizado estiverem definidos.
+2. Calcular o OTIF aprovado como não realizadas ÷ total registrado, no geral e por motorista, equipe e loja; manter taxa de realização como indicador separado.
+3. Paginar consultas e agregar no grão aprovado. Para o ranking misto aprovado, mostrar a cada integrante o resultado das equipes de que participou e indicar que os volumes não podem ser somados entre pessoas.
+4. Incluir ranking misto de motoristas e ajudantes. Ordenar por taxa de realização, score de atendimento, volume realizado e nome; o score usa +1 por elogio e −1 por reclamação.
 5. Confirmar a necessidade de importação CSV. Se aprovada, validar arquivo inteiro e apresentar prévia de erros antes de persistir qualquer linha.
 6. Implementar impressão/PDF e exportação com o mesmo filtro e autorização do painel. Proteger colunas com dados pessoais e registrar exportações quando exigido pela política.
 
@@ -315,8 +331,8 @@ Dependem de decisões ou do ambiente aprovado: aplicar a migration em staging, a
 - [ ] Retry de criação/confirmação não cria duplicata.
 - [ ] Rascunhos podem ser editados; correções e cancelamentos após confirmação seguem as permissões definidas e deixam versão/evento auditável. Não há aprovação por segundo usuário.
 - [ ] O banco operacional não altera a baseline analítica e credenciais de runtime têm privilégio mínimo.
-- [ ] Dados pessoais e exports seguem política aprovada; se a política não estiver pronta, feedback não está habilitado.
-- [ ] O formulário coleta entregas no prazo e completas; OTIF usa as duas taxas sobre o total registrado e não substitui a taxa de realização.
+- [ ] Dados reais de feedback só são habilitados após a política de retenção de nome/relato ser definida. Até lá, staging usa dados fictícios/anonimizados; os perfis do piloto podem consultar/exportar conforme seus escopos.
+- [ ] O formulário coleta realizadas e não realizadas; OTIF usa não realizadas ÷ total registrado e aparece no geral, por motorista, equipe e loja.
 - [ ] Configuração de preview/staging está separada de produção e RDS não é exposta ao navegador.
 - [ ] O piloto foi conciliado com o processo atual e aceito pelo gestor antes da adoção oficial.
 

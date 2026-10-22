@@ -2,6 +2,21 @@
 
 Esse fluxo sobe um MySQL próprio no Docker, a API e o frontend. Não usa RDS, staging, produção ou o banco do VilarejoBI.
 
+O `backend/.env` é uma configuração separada para executar a API diretamente no host contra o staging compartilhado. Ele abre um túnel SSH via Tailscale quando `USE_DB_TUNNEL=true`; o Compose local define suas próprias variáveis e continua apontando para `op_logistica_dev`. O modelo sem segredos está em [`backend/.env.example`](../backend/.env.example). Use o modo staging somente com autorização e credencial operacional aprovada, pois as ações feitas na aplicação alteram a base compartilhada.
+
+### Executar a API local contra staging via Tailscale
+
+O Tailscale precisa estar conectado no computador e na EC2. A chave SSH deve existir e estar com permissão `0600`. No `backend/.env`, configure `USE_DB_TUNNEL=true`, `USE_TAILSCALE=true` e os valores de `TAILSCALE_EC2_IP`, `EC2_HOST`, `RDS_ENDPOINT` e `SSH_KEY_PATH`. `RDS_ENDPOINT` deve corresponder ao host da `OP_LOGISTICA_DATABASE_URL`.
+
+Na pasta `LancamentoLogistica/backend/`, inicie a API:
+
+```bash
+source .venv/bin/activate
+uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Ao iniciar, a API abre o túnel e aponta a engine do SQLAlchemy para a porta local encaminhada. Ao encerrar, fecha o processo SSH. A API implantada na EC2 mantém `USE_DB_TUNNEL=false` e acessa a RDS diretamente pela VPC.
+
 ## Abrir somente o frontend, sem API ou banco
 
 Na pasta `LancamentoLogistica/frontend/`:
@@ -45,9 +60,9 @@ O primeiro comando para os serviços Compose do projeto padrão, mas preserva o 
 
 Se já houver outro container usando as portas 5173 ou 8000, ele precisa ser parado antes de iniciar a nova instância. Para voltar ao projeto Compose padrão, pare esta instância com `docker compose -p lancamento-gabriel down` e suba os serviços padrão novamente. Não use `down -v`: essa opção apaga o volume e os dados locais.
 
-O ambiente local inclui correção versionada e cancelamento de lançamentos confirmados, consulta da trilha de eventos e API de reclamações/elogios. Vários feedbacks podem apontar para a mesma entrega confirmada. O feedback registra o nome do cliente e deriva data/localidade/equipe da entrega relacionada. Para `POST /api/v1/feedbacks`, envie `Idempotency-Key` com um UUID novo por manifestação e reutilize-o em retries da mesma submissão. DEV, GESTOR e DIRETORIA recebem todas as permissões semeadas pelo bootstrap local; OPERADOR pode consultar, registrar e editar rascunhos de Entregas. Use somente dados fictícios no desenvolvimento.
+O ambiente local inclui correção versionada e cancelamento de lançamentos confirmados, consulta da trilha de eventos e API de reclamações/elogios. Vários feedbacks podem apontar para a mesma entrega confirmada. O feedback exige o nome do cliente conforme a decisão de produto e não aceita telefone, documento ou outros identificadores; o formulário permite selecionar motorista e até dois ajudantes, que precisam corresponder à equipe da entrega confirmada, enquanto loja e data são derivadas do vínculo. Para `POST /api/v1/feedbacks`, envie `Idempotency-Key` com um UUID novo por manifestação e reutilize-o em retries da mesma submissão. DEV, GESTOR e DIRETORIA recebem as permissões de gestão semeadas pelo bootstrap local; OPERADOR pode manter catálogos, consultar, registrar e editar rascunhos de Entregas, além de registrar/importar, consultar e exportar feedback dentro dos escopos concedidos, sem indicadores, auditoria ou usuários e acessos. CADASTRADOR mantém catálogos e consulta/exporta feedback, sem criar feedback nem administrar usuários. Use somente dados fictícios no desenvolvimento.
 
-O bootstrap corrige, somente no MySQL local validado, a coluna opcional `criado_por`, a chave de idempotência e o índice de feedback, as contagens e validação de OTIF e os CHECKs antigos de `op_logistica_autorizacao_evento`. Contagens históricas sem origem confiável ficam nulas. Em staging/produção, essas evoluções precisam entrar em uma revisão incremental da cadeia Alembic `logistica` mantida pelo VilarejoBI; não as aplique pelo bootstrap local nem pela inicialização da API.
+O bootstrap corrige, somente no MySQL local validado, a coluna opcional `criado_por`, a chave de idempotência e o índice de feedback, as colunas legadas de OTIF, cidade/UF e unicidade de localidade e os CHECKs antigos de `op_logistica_autorizacao_evento`. As colunas legadas de prazo/completude permanecem no banco, mas não são coletadas nem usadas no cálculo atual do OTIF. Ele vincula novos lançamentos ao setor `SUPORTE`; lançamentos antigos mantêm o setor já gravado. Em staging/produção, as evoluções de schema precisam entrar em uma revisão incremental da cadeia Alembic `logistica` mantida pelo VilarejoBI; não as aplique pelo bootstrap local nem pela inicialização da API.
 
 ## Subir API e frontend
 

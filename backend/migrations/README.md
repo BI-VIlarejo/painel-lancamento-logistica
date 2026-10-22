@@ -8,13 +8,14 @@ o Portal não consulta nem publica dados no VilarejoBI neste release.
 
 A cadeia operacional começa em `f4a7c9d2e1b6`; `e2b6d4a1c903` cria as tabelas operacionais,
 `a92f7c31de04` acrescenta sessões, `c41d8e6f2b70` alinha a auditoria e valida as quantidades de
-entrega, e `d7c9a4f2b610` atualiza OTIF, feedback e os tipos de auditoria. As migrations devem ser
-revisadas contra o DBML e os modelos ORM.
+entrega, e `d7c9a4f2b610` atualiza OTIF, feedback e os tipos de auditoria. `f3c8a1d6b907` simplifica
+o modelo de feedback e remove publicação adiada; `b817e6c2a904` acrescenta cidade/UF e auditoria de
+edições de localidades. As migrations devem ser revisadas contra o DBML e os modelos ORM.
 
 `d7c9a4f2b610` adiciona `quantidade_entregas_no_prazo` e
-`quantidade_entregas_completas`, ambas nullable para preservar registros legados sem inferir dados.
-O CHECK `ck_op_logistica_entrega_otif_quantidades` exige ambas nulas ou ambas preenchidas entre zero
-e `quantidade_realizada`.
+`quantidade_entregas_completas`, ambas nullable. Essas colunas permanecem por compatibilidade com
+revisões existentes, mas o produto deixou de coletá-las e o cálculo atual do OTIF não as utiliza.
+O CHECK `ck_op_logistica_entrega_otif_quantidades` continua válido para valores legados.
 
 A mesma revisão adiciona `criado_por` nullable e sua FK para usuários, e adiciona
 `chave_idempotencia CHAR(36) NOT NULL` aos feedbacks. Ela preenche chaves UUID para os registros
@@ -25,7 +26,7 @@ submissão.
 
 A revisão também alinha os CHECKs de autorização aos eventos de usuário e dos catálogos locais. Não
 inclui evento nem endpoint para sincronização com o VilarejoBI. O downgrade é bloqueado se houver
-feedbacks repetidos, autores, contagens OTIF ou eventos novos que seriam perdidos/rejeitados.
+feedbacks repetidos, autores, contagens legadas de OTIF ou eventos novos que seriam perdidos/rejeitados.
 
 A revisão `f3c8a1d6b907` retira duas tabelas de publicação que não têm uso neste release, substitui
 o catálogo de dois tipos fixos de feedback pelo campo `tipo` com CHECK e remove a tabela de
@@ -34,6 +35,13 @@ ela verifica se as tabelas de publicação estão vazias, se o catálogo contém
 `RECLAMACAO`, se todo feedback está ligado a uma entrega e se as associações de pessoas coincidem
 com as da entrega. Se alguma validação falhar, a migration para sem apagar essas informações. O
 downgrade recria as tabelas e restaura a associação de participantes a partir da equipe da entrega.
+
+A revisão `b817e6c2a904` acrescenta cidade e UF nullable a `op_logistica_localidade`, cria uma
+unicidade para nome/cidade/UF e permite o evento auditável `LOCALIDADE_ATUALIZADA`. As colunas
+permanecem nullable para não inventar endereço para localidades legadas; a API exige cidade e UF em
+novos cadastros e edições. O downgrade para se houver valores de cidade/UF ou eventos de atualização
+que seriam perdidos. O código do Portal não deve ser publicado em staging antes de aplicar essa
+revisão.
 
 Antes de aplicar, confirme a configuração de ambiente, a conexão de migration e a revisão atual. Use
 MySQL 8.0.16 ou superior para aplicar os CHECKs. Aplique primeiro em staging, com credencial de
