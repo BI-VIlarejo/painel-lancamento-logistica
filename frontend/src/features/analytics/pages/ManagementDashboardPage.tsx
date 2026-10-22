@@ -39,20 +39,22 @@ function aggregateTrend(points: DashboardTrendPoint[], monthly: boolean): Dashbo
   points.forEach((point) => {
     const month = point.data.slice(0, 7);
     const current = grouped.get(month) ?? {
-      data: `${month}-01`, planejadas: 0, realizadas: 0, nao_realizadas: 0, taxa_realizacao: null,
+      data: `${month}-01`, planejadas: 0, realizadas: 0, nao_realizadas: 0,
+      taxa_realizacao: null, otif_percentual: null,
     };
     current.planejadas += point.planejadas;
     current.realizadas += point.realizadas;
     current.nao_realizadas += point.nao_realizadas;
     const total = current.realizadas + current.nao_realizadas;
     current.taxa_realizacao = total ? (current.realizadas / total) * 100 : null;
+    current.otif_percentual = total ? (current.nao_realizadas / total) * 100 : null;
     grouped.set(month, current);
   });
   return [...grouped.values()];
 }
 
 function TrendChart({ points, monthly }: { points: DashboardTrendPoint[]; monthly: boolean }) {
-  const values = aggregateTrend(points, monthly).filter((point) => point.taxa_realizacao !== null);
+  const values = aggregateTrend(points, monthly).filter((point) => point.otif_percentual !== null);
   if (!values.length) return <div className={cx(styles, commonStyles, "manager-empty")}>Sem lançamentos registrados neste período.</div>;
 
   const width = 760;
@@ -65,25 +67,25 @@ function TrendChart({ points, monthly }: { points: DashboardTrendPoint[]; monthl
   const chartHeight = height - top - bottom;
   const x = (index: number) => values.length === 1 ? left + chartWidth / 2 : left + (index / (values.length - 1)) * chartWidth;
   const y = (value: number | null) => top + ((100 - (value ?? 0)) / 100) * chartHeight;
-  const line = values.map((point, index) => `${x(index)},${y(point.taxa_realizacao)}`).join(" ");
+  const line = values.map((point, index) => `${x(index)},${y(point.otif_percentual)}`).join(" ");
   const labelEvery = Math.max(1, Math.ceil(values.length / 6));
 
   return (
     <div className={cx(styles, commonStyles, "trend-chart-wrap")}>
-      <svg className={cx(styles, commonStyles, "trend-chart")} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolução percentual da taxa de realização no período">
-        <title>Evolução da taxa de realização</title>
-        <desc>Percentual de entregas realizadas sobre o total registrado em cada dia ou mês selecionado.</desc>
+      <svg className={cx(styles, commonStyles, "trend-chart")} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolução percentual do OTIF no período">
+        <title>Evolução do OTIF</title>
+        <desc>Percentual de entregas não realizadas sobre o total registrado em cada dia ou mês selecionado.</desc>
         {[0, 50, 100].map((tick) => {
           const tickY = y(tick);
           return <g key={tick}><line x1={left} x2={width - right} y1={tickY} y2={tickY} className={cx(styles, commonStyles, "chart-grid-line")} /><text x={left - 9} y={tickY + 4} textAnchor="end" className={cx(styles, commonStyles, "chart-axis-label")}>{tick}%</text></g>;
         })}
         <polyline points={line} className={cx(styles, commonStyles, "trend-line")} />
-        {values.map((point, index) => <circle key={point.data} cx={x(index)} cy={y(point.taxa_realizacao)} r="4" className={cx(styles, commonStyles, "trend-point")} />)}
+        {values.map((point, index) => <circle key={point.data} cx={x(index)} cy={y(point.otif_percentual)} r="4" className={cx(styles, commonStyles, "trend-point")} />)}
         {values.map((point, index) => (index % labelEvery === 0 || index === values.length - 1)
           ? <text key={`${point.data}-label`} x={x(index)} y={height - 13} textAnchor="middle" className={cx(styles, commonStyles, "chart-axis-label")}>{shortDate(point.data, monthly)}</text>
           : null)}
       </svg>
-      <div className={cx(styles, commonStyles, "chart-caption")}>A taxa é calculada como realizadas ÷ total registrado. O cálculo não confirma prazo nem entrega completa, então ainda não representa o OTIF oficial.</div>
+      <div className={cx(styles, commonStyles, "chart-caption")}>OTIF = entregas não realizadas ÷ total registrado (realizadas + não realizadas).</div>
     </div>
   );
 }
@@ -106,12 +108,12 @@ function DeliveryComposition({ completed, notCompleted }: { completed: number; n
   );
 }
 
-function PerformanceRate({ value }: { value: number | null }) {
+function PerformanceRate({ value, label = "Taxa de realização", neutral = false }: { value: number | null; label?: string; neutral?: boolean }) {
   if (value === null) return <span className={cx(styles, commonStyles, "rate-empty")}>—</span>;
   const width = Math.min(100, Math.max(0, value));
   return (
-    <div className={cx(styles, commonStyles, "rate-cell")} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-label={`Taxa de realização de ${rateLabel(value)}`}>
-      <span className={cx(styles, commonStyles, "rate-meter-track")}><i style={{ width: `${width}%` }} /></span>
+    <div className={cx(styles, commonStyles, "rate-cell")} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-label={`${label}: ${rateLabel(value)}`}>
+      <span className={cx(styles, commonStyles, neutral ? "rate-meter-track-neutral" : "rate-meter-track")}><i style={{ width: `${width}%` }} /></span>
       <strong className={cx(styles, commonStyles, "rate-value")}>{rateLabel(value)}</strong>
     </div>
   );
@@ -199,8 +201,11 @@ export function ManagementDashboardPage() {
         <div className={cx(styles, commonStyles, "methodology-content")}>
           <p><strong>Base:</strong> versão confirmada mais recente de cada lançamento no período e escopo selecionados.</p>
           <p><strong>Total registrado:</strong> soma das quantidades realizadas e não realizadas informadas no lançamento.</p>
-          <p><strong>Taxa de realização:</strong> entregas realizadas ÷ total registrado. Sem prazo prometido e confirmação de pedido completo, não representa OTIF.</p>
-          <p><strong>Ranking:</strong> motoristas são ordenados pela taxa de realização, score de feedback (+1 por elogio e −1 por reclamação) e volume realizado. Ajudantes recebem o score de feedback sem repetir as quantidades da equipe.</p>
+          <p><strong>Taxa de realização:</strong> entregas realizadas ÷ total registrado.</p>
+          <p><strong>OTIF:</strong> entregas não realizadas ÷ total registrado.</p>
+          <p><strong>Ranking:</strong> motoristas e ajudantes aparecem juntos. A posição usa taxa de realização, score de atendimento (+1 por elogio e −1 por reclamação), volume realizado e nome como desempate.</p>
+          <p><strong>Volumes por pessoa:</strong> as quantidades são o resultado das equipes em que a pessoa participou. Elas aparecem para cada integrante e não devem ser somadas entre pessoas.</p>
+          <p><strong>Status:</strong> indica se o cadastro da pessoa está ativo ou inativo; não representa uma faixa de desempenho.</p>
           {!feedbackAvailable && <p><strong>Feedback:</strong> elogios e reclamações aparecem quando as tabelas opcionais de feedback estiverem disponíveis no banco.</p>}
         </div>
       </details>
@@ -212,21 +217,19 @@ export function ManagementDashboardPage() {
         <article className={cx(styles, commonStyles, "manager-metric", "metric-completed")}><span className={cx(styles, commonStyles, "manager-metric-label")}>Realizadas</span><strong>{loading ? "—" : countFormat.format(summary?.entregas_realizadas ?? 0)}</strong><small>resultado registrado</small></article>
         <article className={cx(styles, commonStyles, "manager-metric", "metric-not-completed")}><span className={cx(styles, commonStyles, "manager-metric-label")}>Não realizadas</span><strong>{loading ? "—" : countFormat.format(summary?.entregas_nao_realizadas ?? 0)}</strong><small>resultado registrado</small></article>
         <article className={cx(styles, commonStyles, "manager-metric", "manager-metric-highlight")}><span className={cx(styles, commonStyles, "manager-metric-label")}>Taxa de realização</span><strong>{loading ? "—" : rateLabel(summary?.taxa_realizacao ?? null)}</strong><small>realizadas ÷ total registrado</small></article>
-        <article className={cx(styles, commonStyles, "manager-metric", "manager-metric-highlight")}><span className={cx(styles, commonStyles, "manager-metric-label")}>OTIF</span><strong>{loading ? "—" : rateLabel(summary?.otif_percentual ?? null)}</strong><small>no prazo % × completas %</small></article>
-        <article className={cx(styles, commonStyles, "manager-metric")}><span className={cx(styles, commonStyles, "manager-metric-label")}>Entregas no prazo</span><strong>{loading ? "—" : rateLabel(summary?.percentual_entregas_no_prazo ?? null)}</strong><small>{summary?.quantidade_entregas_no_prazo == null ? "Sem contagens suficientes" : `${countFormat.format(summary.quantidade_entregas_no_prazo)} no prazo`}</small></article>
-        <article className={cx(styles, commonStyles, "manager-metric")}><span className={cx(styles, commonStyles, "manager-metric-label")}>Entregas completas</span><strong>{loading ? "—" : rateLabel(summary?.percentual_entregas_completas ?? null)}</strong><small>{summary?.quantidade_entregas_completas == null ? "Sem contagens suficientes" : `${countFormat.format(summary.quantidade_entregas_completas)} completas`}</small></article>
+        <article className={cx(styles, commonStyles, "manager-metric", "manager-metric-highlight", "metric-not-completed")}><span className={cx(styles, commonStyles, "manager-metric-label")}>OTIF</span><strong>{loading ? "—" : rateLabel(summary?.otif_percentual ?? null)}</strong><small>não realizadas ÷ total registrado</small></article>
         <article className={cx(styles, commonStyles, "manager-metric", "metric-praise")}><span className={cx(styles, commonStyles, "manager-metric-label")}>Elogios</span><strong>{loading || !feedbackAvailable ? "—" : countFormat.format(feedback?.elogios ?? 0)}</strong><small>{feedbackAvailable ? "associados a lançamentos registrados" : "módulo de feedback indisponível"}</small></article>
         <article className={cx(styles, commonStyles, "manager-metric", "metric-complaint")}><span className={cx(styles, commonStyles, "manager-metric-label")}>Reclamações</span><strong>{loading || !feedbackAvailable ? "—" : countFormat.format(feedback?.reclamacoes ?? 0)}</strong><small>{feedbackAvailable ? "associadas a lançamentos registrados" : "módulo de feedback indisponível"}</small></article>
       </section>
 
       <section className={cx(styles, commonStyles, "otif-definition-note")} aria-label="Nota sobre o cálculo de OTIF">
         <span className={cx(styles, commonStyles, "otif-note-icon")} aria-hidden="true">i</span>
-        <div><strong>Como o OTIF é calculado</strong><p>Percentual no prazo × percentual completo. Cada percentual usa o total registrado como base. O painel mostra o resultado quando todas as entregas do filtro têm as duas contagens; registros antigos sem contagens ficam fora desse cálculo.</p></div>
+        <div><strong>Como o OTIF é calculado</strong><p>Entregas não realizadas ÷ total de entregas registradas (realizadas + não realizadas). O cálculo é agregado pelas quantidades do período e funciona também para registros antigos.</p></div>
       </section>
 
       <div className={cx(styles, commonStyles, "manager-overview-grid")}>
         <section className={cx(styles, commonStyles, "manager-panel", "trend-panel")}>
-          <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Evolução da taxa de realização</h2><p>Dia a dia{monthlyTrend ? " agrupada por mês" : ""} no período filtrado</p></div><span>{loading ? "—" : `${data?.evolucao.length ?? 0} períodos com movimento`}</span></div>
+          <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Evolução do OTIF</h2><p>Dia a dia{monthlyTrend ? " agrupada por mês" : ""} no período filtrado</p></div><span>{loading ? "—" : `${data?.evolucao.length ?? 0} períodos com movimento`}</span></div>
           {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando evolução...</div> : <TrendChart points={data?.evolucao ?? []} monthly={monthlyTrend} />}
         </section>
         <section className={cx(styles, commonStyles, "manager-panel", "composition-panel")}>
@@ -238,7 +241,7 @@ export function ManagementDashboardPage() {
 
       <section className={cx(styles, commonStyles, "manager-panel")}>
         <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Performance por loja</h2><p>Volume, resultado e relacionamento com clientes no mesmo período</p></div><span>{loading ? "—" : `${data?.por_localidade.length ?? 0} lojas`}</span></div>
-          {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lojas...</div> : !data?.por_localidade.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há lançamentos registrados para os filtros selecionados.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table")}><thead><tr><th>Loja</th><th>Lançamentos</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{data.por_localidade.map((item) => <tr key={item.id_localidade}><th scope="row">{item.nome}</th><td>{countFormat.format(item.lancamentos)}</td><td>{countFormat.format(item.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(item.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(item.nao_realizadas)}</td><td><PerformanceRate value={item.taxa_realizacao} /></td><td>{item.elogios === null ? "—" : countFormat.format(item.elogios)}</td><td>{item.reclamacoes === null ? "—" : countFormat.format(item.reclamacoes)}</td></tr>)}</tbody></table></div>}
+        {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lojas...</div> : !data?.por_localidade.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há lançamentos registrados para os filtros selecionados.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table")}><thead><tr><th>Loja</th><th>Lançamentos</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{data.por_localidade.map((item) => <tr key={item.id_localidade}><th scope="row">{item.nome}</th><td>{countFormat.format(item.lancamentos)}</td><td>{countFormat.format(item.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(item.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(item.nao_realizadas)}</td><td><PerformanceRate value={item.taxa_realizacao} /></td><td><PerformanceRate value={item.otif_percentual} label="OTIF" neutral /></td><td>{item.elogios === null ? "—" : countFormat.format(item.elogios)}</td><td>{item.reclamacoes === null ? "—" : countFormat.format(item.reclamacoes)}</td></tr>)}</tbody></table></div>}
       </section>
 
       <section className={cx(styles, commonStyles, "manager-panel")}>
@@ -249,12 +252,73 @@ export function ManagementDashboardPage() {
       <div className={cx(styles, commonStyles, "manager-analysis-grid")}>
         <section className={cx(styles, commonStyles, "manager-panel")}>
           <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Taxa de realização por equipe</h2><p>Resultado coletivo das equipes no recorte</p></div><span>{loading ? "—" : `${data?.por_equipe.length ?? 0} equipes`}</span></div>
-          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando equipes...</div> : !data?.por_equipe.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há equipes com lançamentos registrados.</div> : <><div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Equipe</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th></tr></thead><tbody>{shownTeams.map((team) => <tr key={team.chave}><th scope="row">{team.equipe}</th><td>{countFormat.format(team.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(team.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(team.nao_realizadas)}</td><td><PerformanceRate value={team.taxa_realizacao} /></td></tr>)}</tbody></table></div>{data.por_equipe.length > 8 && <button className={cx(styles, commonStyles, "table-more-button")} type="button" onClick={() => setShowAllTeams((value) => !value)}>{showAllTeams ? "Mostrar menos" : `Ver todas as ${data.por_equipe.length} equipes`}</button>}</>}
+          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando equipes...</div> : !data?.por_equipe.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há equipes com lançamentos registrados.</div> : <><div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Equipe</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{shownTeams.map((team) => <tr key={team.chave}><th scope="row">{team.equipe}</th><td>{countFormat.format(team.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(team.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(team.nao_realizadas)}</td><td><PerformanceRate value={team.taxa_realizacao} /></td><td><PerformanceRate value={team.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table></div>{data.por_equipe.length > 8 && <button className={cx(styles, commonStyles, "table-more-button")} type="button" onClick={() => setShowAllTeams((value) => !value)}>{showAllTeams ? "Mostrar menos" : `Ver todas as ${data.por_equipe.length} equipes`}</button>}</>}
         </section>
 
         <section className={cx(styles, commonStyles, "manager-panel")}>
-          <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Ranking por pessoa</h2><p>Motoristas por taxa; ajudantes por score de feedback</p></div><span>{loading ? "—" : `${data?.por_pessoa.length ?? 0} pessoas`}</span></div>
-          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando ranking...</div> : !data?.por_pessoa.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há pessoas com lançamentos registrados.</div> : <><div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Posição</th><th>Pessoa</th><th>Equipes</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>Score</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{shownPeople.map((person, index) => { const driver = person.funcao === "MOTORISTA"; return <tr key={person.id_pessoa}><td className={cx(styles, commonStyles, "ranking-position")}>{index + 1}</td><th scope="row"><span className={cx(styles, commonStyles, "person-cell-name")}>{person.nome}</span><small>{driver ? "Motorista" : "Ajudante"}</small></th><td>{countFormat.format(person.equipes)}</td><td>{driver ? countFormat.format(person.itens_planejados) : "—"}</td><td className={cx(styles, commonStyles, "number-positive")}>{driver ? countFormat.format(person.realizadas) : "—"}</td><td className={cx(styles, commonStyles, "number-attention")}>{driver ? countFormat.format(person.nao_realizadas) : "—"}</td><td>{driver ? <PerformanceRate value={person.taxa_realizacao} /> : "—"}</td><td>{person.score_atendimento > 0 ? `+${person.score_atendimento}` : person.score_atendimento}</td><td>{person.elogios === null ? "—" : countFormat.format(person.elogios)}</td><td>{person.reclamacoes === null ? "—" : countFormat.format(person.reclamacoes)}</td></tr>; })}</tbody></table></div>{data.por_pessoa.length > 8 && <button className={cx(styles, commonStyles, "table-more-button")} type="button" onClick={() => setShowAllPeople((value) => !value)}>{showAllPeople ? "Mostrar menos" : `Ver todas as ${data.por_pessoa.length} pessoas`}</button>}</>}
+          <div className={cx(styles, commonStyles, "manager-panel-heading")}>
+            <div>
+              <h2>Ranking por pessoa</h2>
+              <p>Motoristas e ajudantes na mesma classificação</p>
+            </div>
+            <span>{loading ? "—" : `${data?.por_pessoa.length ?? 0} pessoas`}</span>
+          </div>
+          {loading ? (
+            <div className={cx(styles, commonStyles, "manager-empty")}>Carregando ranking...</div>
+          ) : !data?.por_pessoa.length ? (
+            <div className={cx(styles, commonStyles, "manager-empty")}>Não há pessoas com lançamentos registrados.</div>
+          ) : (
+            <>
+              <div className={cx(styles, commonStyles, "manager-table-wrap")}>
+                <table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}>
+                  <thead>
+                    <tr>
+                      <th>Posição</th>
+                      <th>Pessoa</th>
+                      <th>Realizadas</th>
+                      <th>Não realizadas</th>
+                      <th>OTIF</th>
+                      <th>Score de atendimento</th>
+                      <th>Elogios</th>
+                      <th>Reclamações</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shownPeople.map((person, index) => (
+                      <tr key={person.id_pessoa}>
+                        <td className={cx(styles, commonStyles, "ranking-position")}>{index + 1}</td>
+                        <th scope="row">
+                          <span className={cx(styles, commonStyles, "person-cell-name")}>{person.nome}</span>
+                          <small>{person.funcao === "MOTORISTA" ? "Motorista" : "Ajudante"}</small>
+                        </th>
+                        <td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(person.realizadas)}</td>
+                        <td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(person.nao_realizadas)}</td>
+                        <td><PerformanceRate value={person.otif_percentual} label="OTIF" neutral /></td>
+                        <td>{person.score_atendimento > 0 ? `+${person.score_atendimento}` : person.score_atendimento}</td>
+                        <td>{person.elogios === null ? "—" : countFormat.format(person.elogios)}</td>
+                        <td>{person.reclamacoes === null ? "—" : countFormat.format(person.reclamacoes)}</td>
+                        <td>
+                          <span className={cx(styles, commonStyles, person.ativo ? "ranking-status ranking-status-active" : "ranking-status ranking-status-inactive")}>
+                            {person.ativo ? "Ativo" : "Inativo"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {data.por_pessoa.length > 8 && (
+                <button
+                  className={cx(styles, commonStyles, "table-more-button")}
+                  type="button"
+                  onClick={() => setShowAllPeople((value) => !value)}
+                >
+                  {showAllPeople ? "Mostrar menos" : `Ver todas as ${data.por_pessoa.length} pessoas`}
+                </button>
+              )}
+            </>
+          )}
         </section>
       </div>
     </div>

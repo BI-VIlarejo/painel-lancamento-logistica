@@ -10,6 +10,7 @@ export type DashboardTrendPoint = {
   realizadas: number;
   nao_realizadas: number;
   taxa_realizacao: number | null;
+  otif_percentual: number | null;
 };
 
 export type DashboardLocality = {
@@ -20,6 +21,7 @@ export type DashboardLocality = {
   realizadas: number;
   nao_realizadas: number;
   taxa_realizacao: number | null;
+  otif_percentual: number | null;
   elogios: number | null;
   reclamacoes: number | null;
 };
@@ -30,11 +32,13 @@ export type DashboardPerson = {
   id_pessoa: number;
   nome: string;
   funcao: string;
+  ativo: boolean;
   equipes: number;
   itens_planejados: number;
   realizadas: number;
   nao_realizadas: number;
   taxa_realizacao: number | null;
+  otif_percentual: number | null;
   elogios: number | null;
   reclamacoes: number | null;
   score_atendimento: number;
@@ -47,6 +51,7 @@ export type DashboardTeam = {
   realizadas: number;
   nao_realizadas: number;
   taxa_realizacao: number | null;
+  otif_percentual: number | null;
   lancamentos: number;
   elogios: number | null;
   reclamacoes: number | null;
@@ -62,10 +67,6 @@ export type DashboardResponse = {
     entregas_realizadas: number;
     entregas_nao_realizadas: number;
     taxa_realizacao: number | null;
-    quantidade_entregas_no_prazo: number | null;
-    quantidade_entregas_completas: number | null;
-    percentual_entregas_no_prazo: number | null;
-    percentual_entregas_completas: number | null;
     otif_percentual: number | null;
   };
   feedback: { disponivel: boolean; elogios: number | null; reclamacoes: number | null };

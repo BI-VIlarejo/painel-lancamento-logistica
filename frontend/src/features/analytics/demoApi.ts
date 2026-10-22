@@ -1,5 +1,6 @@
 import { demoApi } from "../deliveries/demoApi";
 import { demoFeedbackApi } from "../feedback/demoApi";
+import { demoAdministrationApi } from "../../administration/demoApi";
 import type { DashboardFilters, DashboardResponse } from "./types";
 
 const percentage = (count: number, total: number): number | null =>
@@ -8,6 +9,8 @@ const percentage = (count: number, total: number): number | null =>
 export const demoAnalyticsApi = {
   async dashboard(filters: DashboardFilters = {}): Promise<DashboardResponse> {
     const page = await demoApi.listDeliveries({ estado: "TODOS", limit: 500, offset: 0 });
+    const catalogPeople = await demoAdministrationApi.people();
+    const activeByPersonId = new Map(catalogPeople.map((person) => [person.id_pessoa, person.ativo]));
     const registered = page.items
       .filter((launch) => launch.estado === "ENVIADA" || launch.estado === "APROVADA")
       .flatMap((launch) => launch.itens.map((item) => ({ launch, item })))
@@ -86,11 +89,11 @@ export const demoAnalyticsApi = {
           praise: 0, complaint: 0,
         };
         person.teams.add(teamKey);
-        if (participant.papel_participante === "MOTORISTA") {
-          person.planned += planned;
-          person.completed += item.quantidade_realizada;
-          person.notCompleted += item.quantidade_nao_realizada;
-        }
+        // O resultado é lançado por equipe. Cada integrante recebe o resultado
+        // das equipes em que participou para poder compor o ranking conjunto.
+        person.planned += planned;
+        person.completed += item.quantidade_realizada;
+        person.notCompleted += item.quantidade_nao_realizada;
         people.set(participant.id_pessoa, person);
       }
     }
@@ -115,20 +118,14 @@ export const demoAnalyticsApi = {
     const completed = registered.reduce((sum, { item }) => sum + item.quantidade_realizada, 0);
     const notCompleted = registered.reduce((sum, { item }) => sum + item.quantidade_nao_realizada, 0);
     const planned = completed + notCompleted;
-    const onTimeCounts = registered.map(({ item }) => item.quantidade_entregas_no_prazo);
-    const fullCounts = registered.map(({ item }) => item.quantidade_entregas_completas);
-    const otifAvailable = registered.length > 0 && onTimeCounts.every((value) => value !== null && value !== undefined)
-      && fullCounts.every((value) => value !== null && value !== undefined);
-    const onTime = otifAvailable ? onTimeCounts.reduce<number>((sum, value) => sum + (value ?? 0), 0) : null;
-    const inFull = otifAvailable ? fullCounts.reduce<number>((sum, value) => sum + (value ?? 0), 0) : null;
-    const onTimeRate = onTime === null ? null : percentage(onTime, planned);
-    const inFullRate = inFull === null ? null : percentage(inFull, planned);
 
     const byPeople = [...people.entries()].map(([id, value]) => ({
       id_pessoa: id, nome: value.name, funcao: value.role,
+      ativo: activeByPersonId.get(id) ?? true,
       equipes: value.teams.size, itens_planejados: value.planned,
       realizadas: value.completed, nao_realizadas: value.notCompleted,
       taxa_realizacao: percentage(value.completed, value.planned),
+      otif_percentual: percentage(value.notCompleted, value.planned),
       elogios: value.praise, reclamacoes: value.complaint,
       score_atendimento: value.praise - value.complaint,
     })).sort((a, b) => (b.taxa_realizacao ?? -1) - (a.taxa_realizacao ?? -1)
@@ -145,21 +142,19 @@ export const demoAnalyticsApi = {
         entregas_realizadas: completed,
         entregas_nao_realizadas: notCompleted,
         taxa_realizacao: percentage(completed, planned),
-        quantidade_entregas_no_prazo: onTime,
-        quantidade_entregas_completas: inFull,
-        percentual_entregas_no_prazo: onTimeRate,
-        percentual_entregas_completas: inFullRate,
-        otif_percentual: onTimeRate === null || inFullRate === null ? null : Math.round((onTimeRate * inFullRate) / 100 * 100) / 100,
+        otif_percentual: percentage(notCompleted, planned),
       },
       feedback: { disponivel: true, elogios: praise, reclamacoes: complaint },
       evolucao: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({
         data: date, planejadas: value.planned, realizadas: value.completed,
         nao_realizadas: value.notCompleted, taxa_realizacao: percentage(value.completed, value.planned),
+        otif_percentual: percentage(value.notCompleted, value.planned),
       })),
       por_localidade: [...localities.entries()].map(([id, value]) => ({
         id_localidade: id, nome: value.name, lancamentos: value.launches.size,
         itens_planejados: value.planned, realizadas: value.completed,
         nao_realizadas: value.notCompleted, taxa_realizacao: percentage(value.completed, value.planned),
+        otif_percentual: percentage(value.notCompleted, value.planned),
         elogios: value.praise, reclamacoes: value.complaint,
       })).sort((a, b) => b.itens_planejados - a.itens_planejados || a.nome.localeCompare(b.nome, "pt-BR")),
       por_motivo: [...reasons.entries()].map(([id, value]) => ({
@@ -170,6 +165,7 @@ export const demoAnalyticsApi = {
         chave: key, equipe: value.name, itens_planejados: value.planned,
         realizadas: value.completed, nao_realizadas: value.notCompleted,
         taxa_realizacao: percentage(value.completed, value.planned),
+        otif_percentual: percentage(value.notCompleted, value.planned),
         lancamentos: value.launches.size, elogios: value.praise, reclamacoes: value.complaint,
       })).sort((a, b) => (b.taxa_realizacao ?? -1) - (a.taxa_realizacao ?? -1)
         || b.itens_planejados - a.itens_planejados || a.equipe.localeCompare(b.equipe, "pt-BR")),

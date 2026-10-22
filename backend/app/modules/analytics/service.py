@@ -129,8 +129,6 @@ def get_dashboard(
             Localidade.nome_localidade.label("nome_localidade"),
             EntregaDiaria.quantidade_realizada.label("realizadas"),
             EntregaDiaria.quantidade_nao_realizada.label("nao_realizadas"),
-            EntregaDiaria.quantidade_entregas_no_prazo.label("entregas_no_prazo"),
-            EntregaDiaria.quantidade_entregas_completas.label("entregas_completas"),
         )
         .select_from(EntregaDiaria)
         .join(
@@ -157,69 +155,21 @@ def get_dashboard(
                 func.count(func.distinct(registered_items.c.id_lancamento)).label(
                     "launch_count"
                 ),
-                func.count().label("item_count"),
                 func.coalesce(func.sum(registered_items.c.realizadas), 0).label(
                     "completed_total"
                 ),
                 func.coalesce(func.sum(registered_items.c.nao_realizadas), 0).label(
                     "not_completed_total"
                 ),
-                func.sum(registered_items.c.entregas_no_prazo).label(
-                    "on_time_total"
-                ),
-                func.sum(registered_items.c.entregas_completas).label(
-                    "in_full_total"
-                ),
-                func.coalesce(
-                    func.sum(
-                        case(
-                            (
-                                or_(
-                                    registered_items.c.entregas_no_prazo.is_(None),
-                                    registered_items.c.entregas_completas.is_(None),
-                                ),
-                                1,
-                            ),
-                            else_=0,
-                        )
-                    ),
-                    0,
-                ).label("otif_missing_count"),
             )
             .select_from(registered_items)
         ).one()
-        item_count = int(summary_row.item_count)
         launch_count = int(summary_row.launch_count)
         completed_total = int(summary_row.completed_total)
         not_completed_total = int(summary_row.not_completed_total)
         planned_total = completed_total + not_completed_total
 
-        otif_disponivel = item_count > 0 and int(summary_row.otif_missing_count) == 0
-        quantidade_entregas_no_prazo = (
-            int(summary_row.on_time_total or 0) if otif_disponivel else None
-        )
-        quantidade_entregas_completas = (
-            int(summary_row.in_full_total or 0) if otif_disponivel else None
-        )
-        percentual_entregas_no_prazo = (
-            _percentage(quantidade_entregas_no_prazo, planned_total)
-            if quantidade_entregas_no_prazo is not None
-            else None
-        )
-        percentual_entregas_completas = (
-            _percentage(quantidade_entregas_completas, planned_total)
-            if quantidade_entregas_completas is not None
-            else None
-        )
-        otif_percentual = (
-            round(
-                percentual_entregas_no_prazo * percentual_entregas_completas / 100,
-                2,
-            )
-            if percentual_entregas_no_prazo is not None
-            and percentual_entregas_completas is not None
-            else None
-        )
+        otif_percentual = _percentage(not_completed_total, planned_total)
 
         daily_rows = db.execute(
             select(
@@ -373,6 +323,7 @@ def get_dashboard(
             person_id: {
                 "name": person.nome_exibicao,
                 "role": person.tipo_funcao,
+                "active": person.ativo,
                 "teams": set(),
                 "planned": 0,
                 "completed": 0,
@@ -382,32 +333,6 @@ def get_dashboard(
             }
             for person_id, person in people_by_id.items()
         }
-        driver_rows = db.execute(
-            select(
-                Pessoa.id_pessoa,
-                func.sum(
-                    registered_items.c.realizadas
-                    + registered_items.c.nao_realizadas
-                ).label("planned"),
-                func.sum(registered_items.c.realizadas).label("completed"),
-                func.sum(registered_items.c.nao_realizadas).label("not_completed"),
-            )
-            .select_from(EntregaParticipante)
-            .join(
-                registered_items,
-                registered_items.c.id_entrega_diaria
-                == EntregaParticipante.id_entrega_diaria,
-            )
-            .join(Pessoa, Pessoa.id_pessoa == EntregaParticipante.id_pessoa)
-            .where(EntregaParticipante.papel_participante == "MOTORISTA")
-            .group_by(Pessoa.id_pessoa)
-        ).all()
-        for row in driver_rows:
-            person = person_totals.get(row.id_pessoa)
-            if person is not None:
-                person["planned"] = int(row.planned or 0)
-                person["completed"] = int(row.completed or 0)
-                person["not_completed"] = int(row.not_completed or 0)
 
         team_totals: dict[str, dict[str, object]] = {}
         for row in team_rows:
@@ -434,6 +359,12 @@ def get_dashboard(
                 person = person_totals.get(person_id)
                 if person is not None:
                     person["teams"].add(team_key)
+                    # O formulário registra quantidades por equipe. Para permitir
+                    # ranking conjunto, cada participante recebe o resultado das
+                    # equipes em que trabalhou; totais pessoais não são somáveis.
+                    person["planned"] = int(person["planned"]) + int(row.planned or 0)
+                    person["completed"] = int(person["completed"]) + int(row.completed or 0)
+                    person["not_completed"] = int(person["not_completed"]) + int(row.not_completed or 0)
 
         feedback_available = _feedback_tables_available(db)
         feedback_totals = {"praise": 0, "complaint": 0}
@@ -629,6 +560,9 @@ def get_dashboard(
                 realizadas=int(values["completed"]),
                 nao_realizadas=int(values["not_completed"]),
                 taxa_realizacao=_rate(int(values["completed"]), int(values["not_completed"])),
+                otif_percentual=_percentage(
+                    int(values["not_completed"]), int(values["planned"])
+                ),
                 elogios=int(values["praise"]) if feedback_available else None,
                 reclamacoes=int(values["complaint"]) if feedback_available else None,
             )
@@ -641,11 +575,15 @@ def get_dashboard(
                 id_pessoa=id_person,
                 nome=str(values["name"]),
                 funcao=str(values["role"]),
+                ativo=bool(values["active"]),
                 equipes=len(values["teams"]),
                 itens_planejados=int(values["planned"]),
                 realizadas=int(values["completed"]),
                 nao_realizadas=int(values["not_completed"]),
                 taxa_realizacao=_rate(int(values["completed"]), int(values["not_completed"])),
+                otif_percentual=_percentage(
+                    int(values["not_completed"]), int(values["planned"])
+                ),
                 elogios=int(values["praise"]) if feedback_available else None,
                 reclamacoes=int(values["complaint"]) if feedback_available else None,
                 score_atendimento=int(values["praise"]) - int(values["complaint"]),
@@ -669,6 +607,9 @@ def get_dashboard(
                 realizadas=int(values["completed"]),
                 nao_realizadas=int(values["not_completed"]),
                 taxa_realizacao=_rate(int(values["completed"]), int(values["not_completed"])),
+                otif_percentual=_percentage(
+                    int(values["not_completed"]), int(values["planned"])
+                ),
                 lancamentos=int(values["launch_count"]),
                 elogios=int(values["praise"]) if feedback_available else None,
                 reclamacoes=int(values["complaint"]) if feedback_available else None,
@@ -690,6 +631,9 @@ def get_dashboard(
                 realizadas=int(row.completed),
                 nao_realizadas=int(row.not_completed),
                 taxa_realizacao=_rate(int(row.completed), int(row.not_completed)),
+                otif_percentual=_percentage(
+                    int(row.not_completed), int(row.completed) + int(row.not_completed)
+                ),
             )
             for row in daily_rows
         ]
@@ -711,10 +655,6 @@ def get_dashboard(
                 entregas_realizadas=completed_total,
                 entregas_nao_realizadas=not_completed_total,
                 taxa_realizacao=_rate(completed_total, not_completed_total),
-                quantidade_entregas_no_prazo=quantidade_entregas_no_prazo,
-                quantidade_entregas_completas=quantidade_entregas_completas,
-                percentual_entregas_no_prazo=percentual_entregas_no_prazo,
-                percentual_entregas_completas=percentual_entregas_completas,
                 otif_percentual=otif_percentual,
             ),
             feedback=FeedbackSummary(

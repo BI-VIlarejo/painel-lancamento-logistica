@@ -72,8 +72,8 @@ class FeedbackServiceTests(unittest.TestCase):
                 ),
                 Setor(
                     id_setor=2,
-                    codigo="ENTREGAS",
-                    nome="Entregas",
+                    codigo="SUPORTE",
+                    nome="Suporte",
                     ativo=True,
                     criado_em=self.now,
                     atualizado_em=self.now,
@@ -347,7 +347,7 @@ class FeedbackServiceTests(unittest.TestCase):
         self.assertEqual(out_of_scope, [])
         self.assertEqual(len(sector_scope), 1)
 
-    def test_dashboard_keeps_otif_unavailable_for_legacy_rows(self) -> None:
+    def test_dashboard_calculates_otif_for_legacy_rows(self) -> None:
         delivery = self.db.get(EntregaDiaria, 9)
         assert delivery is not None
         delivery.quantidade_entregas_no_prazo = None
@@ -361,10 +361,7 @@ class FeedbackServiceTests(unittest.TestCase):
             data_ate=self.delivery_date,
             id_localidade=3,
         )
-        self.assertIsNone(dashboard.resumo.quantidade_entregas_no_prazo)
-        self.assertIsNone(dashboard.resumo.quantidade_entregas_completas)
-        self.assertIsNone(dashboard.resumo.percentual_entregas_no_prazo)
-        self.assertIsNone(dashboard.resumo.otif_percentual)
+        self.assertEqual(dashboard.resumo.otif_percentual, 0.0)
 
     def test_api_requires_and_normalizes_customer_name(self) -> None:
         payload = self._payload().model_dump()
@@ -413,16 +410,16 @@ class FeedbackServiceTests(unittest.TestCase):
         )
         self.assertEqual(visible_dashboard.resumo.lancamentos_registrados, 1)
         self.assertEqual(visible_dashboard.resumo.itens_planejados, 12)
-        self.assertEqual(visible_dashboard.resumo.quantidade_entregas_no_prazo, 10)
-        self.assertEqual(visible_dashboard.resumo.quantidade_entregas_completas, 9)
-        self.assertEqual(visible_dashboard.resumo.percentual_entregas_no_prazo, 83.33)
-        self.assertEqual(visible_dashboard.resumo.percentual_entregas_completas, 75.0)
-        self.assertEqual(visible_dashboard.resumo.otif_percentual, 62.5)
+        self.assertEqual(visible_dashboard.resumo.otif_percentual, 0.0)
+        self.assertEqual(visible_dashboard.por_localidade[0].otif_percentual, 0.0)
+        self.assertEqual(visible_dashboard.por_equipe[0].otif_percentual, 0.0)
         self.assertEqual(visible_dashboard.feedback.elogios, 1)
         people = {person.nome: person for person in visible_dashboard.por_pessoa}
         self.assertEqual(people["Motorista de teste"].itens_planejados, 12)
+        self.assertEqual(people["Motorista de teste"].otif_percentual, 0.0)
         self.assertEqual(people["Motorista de teste"].score_atendimento, 1)
         self.assertEqual(people["Ajudante de teste"].itens_planejados, 0)
+        self.assertIsNone(people["Ajudante de teste"].otif_percentual)
         self.assertEqual(people["Ajudante de teste"].score_atendimento, 1)
 
         cancel_confirmed_launch(

@@ -11,10 +11,6 @@ class DashboardSummary(BaseModel):
     entregas_realizadas: int
     entregas_nao_realizadas: int
     taxa_realizacao: float | None
-    quantidade_entregas_no_prazo: int | None
-    quantidade_entregas_completas: int | None
-    percentual_entregas_no_prazo: float | None
-    percentual_entregas_completas: float | None
     otif_percentual: float | None
 
 
@@ -24,6 +20,7 @@ class TrendPoint(BaseModel):
     realizadas: int
     nao_realizadas: int
     taxa_realizacao: float | None
+    otif_percentual: float | None
 
 
 class LocalityPerformance(BaseModel):
@@ -34,6 +31,7 @@ class LocalityPerformance(BaseModel):
     realizadas: int
     nao_realizadas: int
     taxa_realizacao: float | None
+    otif_percentual: float | None
     elogios: int | None
     reclamacoes: int | None
 
@@ -48,11 +46,13 @@ class PersonPerformance(BaseModel):
     id_pessoa: int
     nome: str
     funcao: str
+    ativo: bool
     equipes: int
     itens_planejados: int
     realizadas: int
     nao_realizadas: int
     taxa_realizacao: float | None
+    otif_percentual: float | None
     elogios: int | None
     reclamacoes: int | None
     score_atendimento: int
@@ -65,6 +65,7 @@ class TeamPerformance(BaseModel):
     realizadas: int
     nao_realizadas: int
     taxa_realizacao: float | None
+    otif_percentual: float | None
     lancamentos: int
     elogios: int | None
     reclamacoes: int | None
