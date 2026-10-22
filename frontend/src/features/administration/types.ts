@@ -3,7 +3,21 @@ export type LocalityAdminItem = {
   codigo_localidade: string;
   nome_localidade: string;
   tipo_localidade: string;
+  cidade: string | null;
+  uf: string | null;
   ativo: boolean;
+};
+
+export type LocalityCreateInput = {
+  codigo_localidade: string;
+  nome_localidade: string;
+  tipo_localidade: "LOJA" | "CD" | "OUTRO";
+  cidade: string;
+  uf: string;
+};
+
+export type LocalityUpdateInput = Omit<LocalityCreateInput, "codigo_localidade" | "tipo_localidade"> & {
+  tipo_localidade: string;
 };
 
 export type PersonAdminItem = {

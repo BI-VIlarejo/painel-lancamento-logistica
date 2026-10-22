@@ -20,6 +20,9 @@ from app.modules.access_control.models import AutorizacaoEvento
 from app.modules.catalogs import repository
 from app.modules.catalogs.admin_schemas import (
     LocalityAdminItem,
+    LocalityCreateRequest,
+    LocalityStatusRequest,
+    LocalityUpdateRequest,
     PersonAdminItem,
     PersonCreateRequest,
     PersonStatusRequest,
@@ -27,7 +30,7 @@ from app.modules.catalogs.admin_schemas import (
     ReasonCreateRequest,
     ReasonStatusRequest,
 )
-from app.modules.catalogs.models import MotivoNaoEntrega, Pessoa
+from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa
 
 
 def _now() -> datetime:
@@ -96,6 +99,178 @@ def list_localities(db: Session) -> list[LocalityAdminItem]:
             LocalityAdminItem.model_validate(item)
             for item in repository.list_admin_localities(db)
         ]
+    except SQLAlchemyError as exc:
+        raise _db_unavailable(db, exc) from exc
+
+
+def _ensure_locality_unique(
+    db: Session,
+    *,
+    codigo_localidade: str,
+    nome_localidade: str,
+    cidade: str,
+    uf: str,
+    exclude_id: int | None = None,
+) -> None:
+    if repository.locality_code_exists(
+        db,
+        codigo_localidade=codigo_localidade,
+        exclude_id=exclude_id,
+    ):
+        raise ConflictError("Já existe uma localidade com esse código.")
+    if repository.locality_name_city_uf_exists(
+        db,
+        nome_localidade=nome_localidade,
+        cidade=cidade,
+        uf=uf,
+        exclude_id=exclude_id,
+    ):
+        raise ConflictError("Já existe uma localidade com esse nome, cidade e UF.")
+
+
+def create_locality(
+    db: Session,
+    *,
+    payload: LocalityCreateRequest,
+    actor_id: int,
+) -> LocalityAdminItem:
+    now = _now()
+    try:
+        _ensure_locality_unique(
+            db,
+            codigo_localidade=payload.codigo_localidade,
+            nome_localidade=payload.nome_localidade,
+            cidade=payload.cidade,
+            uf=payload.uf,
+        )
+        item = Localidade(
+            codigo_localidade=payload.codigo_localidade,
+            nome_localidade=payload.nome_localidade,
+            tipo_localidade=payload.tipo_localidade,
+            cidade=payload.cidade,
+            uf=payload.uf,
+            ativo=True,
+            sincronizado_em=now,
+        )
+        db.add(item)
+        db.flush()
+        _event(
+            db,
+            kind="LOCALIDADE_CRIADA",
+            actor_id=actor_id,
+            details={
+                "id_localidade": item.id_localidade,
+                "codigo_localidade": item.codigo_localidade,
+            },
+        )
+        db.commit()
+        return LocalityAdminItem.model_validate(item)
+    except APIError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError(
+            "Já existe uma localidade com esse código ou nome, cidade e UF."
+        ) from exc
+    except SQLAlchemyError as exc:
+        raise _db_unavailable(db, exc) from exc
+
+
+def update_locality(
+    db: Session,
+    *,
+    id_localidade: int,
+    payload: LocalityUpdateRequest,
+    actor_id: int,
+) -> LocalityAdminItem:
+    try:
+        item = repository.get_locality_for_update(db, id_localidade=id_localidade)
+        if item is None:
+            raise NotFoundError("Localidade não encontrada.")
+        _ensure_locality_unique(
+            db,
+            codigo_localidade=item.codigo_localidade,
+            nome_localidade=payload.nome_localidade,
+            cidade=payload.cidade,
+            uf=payload.uf,
+            exclude_id=item.id_localidade,
+        )
+        changed_fields = [
+            field
+            for field, value in (
+                ("nome_localidade", payload.nome_localidade),
+                ("tipo_localidade", payload.tipo_localidade),
+                ("cidade", payload.cidade),
+                ("uf", payload.uf),
+            )
+            if getattr(item, field) != value
+        ]
+        if not changed_fields:
+            return LocalityAdminItem.model_validate(item)
+        item.nome_localidade = payload.nome_localidade
+        item.tipo_localidade = payload.tipo_localidade
+        item.cidade = payload.cidade
+        item.uf = payload.uf
+        db.flush()
+        _event(
+            db,
+            kind="LOCALIDADE_ATUALIZADA",
+            actor_id=actor_id,
+            details={
+                "id_localidade": item.id_localidade,
+                "codigo_localidade": item.codigo_localidade,
+                "campos_alterados": changed_fields,
+            },
+        )
+        db.commit()
+        return LocalityAdminItem.model_validate(item)
+    except APIError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError(
+            "Já existe uma localidade com esse nome, cidade e UF."
+        ) from exc
+    except SQLAlchemyError as exc:
+        raise _db_unavailable(db, exc) from exc
+
+
+def set_locality_active(
+    db: Session,
+    *,
+    id_localidade: int,
+    payload: LocalityStatusRequest,
+    actor_id: int,
+) -> LocalityAdminItem:
+    try:
+        item = repository.get_locality_for_update(db, id_localidade=id_localidade)
+        if item is None:
+            raise NotFoundError("Localidade não encontrada.")
+        if item.ativo == payload.ativo:
+            raise ConflictError(
+                "A localidade já está " + ("ativa." if item.ativo else "inativa.")
+            )
+        if payload.ativo and (not item.cidade or not item.uf):
+            raise ConflictError(
+                "Informe cidade e UF antes de ativar a localidade."
+            )
+        item.ativo = payload.ativo
+        _event(
+            db,
+            kind="LOCALIDADE_ATIVADA" if item.ativo else "LOCALIDADE_DESATIVADA",
+            actor_id=actor_id,
+            details={
+                "id_localidade": item.id_localidade,
+                "codigo_localidade": item.codigo_localidade,
+            },
+        )
+        db.commit()
+        return LocalityAdminItem.model_validate(item)
+    except APIError:
+        db.rollback()
+        raise
     except SQLAlchemyError as exc:
         raise _db_unavailable(db, exc) from exc
 

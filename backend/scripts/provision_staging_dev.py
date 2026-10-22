@@ -47,6 +47,7 @@ PROFILE_NAMES = {
     "GESTOR": "Gestão",
     "DIRETORIA": "Diretoria",
     "OPERADOR": "Operação",
+    "CADASTRADOR": "Cadastros operacionais",
 }
 REQUIRED_TABLES = (
     "op_logistica_usuario",
@@ -271,7 +272,9 @@ def _seed_operational_reference_data(db: Session, *, actor_id: int, now: datetim
         db.add(sector)
         db.flush()
     elif not sector.ativo or sector.nome != DELIVERY_SECTOR_NAME:
-        raise RuntimeError("O setor existente diverge de Entregas ou está inativo; revise-o manualmente.")
+        raise RuntimeError(
+            f"O setor existente diverge de {DELIVERY_SECTOR_NAME} ou está inativo; revise-o manualmente."
+        )
 
     form = db.scalar(
         select(FormularioVersao).where(
@@ -405,7 +408,7 @@ def main() -> int:
         else:
             print("A conta já existia; nenhuma senha foi alterada ou exibida.")
         print(
-            "Foram preparados perfis, permissões, setor Entregas e a versão inicial "
+            f"Foram preparados perfis, permissões, setor {DELIVERY_SECTOR_NAME} e a versão inicial "
             "do formulário. Lojas, pessoas e motivos reais devem ser "
             "cadastrados pela Administração do Portal."
         )

@@ -15,6 +15,82 @@ class LocalityAdminItem(BaseModel):
     codigo_localidade: str
     nome_localidade: str
     tipo_localidade: str
+    cidade: str | None
+    uf: str | None
+    ativo: bool
+
+
+LOCALITY_UF_CODES = {
+    "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT",
+    "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO",
+    "RR", "SC", "SP", "SE", "TO",
+}
+
+
+def _normalize_locality_text(value: str) -> str:
+    normalized = " ".join(value.split())
+    if not normalized:
+        raise ValueError("O campo é obrigatório.")
+    return normalized
+
+
+def _normalize_uf(value: str) -> str:
+    normalized = value.strip().upper()
+    if normalized not in LOCALITY_UF_CODES:
+        raise ValueError("Informe uma UF brasileira válida com duas letras.")
+    return normalized
+
+
+class LocalityCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    codigo_localidade: str = Field(min_length=1, max_length=60)
+    nome_localidade: str = Field(min_length=1, max_length=160)
+    tipo_localidade: Literal["LOJA", "CD", "OUTRO"]
+    cidade: str = Field(min_length=1, max_length=120)
+    uf: str = Field(min_length=2, max_length=2)
+
+    @field_validator("codigo_localidade")
+    @classmethod
+    def normalize_locality_code(cls, value: str) -> str:
+        normalized = value.strip().upper()
+        if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{0,59}", normalized):
+            raise ValueError("Use letras sem acento, números, hífen ou _ no código.")
+        return normalized
+
+    @field_validator("nome_localidade", "cidade")
+    @classmethod
+    def normalize_locality_text(cls, value: str) -> str:
+        return _normalize_locality_text(value)
+
+    @field_validator("uf")
+    @classmethod
+    def normalize_uf(cls, value: str) -> str:
+        return _normalize_uf(value)
+
+
+class LocalityUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nome_localidade: str = Field(min_length=1, max_length=160)
+    tipo_localidade: Literal["LOJA", "CD", "OUTRO"]
+    cidade: str = Field(min_length=1, max_length=120)
+    uf: str = Field(min_length=2, max_length=2)
+
+    @field_validator("nome_localidade", "cidade")
+    @classmethod
+    def normalize_locality_text(cls, value: str) -> str:
+        return _normalize_locality_text(value)
+
+    @field_validator("uf")
+    @classmethod
+    def normalize_uf(cls, value: str) -> str:
+        return _normalize_uf(value)
+
+
+class LocalityStatusRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     ativo: bool
 
 

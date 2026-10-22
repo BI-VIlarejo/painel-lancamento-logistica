@@ -7,13 +7,15 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from app.api.v1.dependencies import (
     CsrfProtectedAuth,
     DatabaseSession,
-    require_global_permission,
     require_permission,
 )
 from app.modules.access_control.catalog import PermissionCode
 from app.modules.catalogs import admin_service
 from app.modules.catalogs.admin_schemas import (
     LocalityAdminItem,
+    LocalityCreateRequest,
+    LocalityStatusRequest,
+    LocalityUpdateRequest,
     PersonAdminItem,
     PersonCreateRequest,
     PersonStatusRequest,
@@ -33,7 +35,7 @@ from app.modules.catalogs.schemas import (
 
 router = APIRouter(tags=["Catálogos"])
 _delivery_read_access = require_permission(PermissionCode.DELIVERY_VIEW)
-_catalog_admin_access = require_global_permission(PermissionCode.CATALOG_ADMIN)
+_catalog_admin_access = require_permission(PermissionCode.CATALOG_ADMIN)
 
 
 def _no_store(response: Response) -> None:
@@ -126,6 +128,56 @@ def get_admin_localities(
 ) -> list[LocalityAdminItem]:
     _no_store(response)
     return admin_service.list_localities(db)
+
+
+@router.post(
+    "/cadastros/localidades",
+    response_model=LocalityAdminItem,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_locality(
+    payload: LocalityCreateRequest,
+    db: DatabaseSession,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_catalog_admin_access),
+) -> LocalityAdminItem:
+    return admin_service.create_locality(
+        db,
+        payload=payload,
+        actor_id=auth.user.id_usuario,
+    )
+
+
+@router.put("/cadastros/localidades/{id_localidade}", response_model=LocalityAdminItem)
+def update_locality(
+    id_localidade: int,
+    payload: LocalityUpdateRequest,
+    db: DatabaseSession,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_catalog_admin_access),
+) -> LocalityAdminItem:
+    return admin_service.update_locality(
+        db,
+        id_localidade=id_localidade,
+        payload=payload,
+        actor_id=auth.user.id_usuario,
+    )
+
+
+@router.patch("/cadastros/localidades/{id_localidade}", response_model=LocalityAdminItem)
+def set_locality_status(
+    id_localidade: int,
+    payload: LocalityStatusRequest,
+    db: DatabaseSession,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_catalog_admin_access),
+) -> LocalityAdminItem:
+    return admin_service.set_locality_active(
+        db,
+        id_localidade=id_localidade,
+        payload=payload,
+        actor_id=auth.user.id_usuario,
+    )
 
 
 @router.get("/cadastros/pessoas", response_model=list[PersonAdminItem])

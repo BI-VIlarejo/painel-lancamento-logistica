@@ -33,6 +33,15 @@ class Setor(Base):
 
 class Localidade(Base):
     __tablename__ = "op_logistica_localidade"
+    __table_args__ = (
+        Index(
+            "uq_op_logistica_localidade_nome_cidade_uf",
+            "nome_localidade",
+            "cidade",
+            "uf",
+            unique=True,
+        ),
+    )
 
     id_localidade: Mapped[int] = mapped_column(
         BigInteger, primary_key=True, autoincrement=True
@@ -42,6 +51,8 @@ class Localidade(Base):
     )
     nome_localidade: Mapped[str] = mapped_column(String(160), nullable=False)
     tipo_localidade: Mapped[str] = mapped_column(String(30), nullable=False)
+    cidade: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    uf: Mapped[str | None] = mapped_column(String(2), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     sincronizado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 

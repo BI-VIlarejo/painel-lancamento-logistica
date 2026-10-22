@@ -62,16 +62,30 @@ PROFILE_PERMISSION_CODES: Final[dict[str, frozenset[str]]] = {
     "DEV": BUILTIN_PERMISSION_CODES,
     "GESTOR": BUILTIN_PERMISSION_CODES,
     "DIRETORIA": BUILTIN_PERMISSION_CODES,
+    # Mantém os catálogos e pode consultar/exportar feedback, sem criar
+    # lançamentos, administrar contas, consultar indicadores ou auditoria.
+    "CADASTRADOR": frozenset(
+        {
+            PermissionCode.CATALOG_ADMIN,
+            PermissionCode.FEEDBACK_ACCESS,
+            PermissionCode.FEEDBACK_VIEW,
+            PermissionCode.FEEDBACK_EXPORT,
+        }
+    ),
     "OPERADOR": frozenset(
         {
+            PermissionCode.CATALOG_ADMIN,
             PermissionCode.DELIVERY_VIEW,
             PermissionCode.DELIVERY_CREATE,
             PermissionCode.DELIVERY_EDIT_DRAFT,
+            PermissionCode.FEEDBACK_ACCESS,
+            PermissionCode.FEEDBACK_VIEW,
+            PermissionCode.FEEDBACK_CREATE,
+            PermissionCode.FEEDBACK_EXPORT,
         }
     ),
 }
 
-# Um único tipo de lançamento está ativo. O nome fica provisoriamente como
-# "Entregas" até a confirmação do nome definitivo do setor.
-DELIVERY_SECTOR_CODE: Final[str] = "ENTREGAS"
-DELIVERY_SECTOR_NAME: Final[str] = "Entregas"
+# O módulo de Entregas registra os lançamentos no setor responsável Suporte.
+DELIVERY_SECTOR_CODE: Final[str] = "SUPORTE"
+DELIVERY_SECTOR_NAME: Final[str] = "Suporte"

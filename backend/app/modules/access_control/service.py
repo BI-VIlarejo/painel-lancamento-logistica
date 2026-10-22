@@ -78,6 +78,7 @@ class AuthorizationContext:
 
 _PROFILE_ASSIGNMENT_LEVELS = {
     "OPERADOR": 0,
+    "CADASTRADOR": 0,
     "GESTOR": 1,
     "DIRETORIA": 2,
     "DEV": 3,
@@ -1048,8 +1049,9 @@ def _grant_user_scope(
         raise PermissionDeniedError(
             "Você só pode conceder perfis do seu nível de administração ou abaixo."
         )
-    if profile.codigo == "DEV" and payload.tipo_escopo != "GLOBAL":
-        raise ConflictError("O perfil DEV exige escopo global.")
+    if profile.codigo in {"DEV", "CADASTRADOR"} and payload.tipo_escopo != "GLOBAL":
+        profile_name = "DEV" if profile.codigo == "DEV" else "Cadastros operacionais"
+        raise ConflictError(f"O perfil {profile_name} exige escopo global.")
 
     if payload.id_setor is not None and not repository.sector_is_active(
         db,

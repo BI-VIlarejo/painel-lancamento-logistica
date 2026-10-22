@@ -13,8 +13,8 @@ type Props = { permissions: string[]; currentUserId: number };
 type MainTab = "operation" | "users";
 type CatalogTab = "stores" | "people" | "reasons";
 type StatusFilter = "ACTIVE" | "INACTIVE" | "ALL";
-type Dialog = { kind: "people" | "reasons"; item?: PersonAdminItem | ReasonAdminItem };
-type StatusTarget = { kind: "person" | "reason" | "user" | "grant"; id: number; label: string; active: boolean; userId?: number };
+type Dialog = { kind: "localities" | "people" | "reasons"; item?: LocalityAdminItem | PersonAdminItem | ReasonAdminItem };
+type StatusTarget = { kind: "locality" | "person" | "reason" | "user" | "grant"; id: number; label: string; active: boolean; userId?: number };
 type ScopeOptions = { setores: SectorCatalogItem[]; localidades: LocalityCatalogItem[] };
 type GrantFormState = { id_perfil: string; tipo_escopo: UserAccessGrant["tipo_escopo"] | ""; id_setor: string; id_localidade: string };
 
@@ -48,6 +48,7 @@ const getGrantStatus = (grant: UserAccessGrant) => {
 };
 const isPerson = (item: unknown): item is PersonAdminItem => Boolean(item && typeof item === "object" && "id_pessoa" in item);
 const isReason = (item: unknown): item is ReasonAdminItem => Boolean(item && typeof item === "object" && "id_motivo_nao_entrega" in item);
+const isLocality = (item: unknown): item is LocalityAdminItem => Boolean(item && typeof item === "object" && "id_localidade" in item);
 
 function StatusPill({ active, pending, label, tone }: { active: boolean; pending?: boolean; label?: string; tone?: "active" | "inactive" | "scheduled" | "expired" }) {
   const statusTone = tone ?? (pending ? "pending" : active ? "active" : "inactive");
@@ -71,6 +72,16 @@ function ModalHeader({ eyebrow, title, onClose, id }: { eyebrow: string; title: 
 export function RegistriesPage({ permissions, currentUserId }: Props) {
   const canManageCatalogs = permissions.includes("CADASTROS:ADMINISTRAR");
   const canManageAccess = permissions.includes("CONTROLE_ACESSO:ADMINISTRAR");
+  const administrationTitle = canManageCatalogs && canManageAccess
+    ? "Cadastros e acessos"
+    : canManageCatalogs
+      ? "Cadastros operacionais"
+      : "Usuários e acessos";
+  const administrationDescription = canManageCatalogs && canManageAccess
+    ? "Mantenha os dados da operação e administre quem pode acessar cada parte do portal."
+    : canManageCatalogs
+      ? "Mantenha os cadastros compartilhados de lojas, equipe e motivos de ocorrência."
+      : "Consulte contas e mantenha os perfis e escopos de acesso ao portal.";
   const [mainTab, setMainTab] = useState<MainTab>(canManageCatalogs ? "operation" : "users");
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("stores");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ACTIVE");
@@ -144,13 +155,20 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   }), [localities, people, reasons, users]);
   const catalogRows = useMemo(() => {
     const rows = catalogTab === "stores"
-      ? localities.map((item) => ({ id: item.id_localidade, primary: item.nome_localidade, secondary: item.tipo_localidade === "CD" ? "Centro de distribuição" : item.tipo_localidade === "OUTRO" ? "Outro" : "Loja", detail: "", active: item.ativo, item }))
+      ? localities.map((item) => ({
+        id: item.id_localidade,
+        primary: item.nome_localidade,
+        secondary: [item.cidade || "Cidade não informada", item.uf || "UF não informada"].join(" / "),
+        detail: item.tipo_localidade === "CD" ? "Centro de distribuição" : item.tipo_localidade === "OUTRO" ? "Outro" : item.tipo_localidade === "LOJA" ? "Loja" : `Tipo: ${item.tipo_localidade}`,
+        active: item.ativo,
+        item,
+      }))
       : catalogTab === "people"
         ? people.map((item) => ({ id: item.id_pessoa, primary: item.nome_exibicao, secondary: item.tipo_funcao === "MOTORISTA" ? "Motorista" : "Ajudante", detail: "Vigente desde " + formatDate(item.vigente_desde), active: item.ativo, item }))
         : reasons.map((item) => ({ id: item.id_motivo_nao_entrega, primary: item.descricao_motivo, secondary: "Vigente desde " + formatDate(item.vigente_desde), detail: "", active: item.ativo, item }));
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return rows.filter((row) => statusFilter === "ALL" || (statusFilter === "ACTIVE" ? row.active : !row.active))
-      .filter((row) => !needle || (row.primary + " " + row.secondary + " " + row.detail).toLocaleLowerCase("pt-BR").includes(needle));
+      .filter((row) => !needle || (row.primary + " " + row.secondary + " " + row.detail + " " + (isLocality(row.item) ? row.item.codigo_localidade : "")).toLocaleLowerCase("pt-BR").includes(needle));
   }, [catalogTab, localities, people, query, reasons, statusFilter]);
   const visibleUsers = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("pt-BR");
@@ -161,7 +179,16 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const setField = (field: string, value: string) => setForm((current) => ({ ...current, [field]: value }));
   const openCatalog = (kind: Dialog["kind"], item?: Dialog["item"]) => {
     setNotice(""); setDialog({ kind, item });
-    if (kind === "people") {
+    if (kind === "localities") {
+      const locality = isLocality(item) ? item : undefined;
+      setForm({
+        codigoLocalidade: locality?.codigo_localidade ?? "",
+        nomeLocalidade: locality?.nome_localidade ?? "",
+        tipoLocalidade: locality?.tipo_localidade ?? "LOJA",
+        cidade: locality?.cidade ?? "",
+        uf: locality?.uf ?? "",
+      });
+    } else if (kind === "people") {
       const person = isPerson(item) ? item : undefined;
       setForm({ nome: person?.nome_exibicao ?? "", funcao: person?.tipo_funcao ?? "MOTORISTA", codigoPessoa: person?.codigo_pessoa ?? "" });
     } else {
@@ -175,13 +202,39 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
     event.preventDefault();
     if (!dialog) return;
     setSaving(true); setLoadError("");
+    if (dialog.kind === "localities") {
+      const operation = dialog.item && isLocality(dialog.item)
+        ? administrationApi.updateLocality(dialog.item.id_localidade, {
+          nome_localidade: form.nomeLocalidade.trim(),
+          tipo_localidade: form.tipoLocalidade,
+          cidade: form.cidade.trim(),
+          uf: form.uf.trim().toUpperCase(),
+        })
+        : administrationApi.createLocality({
+          codigo_localidade: form.codigoLocalidade.trim().toUpperCase(),
+          nome_localidade: form.nomeLocalidade.trim(),
+          tipo_localidade: form.tipoLocalidade as "LOJA" | "CD" | "OUTRO",
+          cidade: form.cidade.trim(),
+          uf: form.uf.trim().toUpperCase(),
+        });
+      void operation.then(() => {
+        setNotice(dialog.item ? "Localidade atualizada." : "Localidade cadastrada.");
+        closeCatalog();
+        return refresh();
+      }).catch((error: unknown) => setLoadError(messageFromApiError(error))).finally(() => setSaving(false));
+      return;
+    }
+
     const operation = dialog.kind === "people"
       ? administrationApi.createPerson({
         ...(form.codigoPessoa ? { codigo_pessoa: form.codigoPessoa } : {}),
         nome_exibicao: form.nome.trim(),
         tipo_funcao: form.funcao as "MOTORISTA" | "AJUDANTE",
       })
-      : administrationApi.createReason({ ...(form.codigo ? { codigo_motivo: form.codigo } : {}), descricao_motivo: form.descricao.trim() });
+      : administrationApi.createReason({
+        ...(form.codigo ? { codigo_motivo: form.codigo } : {}),
+        descricao_motivo: form.descricao.trim(),
+      });
     void operation.then((created) => {
       setNotice(`${dialog.item ? "Nova versão criada" : "Cadastro criado"}. Vigência a partir de ${formatDate(created.vigente_desde)}; histórico anterior preservado.`);
       closeCatalog();
@@ -261,7 +314,9 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const applyStatusChange = () => {
     if (!statusTarget) return;
     setSaving(true); setLoadError("");
-    const task = statusTarget.kind === "person"
+    const task = statusTarget.kind === "locality"
+      ? administrationApi.setLocalityActive(statusTarget.id, !statusTarget.active)
+      : statusTarget.kind === "person"
       ? administrationApi.deactivatePerson(statusTarget.id)
       : statusTarget.kind === "reason"
         ? administrationApi.deactivateReason(statusTarget.id)
@@ -271,7 +326,7 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
             ? administrationApi.revokeGrant(statusTarget.userId, statusTarget.id, statusReason.trim())
             : Promise.reject(new Error("Concessão não encontrada."));
     void task.then(() => {
-      const subject = statusTarget.kind === "user" ? "Conta" : "Cadastro";
+      const subject = statusTarget.kind === "user" ? "Conta" : statusTarget.kind === "locality" ? "Localidade" : "Cadastro";
       setNotice(statusTarget.kind === "grant" ? "Acesso revogado." : statusTarget.active ? subject + " desativada." : subject + " reativada.");
       if (statusTarget.kind === "grant" && selectedUser) return administrationApi.userGrants(selectedUser.id_usuario).then(setUserGrants);
       return refresh();
@@ -293,18 +348,19 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const selectedGrantProfile = profiles.find((profile) => profile.id_perfil === Number(grantForm.id_perfil));
   const updateGrantProfile = (id: string) => {
     const profile = profiles.find((item) => item.id_perfil === Number(id));
+    const requiresGlobalScope = profile?.codigo === "DEV" || profile?.codigo === "CADASTRADOR";
     setGrantForm((current) => ({
       ...current,
       id_perfil: id,
-      tipo_escopo: profile?.codigo === "DEV" ? "GLOBAL" : current.tipo_escopo,
-      id_setor: profile?.codigo === "DEV" ? "" : current.id_setor,
-      id_localidade: profile?.codigo === "DEV" ? "" : current.id_localidade,
+      tipo_escopo: requiresGlobalScope ? "GLOBAL" : current.tipo_escopo,
+      id_setor: requiresGlobalScope ? "" : current.id_setor,
+      id_localidade: requiresGlobalScope ? "" : current.id_localidade,
     }));
   };
   const showUsers = mainTab === "users" && canManageAccess;
-  const catalogTitle = catalogTab === "stores" ? "Lojas" : catalogTab === "people" ? "Motoristas e ajudantes" : "Motivos de não entrega";
-  const catalogWord = catalogTab === "stores" ? "loja" : catalogTab === "people" ? "pessoa" : "motivo";
-  const statusSubject = statusTarget?.kind === "user" ? "conta" : statusTarget?.kind === "person" ? "pessoa" : "motivo";
+  const catalogTitle = catalogTab === "stores" ? "Lojas e filiais" : catalogTab === "people" ? "Motoristas e ajudantes" : "Motivos de não entrega";
+  const catalogWord = catalogTab === "stores" ? "localidade" : catalogTab === "people" ? "pessoa" : "motivo";
+  const statusSubject = statusTarget?.kind === "user" ? "conta" : statusTarget?.kind === "locality" ? "localidade" : statusTarget?.kind === "person" ? "pessoa" : "motivo";
   const statusTitle = statusTarget?.kind === "grant"
     ? "Revogar acesso"
     : statusTarget?.active
@@ -325,14 +381,16 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const accessFields = <>
     <label>Perfil de acesso<select required value={grantForm.id_perfil} onChange={(event) => updateGrantProfile(event.target.value)}><option value="" disabled>Selecione um perfil</option>{profiles.map((profile) => <option key={profile.id_perfil} value={profile.id_perfil}>{profile.nome}</option>)}</select></label>
     {grantForm.id_perfil && <div className={cx(styles, commonStyles, "permission-preview")}><strong>Permissões deste perfil</strong>{profilePermissions.length ? <ul>{profilePermissions.map((permission) => <li key={permission.id_permissao}><span>{permission.descricao}</span><code>{permission.codigo}</code></li>)}</ul> : <p>Este perfil não tem permissões ativas cadastradas.</p>}</div>}
-    <label>Onde vale esse acesso?<select required value={grantForm.tipo_escopo} disabled={selectedGrantProfile?.codigo === "DEV"} onChange={(event) => setGrantForm((current) => ({ ...current, tipo_escopo: event.target.value as GrantFormState["tipo_escopo"], id_setor: "", id_localidade: "" }))}><option value="" disabled>Selecione um escopo</option><option value="GLOBAL">Todas as áreas</option><option value="SETOR">Um setor</option><option value="LOCALIDADE">Uma loja</option><option value="SETOR_LOCALIDADE">Um setor e uma loja</option></select></label>
+    <label>Onde vale esse acesso?<select required value={grantForm.tipo_escopo} disabled={selectedGrantProfile?.codigo === "DEV" || selectedGrantProfile?.codigo === "CADASTRADOR"} onChange={(event) => setGrantForm((current) => ({ ...current, tipo_escopo: event.target.value as GrantFormState["tipo_escopo"], id_setor: "", id_localidade: "" }))}><option value="" disabled>Selecione um escopo</option><option value="GLOBAL">Todas as áreas</option><option value="SETOR">Um setor</option><option value="LOCALIDADE">Uma loja</option><option value="SETOR_LOCALIDADE">Um setor e uma loja</option></select></label>
     {(grantForm.tipo_escopo === "SETOR" || grantForm.tipo_escopo === "SETOR_LOCALIDADE") && <label>Setor<select required value={grantForm.id_setor} onChange={(event) => setGrantForm((current) => ({ ...current, id_setor: event.target.value }))}><option value="" disabled>Selecione o setor</option>{scopeOptions.setores.map((sector) => <option key={sector.id_setor} value={sector.id_setor}>{sector.nome}</option>)}</select></label>}
     {(grantForm.tipo_escopo === "LOCALIDADE" || grantForm.tipo_escopo === "SETOR_LOCALIDADE") && <label>Loja<select required value={grantForm.id_localidade} onChange={(event) => setGrantForm((current) => ({ ...current, id_localidade: event.target.value }))}><option value="" disabled>Selecione a loja</option>{scopeOptions.localidades.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>}
     {selectedGrantProfile?.codigo === "DEV" && <p className={cx(styles, commonStyles, "form-guidance")}>O perfil de desenvolvimento exige acesso global.</p>}
+    {selectedGrantProfile?.codigo === "OPERADOR" && <p className={cx(styles, commonStyles, "form-guidance")}>Operação pode manter a lista compartilhada inteira de lojas, equipe e motivos. O escopo escolhido continua limitando Entregas e feedback.</p>}
+    {selectedGrantProfile?.codigo === "CADASTRADOR" && <p className={cx(styles, commonStyles, "form-guidance")}>Este perfil administra somente os catálogos operacionais compartilhados. Ele exige escopo global e não concede acesso a usuários e permissões.</p>}
   </>;
 
   return <div className={cx(styles, commonStyles, "registries-page")}>
-    <header className={cx(styles, commonStyles, "registry-heading")}><div><p className={cx(styles, commonStyles, "eyebrow")}>ADMINISTRAÇÃO DO PORTAL</p><h1>Cadastros</h1><p className={cx(styles, commonStyles, "page-lead")}>Mantenha a base da operação e controle quem pode acessar cada parte do portal.</p></div>{isDemoMode && <span className={cx(styles, commonStyles, "demo-indicator")}><i /> Prévia interativa</span>}</header>
+    <header className={cx(styles, commonStyles, "registry-heading")}><div><p className={cx(styles, commonStyles, "eyebrow")}>ADMINISTRAÇÃO DO PORTAL</p><h1>{administrationTitle}</h1><p className={cx(styles, commonStyles, "page-lead")}>{administrationDescription}</p></div>{isDemoMode && <span className={cx(styles, commonStyles, "demo-indicator")}><i /> Prévia interativa</span>}</header>
 
     {canManageCatalogs && <section className={cx(styles, commonStyles, "overview-strip")} aria-label="Resumo dos cadastros">
       <div><span className={cx(styles, commonStyles, "overview-symbol")}>⌂</span><span>Lojas ativas</span><strong>{counts.stores}</strong></div><div><span className={cx(styles, commonStyles, "overview-symbol")}>◎</span><span>Pessoas operacionais</span><strong>{counts.people}</strong></div><div><span className={cx(styles, commonStyles, "overview-symbol")}>≋</span><span>Motivos ativos</span><strong>{counts.reasons}</strong></div>{canManageAccess && <div><span className={cx(styles, commonStyles, "overview-symbol")}>♙</span><span>Contas ativas</span><strong>{counts.users}</strong></div>}
@@ -356,28 +414,54 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
             <div className={cx(styles, commonStyles, "panel-footnote")}><span aria-hidden="true">⌑</span><p>Ao desativar uma conta, as sessões abertas são encerradas. O histórico e as concessões anteriores ficam preservados.</p></div>
           </section>
         </> : <>
-          <section className={cx(styles, commonStyles, "section-intro")}><div><p className={cx(styles, commonStyles, "section-kicker")}>BASE DA OPERAÇÃO</p><h2>Cadastros operacionais</h2><p>Consulte as localidades do portal e mantenha a equipe e os motivos pelo nome.</p></div><div className={cx(styles, commonStyles, "access-note catalog-note")}><span aria-hidden="true">i</span><p>Motoristas, ajudantes e motivos preservam versões. Alterações criam uma nova vigência; registros usados não são apagados.</p></div></section>
+          <section className={cx(styles, commonStyles, "section-intro")}><div><p className={cx(styles, commonStyles, "section-kicker")}>BASE DA OPERAÇÃO</p><h2>Cadastros operacionais</h2><p>Cadastre e mantenha as localidades do portal, a equipe e os motivos de ocorrência.</p></div><div className={cx(styles, commonStyles, "access-note catalog-note")}><span aria-hidden="true">i</span><p>Motoristas, ajudantes e motivos preservam versões. Alterações criam uma nova vigência; registros usados não são apagados.</p></div></section>
           <div className={cx(styles, commonStyles, "catalog-workspace")}><nav className={cx(styles, commonStyles, "catalog-nav")} aria-label="Tipo de cadastro"><p>CATÁLOGOS</p>
             <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "stores" ? " catalog-nav-active" : ""))} onClick={() => { setCatalogTab("stores"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>⌂</span><span>Lojas<small>{counts.stores} ativas</small></span><b>›</b></button>
             <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "people" ? " catalog-nav-active" : ""))} onClick={() => { setCatalogTab("people"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>◎</span><span>Equipe<small>{counts.people} pessoas ativas</small></span><b>›</b></button>
             <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "reasons" ? " catalog-nav-active" : ""))} onClick={() => { setCatalogTab("reasons"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>≋</span><span>Motivos de ocorrência<small>{counts.reasons} ativos</small></span><b>›</b></button>
             <div className={cx(styles, commonStyles, "catalog-nav-help")}><strong>Uma base confiável</strong><p>Os formulários usam apenas cadastros ativos e válidos na data do lançamento.</p></div>
           </nav>
-          <section className={cx(styles, commonStyles, "registry-panel catalog-panel")}><div className={cx(styles, commonStyles, "panel-toolbar")}><div><span className={cx(styles, commonStyles, "panel-eyebrow")}>CATÁLOGO OPERACIONAL</span><h3>{catalogTitle}</h3><span>{catalogRows.length} registro{catalogRows.length === 1 ? "" : "s"} na lista</span></div>{catalogTab !== "stores" && <button className={cx(styles, commonStyles, "button button-primary add-button")} type="button" onClick={() => openCatalog(catalogTab)}><span>＋</span>{catalogTab === "people" ? "Cadastrar pessoa" : "Cadastrar motivo"}</button>}</div>
-            <div className={cx(styles, commonStyles, "list-controls")}><label className={cx(styles, commonStyles, "search-box")}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogTab === "stores" ? "Buscar pelo nome da loja" : catalogTab === "people" ? "Buscar por nome ou função" : "Buscar pela descrição do motivo"} aria-label="Buscar cadastros" /></label><StatusFilters value={statusFilter} onChange={setStatusFilter} /></div>
-            {catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={query ? "Altere a busca ou o filtro de situação." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Tipo" : catalogTab === "people" ? "Função" : "Vigência"}</th>{catalogTab === "people" && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
-              {catalogRows.map((row) => <tr key={catalogTab + "-" + row.id}><td><strong>{row.primary}</strong></td><td><span className={cx(styles, commonStyles, "role-cell")}>{row.secondary}</span></td>{catalogTab === "people" && <td><span className={cx(styles, commonStyles, "detail-cell")}>{row.detail}</span></td>}<td><StatusPill active={row.active} /></td><td><div className={cx(styles, commonStyles, "row-actions")}>{catalogTab === "people" && isPerson(row.item) && <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openCatalog("people", row.item as PersonAdminItem)}>Nova versão</button>}{catalogTab === "reasons" && isReason(row.item) && <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openCatalog("reasons", row.item as ReasonAdminItem)}>Nova versão</button>}{row.active && catalogTab !== "stores" && <button className={cx(styles, commonStyles, "table-action action-danger")} type="button" onClick={() => { setStatusReason(""); setStatusTarget({ kind: catalogTab === "people" ? "person" : "reason", id: row.id, label: row.primary, active: true }); }}>Desativar</button>}</div></td></tr>)}
+          <section className={cx(styles, commonStyles, "registry-panel catalog-panel")}>
+            <div className={cx(styles, commonStyles, "panel-toolbar")}>
+              <div><span className={cx(styles, commonStyles, "panel-eyebrow")}>CATÁLOGO OPERACIONAL</span><h3>{catalogTitle}</h3><span>{catalogRows.length} registro{catalogRows.length === 1 ? "" : "s"} na lista</span></div>
+              <button className={cx(styles, commonStyles, "button button-primary add-button")} type="button" onClick={() => openCatalog(catalogTab === "stores" ? "localities" : catalogTab)}><span>＋</span>{catalogTab === "stores" ? "Cadastrar loja" : catalogTab === "people" ? "Cadastrar pessoa" : "Cadastrar motivo"}</button>
+            </div>
+            <div className={cx(styles, commonStyles, "list-controls")}><label className={cx(styles, commonStyles, "search-box")}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogTab === "stores" ? "Buscar por loja, código ou cidade" : catalogTab === "people" ? "Buscar por nome ou função" : "Buscar pela descrição do motivo"} aria-label="Buscar cadastros" /></label><StatusFilters value={statusFilter} onChange={setStatusFilter} /></div>
+            {catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={query ? "Altere a busca ou o filtro de situação." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja / filial" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Cidade / UF" : catalogTab === "people" ? "Função" : "Vigência"}</th>{catalogTab === "stores" && <th>Tipo</th>}{catalogTab === "people" && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
+              {catalogRows.map((row) => <tr key={catalogTab + "-" + row.id}>
+                <td><strong>{row.primary}</strong>{catalogTab === "stores" && isLocality(row.item) && <small>{row.item.codigo_localidade}</small>}</td>
+                <td><span className={cx(styles, commonStyles, "role-cell")}>{row.secondary}</span></td>
+                {catalogTab === "stores" && <td><span className={cx(styles, commonStyles, "detail-cell")}>{row.detail}</span></td>}
+                {catalogTab === "people" && <td><span className={cx(styles, commonStyles, "detail-cell")}>{row.detail}</span></td>}
+                <td><StatusPill active={row.active} /></td>
+                <td><div className={cx(styles, commonStyles, "row-actions")}>
+                  {catalogTab === "stores" && isLocality(row.item) && <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openCatalog("localities", row.item)}>Editar</button>}
+                  {catalogTab === "people" && isPerson(row.item) && <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openCatalog("people", row.item)}>Nova versão</button>}
+                  {catalogTab === "reasons" && isReason(row.item) && <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openCatalog("reasons", row.item)}>Nova versão</button>}
+                  {catalogTab === "stores" && isLocality(row.item) && <button className={cx(styles, commonStyles, "table-action" + (row.active ? " action-danger" : ""))} type="button" onClick={() => { setStatusReason(""); setStatusTarget({ kind: "locality", id: row.id, label: row.primary, active: row.active }); }}>{row.active ? "Desativar" : "Ativar"}</button>}
+                  {row.active && catalogTab !== "stores" && <button className={cx(styles, commonStyles, "table-action action-danger")} type="button" onClick={() => { setStatusReason(""); setStatusTarget({ kind: catalogTab === "people" ? "person" : "reason", id: row.id, label: row.primary, active: true }); }}>Desativar</button>}
+                </div></td>
+              </tr>)}
             </tbody></table></div>}
             {catalogTab === "stores" && <div className={cx(styles, commonStyles, "panel-footnote")}><span aria-hidden="true">⌑</span><p>As localidades desta tela são mantidas no catálogo do portal.</p></div>}
           </section></div>
         </>}
 
     {dialog && <div className={cx(styles, commonStyles, "modal-backdrop")} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) closeCatalog(); }}><section className={cx(styles, commonStyles, "modal-card")} role="dialog" aria-modal="true" aria-labelledby="catalog-dialog-title">
-      <ModalHeader eyebrow={dialog.item ? "NOVA VERSÃO" : "NOVO CADASTRO"} title={dialog.item ? "Atualizar " + catalogWord : "Cadastrar " + catalogWord} onClose={closeCatalog} id="catalog-dialog-title" />
+      <ModalHeader eyebrow={dialog.kind === "localities" ? dialog.item ? "EDITAR LOCALIDADE" : "NOVA LOCALIDADE" : dialog.item ? "NOVA VERSÃO" : "NOVO CADASTRO"} title={dialog.kind === "localities" ? dialog.item ? "Editar loja ou filial" : "Cadastrar loja ou filial" : dialog.item ? "Atualizar " + catalogWord : "Cadastrar " + catalogWord} onClose={closeCatalog} id="catalog-dialog-title" />
       <form onSubmit={saveCatalog} className={cx(styles, commonStyles, "modal-form")}>
-        {dialog.kind === "people" ? <><label>Nome para exibição<input autoFocus value={form.nome ?? ""} onChange={(event) => setField("nome", event.target.value)} required maxLength={160} placeholder="Nome e sobrenome" /></label><label>Função<select value={form.funcao ?? "MOTORISTA"} onChange={(event) => setField("funcao", event.target.value)}><option value="MOTORISTA">Motorista</option><option value="AJUDANTE">Ajudante</option></select></label><p className={cx(styles, commonStyles, "form-guidance")}>O sistema define a vigência automaticamente. A versão anterior será preservada no histórico.</p></>
+        {dialog.kind === "localities" ? <>
+          <label>Código interno<input autoFocus={!dialog.item} value={form.codigoLocalidade ?? ""} onChange={(event) => setField("codigoLocalidade", event.target.value.toUpperCase())} required maxLength={60} pattern="[A-Za-z0-9][A-Za-z0-9_-]{0,59}" readOnly={Boolean(dialog.item)} placeholder="Ex.: MACAE_01" /><small>Use letras sem acento, números, hífen ou _. O código não pode ser alterado depois do cadastro.</small></label>
+          <label>Nome da loja ou filial<input autoFocus={Boolean(dialog.item)} value={form.nomeLocalidade ?? ""} onChange={(event) => setField("nomeLocalidade", event.target.value)} required maxLength={160} placeholder="Nome para exibição" /></label>
+          <div className={cx(styles, commonStyles, "form-grid-two")}>
+            <label>Cidade<input value={form.cidade ?? ""} onChange={(event) => setField("cidade", event.target.value)} required maxLength={120} autoComplete="address-level2" /></label>
+            <label>UF<input value={form.uf ?? ""} onChange={(event) => setField("uf", event.target.value.toUpperCase())} required minLength={2} maxLength={2} pattern="[A-Za-z]{2}" autoComplete="address-level1" placeholder="Ex.: RJ" /></label>
+          </div>
+          <label>Tipo de localidade<select value={form.tipoLocalidade ?? "LOJA"} onChange={(event) => setField("tipoLocalidade", event.target.value)} required>{form.tipoLocalidade && !["LOJA", "CD", "OUTRO"].includes(form.tipoLocalidade) && <option value={form.tipoLocalidade}>Tipo atual: {form.tipoLocalidade}</option>}<option value="LOJA">Loja</option><option value="CD">Centro de distribuição</option><option value="OUTRO">Outro</option></select></label>
+          <p className={cx(styles, commonStyles, "form-guidance")}>A edição preserva lançamentos existentes. Desativar uma localidade remove-a das novas operações sem apagar seu histórico.</p>
+        </> : dialog.kind === "people" ? <><label>Nome para exibição<input autoFocus value={form.nome ?? ""} onChange={(event) => setField("nome", event.target.value)} required maxLength={160} placeholder="Nome e sobrenome" /></label><label>Função<select value={form.funcao ?? "MOTORISTA"} onChange={(event) => setField("funcao", event.target.value)}><option value="MOTORISTA">Motorista</option><option value="AJUDANTE">Ajudante</option></select></label><p className={cx(styles, commonStyles, "form-guidance")}>O sistema define a vigência automaticamente. A versão anterior será preservada no histórico.</p></>
             : <><label>Descrição do motivo<input autoFocus value={form.descricao ?? ""} onChange={(event) => setField("descricao", event.target.value)} required maxLength={160} placeholder="Ex.: Cliente ausente" /></label><p className={cx(styles, commonStyles, "form-guidance")}>O sistema define a vigência automaticamente. Alterações mantêm o histórico e a identificação interna.</p></>}
-        <div className={cx(styles, commonStyles, "modal-actions")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={closeCatalog} disabled={saving}>Cancelar</button><button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={saving}>{saving ? "Salvando..." : dialog.item ? "Salvar nova versão" : "Cadastrar"}</button></div>
+        <div className={cx(styles, commonStyles, "modal-actions")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={closeCatalog} disabled={saving}>Cancelar</button><button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={saving}>{saving ? "Salvando..." : dialog.kind === "localities" ? dialog.item ? "Salvar alterações" : "Cadastrar loja" : dialog.item ? "Salvar nova versão" : "Cadastrar"}</button></div>
       </form>
     </section></div>}
 

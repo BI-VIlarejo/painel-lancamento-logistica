@@ -8,6 +8,10 @@ from sqlalchemy.orm import Session
 from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa, Setor
 
 
+def _locality_text_key(value: str) -> str:
+    return " ".join(value.split()).casefold()
+
+
 def list_sectors(
     db: Session,
     *,
@@ -122,6 +126,53 @@ def list_admin_localities(db: Session) -> list[Localidade]:
         Localidade.codigo_localidade,
     )
     return list(db.scalars(statement).all())
+
+
+def get_locality_for_update(db: Session, *, id_localidade: int) -> Localidade | None:
+    statement = (
+        select(Localidade)
+        .where(Localidade.id_localidade == id_localidade)
+        .with_for_update()
+    )
+    return db.scalar(statement)
+
+
+def locality_code_exists(
+    db: Session,
+    *,
+    codigo_localidade: str,
+    exclude_id: int | None = None,
+) -> bool:
+    statement = select(Localidade.id_localidade).where(
+        Localidade.codigo_localidade == codigo_localidade
+    )
+    if exclude_id is not None:
+        statement = statement.where(Localidade.id_localidade != exclude_id)
+    return db.scalar(statement.limit(1)) is not None
+
+
+def locality_name_city_uf_exists(
+    db: Session,
+    *,
+    nome_localidade: str,
+    cidade: str,
+    uf: str,
+    exclude_id: int | None = None,
+) -> bool:
+    statement = select(Localidade.nome_localidade, Localidade.cidade).where(
+        Localidade.cidade.is_not(None),
+        func.upper(func.trim(Localidade.uf)) == uf,
+    )
+    if exclude_id is not None:
+        statement = statement.where(Localidade.id_localidade != exclude_id)
+    normalized_name = _locality_text_key(nome_localidade)
+    normalized_city = _locality_text_key(cidade)
+    return any(
+        _locality_text_key(stored_name) == normalized_name
+        and _locality_text_key(stored_city) == normalized_city
+        for stored_name, stored_city in db.execute(statement)
+        if stored_name is not None and stored_city is not None
+    )
 
 
 def list_admin_people(db: Session) -> list[Pessoa]:

@@ -2,6 +2,8 @@ import type { LocalityCatalogItem, SectorCatalogItem } from "../deliveries/types
 import { demoUser } from "../deliveries/demoApi";
 import type {
   LocalityAdminItem,
+  LocalityCreateInput,
+  LocalityUpdateInput,
   PersonAdminItem,
   Profile,
   ProfilePermission,
@@ -25,10 +27,10 @@ const nextEffectiveDate = (start: string, end?: string | null) => {
 };
 let nextId = 100;
 let localities: LocalityAdminItem[] = [
-  { id_localidade: 11, codigo_localidade: "MAC", nome_localidade: "Macaé", tipo_localidade: "LOJA", ativo: true },
-  { id_localidade: 12, codigo_localidade: "CBF", nome_localidade: "Cabo Frio", tipo_localidade: "LOJA", ativo: true },
-  { id_localidade: 13, codigo_localidade: "CPS", nome_localidade: "Campos dos Goytacazes", tipo_localidade: "LOJA", ativo: true },
-  { id_localidade: 14, codigo_localidade: "CD", nome_localidade: "Centro de Distribuição", tipo_localidade: "CD", ativo: true },
+  { id_localidade: 11, codigo_localidade: "MAC", nome_localidade: "Macaé", tipo_localidade: "LOJA", cidade: "Macaé", uf: "RJ", ativo: true },
+  { id_localidade: 12, codigo_localidade: "CBF", nome_localidade: "Cabo Frio", tipo_localidade: "LOJA", cidade: "Cabo Frio", uf: "RJ", ativo: true },
+  { id_localidade: 13, codigo_localidade: "CPS", nome_localidade: "Campos dos Goytacazes", tipo_localidade: "LOJA", cidade: "Campos dos Goytacazes", uf: "RJ", ativo: true },
+  { id_localidade: 14, codigo_localidade: "CD", nome_localidade: "Centro de Distribuição", tipo_localidade: "CD", cidade: "Macaé", uf: "RJ", ativo: true },
 ];
 let people: PersonAdminItem[] = [
   { id_pessoa: 21, codigo_pessoa: "demo-driver-1", nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
@@ -53,8 +55,9 @@ const profiles: Profile[] = [
   { id_perfil: 2, codigo: "OPERADOR", nome: "Operação", ativo: true },
   { id_perfil: 3, codigo: "GESTOR", nome: "Gestão", ativo: true },
   { id_perfil: 4, codigo: "DIRETORIA", nome: "Diretoria", ativo: true },
+  { id_perfil: 5, codigo: "CADASTRADOR", nome: "Cadastros operacionais", ativo: true },
 ];
-const sectors: SectorCatalogItem[] = [{ id_setor: 1, codigo: "ENTREGAS", nome: "Entregas" }];
+const sectors: SectorCatalogItem[] = [{ id_setor: 1, codigo: "SUPORTE", nome: "Suporte" }];
 
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 90));
 const newDemoCredential = () => {
@@ -79,9 +82,49 @@ const demoScopeCode = (input: UserScopeGrantInput) => {
   if (input.tipo_escopo === "LOCALIDADE") return `LOCALIDADE:${input.id_localidade}`;
   return `SETOR_LOCALIDADE:${input.id_setor}:${input.id_localidade}`;
 };
+const validateProfileScope = (profile: Profile, input: UserScopeGrantInput) => {
+  if (["DEV", "CADASTRADOR"].includes(profile.codigo) && input.tipo_escopo !== "GLOBAL") {
+    throw new Error(`O perfil ${profile.codigo === "DEV" ? "DEV" : "Cadastros operacionais"} exige escopo global.`);
+  }
+};
 
 export const demoAdministrationApi = {
   async localities() { await pause(); return [...localities]; },
+  async createLocality(input: LocalityCreateInput) {
+    await pause();
+    const code = input.codigo_localidade.trim().toUpperCase();
+    const duplicate = localities.some((item) => item.codigo_localidade.toUpperCase() === code
+      || (item.nome_localidade.toLocaleLowerCase("pt-BR") === input.nome_localidade.trim().toLocaleLowerCase("pt-BR")
+        && item.cidade?.toLocaleLowerCase("pt-BR") === input.cidade.trim().toLocaleLowerCase("pt-BR")
+        && item.uf?.toUpperCase() === input.uf.toUpperCase()));
+    if (duplicate) throw new Error("Já existe uma localidade com esse código ou nome, cidade e UF.");
+    const item: LocalityAdminItem = { ...input, codigo_localidade: code, id_localidade: nextId++, ativo: true };
+    localities = [...localities, item];
+    return item;
+  },
+  async updateLocality(id: number, input: LocalityUpdateInput) {
+    await pause();
+    const current = localities.find((item) => item.id_localidade === id);
+    if (!current) throw new Error("Localidade não encontrada.");
+    const duplicate = localities.some((item) => item.id_localidade !== id
+      && item.nome_localidade.toLocaleLowerCase("pt-BR") === input.nome_localidade.trim().toLocaleLowerCase("pt-BR")
+      && item.cidade?.toLocaleLowerCase("pt-BR") === input.cidade.trim().toLocaleLowerCase("pt-BR")
+      && item.uf?.toUpperCase() === input.uf.toUpperCase());
+    if (duplicate) throw new Error("Já existe uma localidade com esse nome, cidade e UF.");
+    const updated = { ...current, ...input };
+    localities = localities.map((item) => item.id_localidade === id ? updated : item);
+    return updated;
+  },
+  async setLocalityActive(id: number, ativo: boolean) {
+    await pause();
+    const current = localities.find((item) => item.id_localidade === id);
+    if (!current) throw new Error("Localidade não encontrada.");
+    if (current.ativo === ativo) throw new Error("A localidade já está nessa situação.");
+    if (ativo && (!current.cidade || !current.uf)) throw new Error("Informe cidade e UF antes de ativar a localidade.");
+    const updated = { ...current, ativo };
+    localities = localities.map((item) => item.id_localidade === id ? updated : item);
+    return updated;
+  },
   async people() { await pause(); return [...people]; },
   async createPerson(input: Omit<PersonAdminItem, "id_pessoa" | "ativo" | "vigente_desde" | "vigente_ate">) {
     await pause();
@@ -117,7 +160,7 @@ export const demoAdministrationApi = {
     if (users.some((user) => user.username === input.username)) throw new Error("Esse usuário já existe.");
     const profile = profiles.find((item) => item.id_perfil === input.acesso_inicial.id_perfil && item.ativo);
     if (!profile) throw new Error("Selecione um perfil ativo.");
-    if (profile.codigo === "DEV" && input.acesso_inicial.tipo_escopo !== "GLOBAL") throw new Error("O perfil DEV exige escopo global.");
+    validateProfileScope(profile, input.acesso_inicial);
     const user: UserAccount = { username: input.username, nome_completo: input.nome_completo, id_usuario: nextId++, ativo: true, troca_senha_obrigatoria: false, criado_em: now(), ultimo_login_em: null };
     const senha_inicial = newDemoCredential();
     const acesso_inicial: UserAccessGrant = {
@@ -153,12 +196,14 @@ export const demoAdministrationApi = {
     await pause();
     const profile = profiles.find((item) => item.id_perfil === id);
     const codes = profile?.codigo === "DEV"
-      ? ["CONTROLE_ACESSO:ADMINISTRAR", "CADASTROS:ADMINISTRAR", "ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "PAINEL_GERENCIAL:ACESSAR"]
+      ? ["CONTROLE_ACESSO:ADMINISTRAR", "CADASTROS:ADMINISTRAR", "ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "ENTREGAS_DIARIAS:CORRIGIR", "ENTREGAS_DIARIAS:CANCELAR", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "PAINEL_GERENCIAL:ACESSAR", "AUDITORIA:VER"]
+      : profile?.codigo === "CADASTRADOR"
+        ? ["CADASTROS:ADMINISTRAR"]
       : profile?.codigo === "GESTOR"
-        ? ["CONTROLE_ACESSO:ADMINISTRAR", "CADASTROS:ADMINISTRAR", "ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "PAINEL_GERENCIAL:ACESSAR"]
+        ? ["CONTROLE_ACESSO:ADMINISTRAR", "CADASTROS:ADMINISTRAR", "ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "ENTREGAS_DIARIAS:CORRIGIR", "ENTREGAS_DIARIAS:CANCELAR", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "PAINEL_GERENCIAL:ACESSAR", "AUDITORIA:VER"]
         : profile?.codigo === "DIRETORIA"
-          ? ["CONTROLE_ACESSO:ADMINISTRAR", "CADASTROS:ADMINISTRAR", "ENTREGAS_DIARIAS:VER", "PAINEL_GERENCIAL:ACESSAR"]
-          : ["ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO"];
+          ? ["CONTROLE_ACESSO:ADMINISTRAR", "CADASTROS:ADMINISTRAR", "ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "ENTREGAS_DIARIAS:CORRIGIR", "ENTREGAS_DIARIAS:CANCELAR", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "PAINEL_GERENCIAL:ACESSAR", "AUDITORIA:VER"]
+          : ["CADASTROS:ADMINISTRAR", "ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR"];
     return codes.map((code, index) => {
       const parts = code.split(":");
       return { id_permissao: index + 1, id_recurso: index + 1, codigo_recurso: parts[0], codigo: code, acao: parts[1], descricao: parts[1].replaceAll("_", " ").toLocaleLowerCase("pt-BR"), ativo: true };
@@ -176,7 +221,9 @@ export const demoAdministrationApi = {
   async createGrant(id: number, input: UserScopeGrantInput) {
     await pause();
     const profile = profiles.find((item) => item.id_perfil === input.id_perfil);
-    const grant: UserAccessGrant = { ...input, vigente_desde: now(), vigente_ate: null, id_usuario: id, id_usuario_escopo: nextId++, codigo_perfil: profile?.codigo ?? "OPERADOR", nome_perfil: profile?.nome ?? "Operação", id_escopo: nextId++, codigo_escopo: demoScopeCode(input), ativo: true, concedido_por: demoUser.id_usuario, concedido_em: now() };
+    if (!profile) throw new Error("Selecione um perfil ativo.");
+    validateProfileScope(profile, input);
+    const grant: UserAccessGrant = { ...input, vigente_desde: now(), vigente_ate: null, id_usuario: id, id_usuario_escopo: nextId++, codigo_perfil: profile.codigo, nome_perfil: profile.nome, id_escopo: nextId++, codigo_escopo: demoScopeCode(input), ativo: true, concedido_por: demoUser.id_usuario, concedido_em: now() };
     grants = [...grants, grant]; return grant;
   },
   async revokeGrant(id: number) { await pause(); grants = grants.filter((grant) => grant.id_usuario_escopo !== id); },

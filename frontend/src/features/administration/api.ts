@@ -3,6 +3,8 @@ import { demoAdministrationApi } from "./demoApi";
 import type { LocalityCatalogItem, SectorCatalogItem } from "../deliveries/types";
 import type {
   LocalityAdminItem,
+  LocalityCreateInput,
+  LocalityUpdateInput,
   PersonAdminItem,
   Profile,
   ProfilePermission,
@@ -15,6 +17,15 @@ import type {
 
 export const administrationApi = {
   localities: () => isDemoMode ? demoAdministrationApi.localities() : apiRequest<LocalityAdminItem[]>("/cadastros/localidades"),
+  createLocality: (payload: LocalityCreateInput) => isDemoMode
+    ? demoAdministrationApi.createLocality(payload)
+    : apiRequest<LocalityAdminItem>("/cadastros/localidades", { method: "POST", body: payload }),
+  updateLocality: (id: number, payload: LocalityUpdateInput) => isDemoMode
+    ? demoAdministrationApi.updateLocality(id, payload)
+    : apiRequest<LocalityAdminItem>(`/cadastros/localidades/${id}`, { method: "PUT", body: payload }),
+  setLocalityActive: (id: number, ativo: boolean) => isDemoMode
+    ? demoAdministrationApi.setLocalityActive(id, ativo)
+    : apiRequest<LocalityAdminItem>(`/cadastros/localidades/${id}`, { method: "PATCH", body: { ativo } }),
   people: () => isDemoMode ? demoAdministrationApi.people() : apiRequest<PersonAdminItem[]>("/cadastros/pessoas"),
   createPerson: (payload: { codigo_pessoa?: string; nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; sistema_origem?: string; codigo_pessoa_origem?: string }) => isDemoMode
     ? demoAdministrationApi.createPerson({ ...payload, codigo_pessoa: payload.codigo_pessoa ?? crypto.randomUUID(), sistema_origem: payload.sistema_origem ?? null, codigo_pessoa_origem: payload.codigo_pessoa_origem ?? null })

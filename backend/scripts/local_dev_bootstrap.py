@@ -142,11 +142,18 @@ def _seed_access_catalog(
     ]
     dev_profile = _get_or_create_profile(db, code="DEV", name="Desenvolvimento", now=now)
     operator_profile = _get_or_create_profile(db, code="OPERADOR", name="Operação", now=now)
+    catalog_profile = _get_or_create_profile(
+        db,
+        code="CADASTRADOR",
+        name="Cadastros operacionais",
+        now=now,
+    )
     manager_profile = _get_or_create_profile(db, code="GESTOR", name="Gestão", now=now)
     director_profile = _get_or_create_profile(db, code="DIRETORIA", name="Diretoria", now=now)
     return {
         "DEV": dev_profile,
         "OPERADOR": operator_profile,
+        "CADASTRADOR": catalog_profile,
         "GESTOR": manager_profile,
         "DIRETORIA": director_profile,
     }, permissions
@@ -413,7 +420,7 @@ def _ensure_local_feedback_idempotency(engine) -> None:
 
 
 def _ensure_local_delivery_otif_columns(engine) -> None:
-    """Adiciona as contagens OTIF sem inventar valores para entregas antigas."""
+    """Mantém as colunas históricas de prazo/completude no schema local."""
     table = "op_logistica_entrega_diaria"
     inspector = inspect(engine)
     if not inspector.has_table(table):

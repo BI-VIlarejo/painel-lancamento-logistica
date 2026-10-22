@@ -255,7 +255,8 @@ class AutorizacaoEvento(Base):
             "'PERMISSAO_CRIADA', 'PERMISSAO_ATUALIZADA', 'PERMISSAO_ATIVADA', "
             "'PERMISSAO_DESATIVADA', 'USUARIO_CRIADO', 'USUARIO_ATIVADO', "
             "'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', "
-            "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', "
+            "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATUALIZADA', 'LOCALIDADE_ATIVADA', "
+            "'LOCALIDADE_DESATIVADA', "
             "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
             "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')",
             name="ck_op_logistica_autorizacao_evento_tipo",
@@ -283,7 +284,8 @@ class AutorizacaoEvento(Base):
             "and id_usuario_escopo is null) "
             "or (tipo_evento in ('USUARIO_CRIADO', 'USUARIO_ATIVADO', "
             "'USUARIO_DESATIVADO', 'USUARIO_SENHA_ALTERADA', "
-            "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATIVADA', 'LOCALIDADE_DESATIVADA', "
+            "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATUALIZADA', 'LOCALIDADE_ATIVADA', "
+            "'LOCALIDADE_DESATIVADA', "
             "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
             "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') "
             "and id_perfil is null and id_permissao is null and id_recurso is null "
