@@ -463,6 +463,50 @@ def _ensure_local_delivery_otif_columns(engine) -> None:
             )
 
 
+def _ensure_locality_address_columns(engine) -> None:
+    """Adiciona cidade/UF e unicidade ao catálogo descartável local."""
+    table = "op_logistica_localidade"
+    inspector = inspect(engine)
+    if not inspector.has_table(table):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns(table)}
+    index_names = {
+        index["name"]
+        for index in inspector.get_indexes(table)
+        if index.get("name")
+    }
+    index_names.update(
+        constraint["name"]
+        for constraint in inspector.get_unique_constraints(table)
+        if constraint.get("name")
+    )
+
+    with engine.begin() as connection:
+        if "cidade" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_localidade "
+                    "ADD COLUMN cidade VARCHAR(120) NULL"
+                )
+            )
+        if "uf" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_localidade "
+                    "ADD COLUMN uf VARCHAR(2) NULL"
+                )
+            )
+        if "uq_op_logistica_localidade_nome_cidade_uf" not in index_names:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_localidade "
+                    "ADD UNIQUE INDEX uq_op_logistica_localidade_nome_cidade_uf "
+                    "(nome_localidade, cidade, uf)"
+                )
+            )
+
+
 def _ensure_local_authorization_event_checks(engine) -> None:
     """Evolui checks antigos de auditoria somente no MySQL local validado."""
     table = AutorizacaoEvento.__tablename__
@@ -611,6 +655,7 @@ def main() -> int:
         _ensure_local_feedback_creator_column(engine)
         _ensure_local_feedback_idempotency(engine)
         _ensure_local_delivery_otif_columns(engine)
+        _ensure_locality_address_columns(engine)
         _ensure_local_authorization_event_checks(engine)
         with Session(engine) as db, db.begin():
             now = _now()

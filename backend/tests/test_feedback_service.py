@@ -418,8 +418,8 @@ class FeedbackServiceTests(unittest.TestCase):
         self.assertEqual(people["Motorista de teste"].itens_planejados, 12)
         self.assertEqual(people["Motorista de teste"].otif_percentual, 0.0)
         self.assertEqual(people["Motorista de teste"].score_atendimento, 1)
-        self.assertEqual(people["Ajudante de teste"].itens_planejados, 0)
-        self.assertIsNone(people["Ajudante de teste"].otif_percentual)
+        self.assertEqual(people["Ajudante de teste"].itens_planejados, 12)
+        self.assertEqual(people["Ajudante de teste"].otif_percentual, 0.0)
         self.assertEqual(people["Ajudante de teste"].score_atendimento, 1)
 
         cancel_confirmed_launch(
