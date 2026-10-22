@@ -3,6 +3,9 @@ FROM python:3.14-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+LABEL org.opencontainers.image.source="https://github.com/BI-VIlarejo/painel-lan-amento-logistica" \
+      org.opencontainers.image.description="API do Portal de Lançamento de Logística"
+
 WORKDIR /app
 
 COPY requirements.txt ./requirements.txt

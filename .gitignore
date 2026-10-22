@@ -12,6 +12,7 @@ venv/
 frontend/.env
 frontend/.env.*
 !frontend/.env.example
+deploy/ec2/api.env
 
 # Dependências e arquivos gerados do frontend
 frontend/node_modules/
