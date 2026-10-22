@@ -7,14 +7,14 @@ from fastapi import HTTPException, status
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import get_settings
+from app.core.database_tunnel import get_database_url
 
 
 @lru_cache
 
 def get_engine() -> Engine | None:
     """Cria a engine somente quando a URL operacional estiver configurada."""
-    database_url = get_settings().op_logistica_database_url
+    database_url = get_database_url()
     if not database_url:
         return None
     return create_engine(database_url, pool_pre_ping=True, pool_recycle=1800)
@@ -46,6 +46,9 @@ def get_db() -> Generator[Session, None, None]:
 
 def dispose_engine() -> None:
     """Fecha o pool SQLAlchemy durante o encerramento da aplicação."""
-    engine = get_engine()
-    if engine is not None:
-        engine.dispose()
+    if get_engine.cache_info().currsize:
+        engine = get_engine()
+        if engine is not None:
+            engine.dispose()
+    get_session_factory.cache_clear()
+    get_engine.cache_clear()

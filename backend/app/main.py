@@ -10,6 +10,7 @@ from app.api.health import router as health_router
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.database import dispose_engine
+from app.core.database_tunnel import start_database_tunnel, stop_database_tunnel
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import RequestLoggingMiddleware, configure_logging
 
@@ -17,9 +18,15 @@ from app.core.logging import RequestLoggingMiddleware, configure_logging
 # pyrefly: ignore [deprecated]
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    """Libera recursos do processo quando a aplicação é encerrada."""
-    yield
-    dispose_engine()
+    """Gerencia túnel opcional e pool do banco durante a vida da API."""
+    try:
+        start_database_tunnel()
+        yield
+    finally:
+        try:
+            dispose_engine()
+        finally:
+            stop_database_tunnel()
 
 
 def create_app() -> FastAPI:

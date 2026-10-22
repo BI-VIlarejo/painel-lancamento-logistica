@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     login_rate_limit_attempts: int = Field(default=5, ge=1, le=100)
     login_rate_limit_window_seconds: int = Field(default=900, ge=1, le=86_400)
     op_logistica_database_url: str | None = Field(default=None, repr=False)
+    use_db_tunnel: bool = False
+    use_tailscale: bool = False
+    tailscale_ec2_ip: str | None = None
+    ec2_host: str | None = None
+    rds_endpoint: str | None = None
+    ssh_key_path: str | None = Field(default=None, repr=False)
 
     @model_validator(mode="after")
     def validate_auth_settings(self) -> "Settings":
@@ -53,6 +59,20 @@ class Settings(BaseSettings):
 
         if self.session_cookie_samesite == "none" and not self.session_cookie_is_secure:
             raise ValueError("SameSite=None exige SESSION_COOKIE_SECURE=true.")
+
+        if self.use_db_tunnel:
+            if not self.op_logistica_database_url:
+                raise ValueError(
+                    "OP_LOGISTICA_DATABASE_URL é obrigatório com USE_DB_TUNNEL=true."
+                )
+            if self.use_tailscale and not self.tailscale_ec2_ip:
+                raise ValueError(
+                    "TAILSCALE_EC2_IP é obrigatório com USE_TAILSCALE=true."
+                )
+            if not self.use_tailscale and not self.ec2_host:
+                raise ValueError("EC2_HOST é obrigatório para o túnel SSH.")
+            if not self.ssh_key_path:
+                raise ValueError("SSH_KEY_PATH é obrigatório para o túnel SSH.")
 
         return self
 
