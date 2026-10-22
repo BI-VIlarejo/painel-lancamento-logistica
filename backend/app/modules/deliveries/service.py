@@ -19,6 +19,7 @@ from app.core.exceptions import (
     ServiceUnavailableError,
 )
 from app.modules.access_control import service as access_control_service
+from app.modules.access_control.catalog import DELIVERY_SECTOR_CODE, DELIVERY_SECTOR_NAME
 from app.modules.access_control.service import AuthorizationContext
 from app.modules.catalogs.models import MotivoNaoEntrega, Pessoa, Setor
 from app.modules.deliveries import repository
@@ -189,8 +190,6 @@ def _build_details(
                 nome_localidade=locality.nome_localidade,
                 quantidade_realizada=delivery.quantidade_realizada,
                 quantidade_nao_realizada=delivery.quantidade_nao_realizada,
-                quantidade_entregas_no_prazo=delivery.quantidade_entregas_no_prazo,
-                quantidade_entregas_completas=delivery.quantidade_entregas_completas,
                 observacao=delivery.observacao,
                 participantes=participants_by_item[delivery.id_entrega_diaria],
                 motivos=reasons_by_item[delivery.id_entrega_diaria],
@@ -225,8 +224,6 @@ def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
             quantidade_nao_realizada=item.quantidade_nao_realizada,
-            quantidade_entregas_no_prazo=item.quantidade_entregas_no_prazo,
-            quantidade_entregas_completas=item.quantidade_entregas_completas,
             observacao=item.observacao,
             participantes=[
                 DeliveryParticipantInput(
@@ -285,8 +282,6 @@ def _create_item_rows(
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
             quantidade_nao_realizada=item.quantidade_nao_realizada,
-            quantidade_entregas_no_prazo=item.quantidade_entregas_no_prazo,
-            quantidade_entregas_completas=item.quantidade_entregas_completas,
             observacao=item.observacao,
             criado_em=now,
             atualizado_em=now,
@@ -337,13 +332,14 @@ def create_draft(
 
         if any(item.codigo_item_lancamento is not None for item in payload.itens):
             raise ConflictError("O código do item é gerado pelo servidor ao criar o rascunho.")
-        if repository.get_active_sector(db, id_setor=payload.id_setor) is None:
-            raise NotFoundError("Setor ativo não encontrado.")
-        _require_item_scopes(access, id_setor=payload.id_setor, items=payload.itens)
+        sector = repository.get_active_sector_by_code(db, codigo=DELIVERY_SECTOR_CODE)
+        if sector is None:
+            raise NotFoundError(f"O setor {DELIVERY_SECTOR_NAME} não está ativo no Portal.")
+        _require_item_scopes(access, id_setor=sector.id_setor, items=payload.itens)
         _validate_references(db, items=payload.itens)
         form = repository.get_current_published_form(
             db,
-            id_setor=payload.id_setor,
+            id_setor=sector.id_setor,
             agora=now,
         )
         if form is None:
@@ -351,7 +347,7 @@ def create_draft(
 
         launch = Lancamento(
             codigo_lancamento=str(uuid4()),
-            id_setor=payload.id_setor,
+            id_setor=sector.id_setor,
             chave_idempotencia=str(idempotency_key),
             criado_por=access.id_usuario,
             criado_em=now,
@@ -474,22 +470,6 @@ def list_drafts(
                     ),
                     quantidade_nao_realizada=sum(
                         item.quantidade_nao_realizada for item in detail.itens
-                    ),
-                    quantidade_entregas_no_prazo=(
-                        sum(item.quantidade_entregas_no_prazo for item in detail.itens)
-                        if all(
-                            item.quantidade_entregas_no_prazo is not None
-                            for item in detail.itens
-                        )
-                        else None
-                    ),
-                    quantidade_entregas_completas=(
-                        sum(item.quantidade_entregas_completas for item in detail.itens)
-                        if all(
-                            item.quantidade_entregas_completas is not None
-                            for item in detail.itens
-                        )
-                        else None
                     ),
                     itens=detail.itens,
                 )
@@ -898,18 +878,6 @@ def confirm_draft(
             )
 
         detail = _build_details(db, launch_rows=[(launch, revision, sector)])[0]
-        if any(
-            item.quantidade_entregas_no_prazo is None
-            or item.quantidade_entregas_completas is None
-            for item in detail.itens
-        ):
-            raise APIError(
-                status_code=422,
-                code="validation_error",
-                message=(
-                    "Informe as contagens de entregas no prazo e completas antes de confirmar."
-                ),
-            )
         canonical_content = json.dumps(
             detail.model_dump(mode="json", include={"id_setor", "itens"}),
             sort_keys=True,

@@ -37,6 +37,14 @@ def get_active_sector(db: Session, *, id_setor: int) -> Setor | None:
     return db.scalar(statement)
 
 
+def get_active_sector_by_code(db: Session, *, codigo: str) -> Setor | None:
+    statement = select(Setor).where(
+        Setor.codigo == codigo,
+        Setor.ativo.is_(True),
+    )
+    return db.scalar(statement)
+
+
 def get_active_localities(
     db: Session,
     *,

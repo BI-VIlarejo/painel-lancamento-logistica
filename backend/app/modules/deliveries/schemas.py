@@ -29,12 +29,6 @@ class DeliveryItemInput(BaseModel):
     id_localidade: int = Field(ge=1)
     quantidade_realizada: int = Field(ge=0, le=2_147_483_647)
     quantidade_nao_realizada: int = Field(ge=0, le=2_147_483_647)
-    quantidade_entregas_no_prazo: int | None = Field(
-        default=None, ge=0, le=2_147_483_647
-    )
-    quantidade_entregas_completas: int | None = Field(
-        default=None, ge=0, le=2_147_483_647
-    )
     observacao: str | None = Field(default=None, max_length=5000)
     participantes: list[DeliveryParticipantInput] = Field(min_length=1, max_length=3)
     motivos: list[DeliveryReasonInput] = Field(default_factory=list, max_length=30)
@@ -51,20 +45,6 @@ class DeliveryItemInput(BaseModel):
     def validate_item(self) -> "DeliveryItemInput":
         if self.quantidade_realizada + self.quantidade_nao_realizada == 0:
             raise ValueError("Informe ao menos uma entrega realizada ou não realizada.")
-        if (self.quantidade_entregas_no_prazo is None) != (
-            self.quantidade_entregas_completas is None
-        ):
-            raise ValueError("Informe as duas contagens de OTIF ou deixe ambas vazias.")
-        if self.quantidade_entregas_no_prazo is not None:
-            if self.quantidade_entregas_no_prazo > self.quantidade_realizada:
-                raise ValueError(
-                    "Entregas no prazo não podem superar as entregas realizadas."
-                )
-            if self.quantidade_entregas_completas > self.quantidade_realizada:
-                raise ValueError(
-                    "Entregas completas não podem superar as entregas realizadas."
-                )
-
         drivers = [
             item for item in self.participantes
             if item.papel_participante == "MOTORISTA"
@@ -95,7 +75,6 @@ class DeliveryItemInput(BaseModel):
 class DeliveryDraftCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    id_setor: int = Field(ge=1)
     itens: list[DeliveryItemInput] = Field(min_length=1, max_length=100)
 
 
@@ -142,8 +121,6 @@ class DeliveryItemResponse(BaseModel):
     nome_localidade: str
     quantidade_realizada: int
     quantidade_nao_realizada: int
-    quantidade_entregas_no_prazo: int | None
-    quantidade_entregas_completas: int | None
     observacao: str | None
     participantes: list[DeliveryParticipantResponse]
     motivos: list[DeliveryReasonResponse]
@@ -186,8 +163,6 @@ class DeliveryLaunchSummary(BaseModel):
     quantidade_itens: int
     quantidade_realizada: int
     quantidade_nao_realizada: int
-    quantidade_entregas_no_prazo: int | None
-    quantidade_entregas_completas: int | None
     itens: list[DeliveryItemResponse]
 
 

@@ -400,6 +400,7 @@ class EntregaDiaria(Base):
     )
     quantidade_realizada: Mapped[int] = mapped_column(Integer, nullable=False)
     quantidade_nao_realizada: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Legacy columns retained for database compatibility; the API and OTIF ignore them.
     quantidade_entregas_no_prazo: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )

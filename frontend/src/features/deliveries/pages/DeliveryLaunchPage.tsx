@@ -11,13 +11,11 @@ import type {
   LocalityCatalogItem,
   NonDeliveryReasonCatalogItem,
   PersonCatalogItem,
-  SectorCatalogItem,
 } from "../types";
 
 type DeliveryLaunchPageProps = { onNavigate: (path: string) => void; responsibleName: string; canLaunch: boolean; editId?: string };
 
 export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, editId }: DeliveryLaunchPageProps) {
-  const [sectors, setSectors] = useState<SectorCatalogItem[]>([]);
   const [localities, setLocalities] = useState<LocalityCatalogItem[]>([]);
   const [drivers, setDrivers] = useState<PersonCatalogItem[]>([]);
   const [helpers, setHelpers] = useState<PersonCatalogItem[]>([]);
@@ -32,20 +30,18 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, edi
     setError("");
     setInitialLaunch(undefined);
     void Promise.all([
-      catalogsApi.sectors(),
       catalogsApi.localities(),
       catalogsApi.people("MOTORISTA"),
       catalogsApi.people("AJUDANTE"),
       catalogsApi.reasons(),
       editId ? deliveriesApi.get(editId) : Promise.resolve(undefined),
     ])
-      .then(([sectorPage, localityPage, driverPage, helperPage, reasonPage, launch]) => {
+      .then(([localityPage, driverPage, helperPage, reasonPage, launch]) => {
         if (!active) return;
         if (launch && launch.estado !== "RASCUNHO") {
           setError("Este lançamento não está mais em rascunho e não pode ser editado.");
           return;
         }
-        setSectors(sectorPage.items);
         setLocalities(localityPage.items);
         setDrivers(driverPage.items);
         setHelpers(helperPage.items);
@@ -62,7 +58,7 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, edi
   }, [editId]);
 
   const isEdit = Boolean(editId);
-  const missingCatalogs = !localities.length || (!isEdit && (!sectors.length || !drivers.length));
+  const missingCatalogs = !localities.length || (!isEdit && !drivers.length);
 
   return (
     <div className={cx(styles, commonStyles, "page-stack")}>
@@ -78,11 +74,10 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, edi
       ) : error ? (
         <div className={cx(styles, commonStyles, "notice notice-error")} role="alert"><strong>Não foi possível carregar o formulário.</strong><span>{error}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => window.location.reload()}>Tentar novamente</button></div>
       ) : missingCatalogs ? (
-        <div className={cx(styles, commonStyles, "empty-card")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌁</div><h2>Os cadastros ainda não estão prontos</h2><p>O formulário precisa de setores, localidades e motoristas ativos. Peça à pessoa administradora para conferir os catálogos.</p></div>
+        <div className={cx(styles, commonStyles, "empty-card")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌁</div><h2>Os cadastros ainda não estão prontos</h2><p>O formulário precisa de localidades e motoristas ativos. Peça à pessoa administradora para conferir os catálogos.</p></div>
       ) : (
         <DeliveryForm
           key={initialLaunch?.codigo_lancamento ?? "novo-lancamento"}
-          sectors={sectors}
           localities={localities}
           drivers={drivers}
           helpers={helpers}

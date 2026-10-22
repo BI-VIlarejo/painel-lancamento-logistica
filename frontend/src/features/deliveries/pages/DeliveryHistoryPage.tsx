@@ -31,15 +31,10 @@ function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
-function otifValues(item: DeliveryItemResponse) {
-  const onTime = item.quantidade_entregas_no_prazo;
-  const inFull = item.quantidade_entregas_completas;
-  if (onTime == null || inFull == null) return null;
+function otifValue(item: DeliveryItemResponse): number | null {
   const total = item.quantidade_realizada + item.quantidade_nao_realizada;
   if (!total) return null;
-  const onTimeRate = (onTime / total) * 100;
-  const inFullRate = (inFull / total) * 100;
-  return { onTimeRate, inFullRate, otif: (onTimeRate * inFullRate) / 100 };
+  return (item.quantidade_nao_realizada / total) * 100;
 }
 
 function rateText(value: number): string {
@@ -94,7 +89,7 @@ function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: 
             <article className={cx(styles, commonStyles, "detail-item")} key={item.codigo_item_lancamento}>
               <div className={cx(styles, commonStyles, "detail-item-heading")}><span className={cx(styles, commonStyles, "delivery-index")}>{String(index + 1).padStart(2, "0")}</span><div><strong>{item.nome_localidade}</strong><small>{formatDate(item.data_entrega)}</small></div></div>
               <div className={cx(styles, commonStyles, "detail-metrics")}><div><strong>{item.quantidade_realizada}</strong><span>realizadas</span></div><div><strong>{item.quantidade_nao_realizada}</strong><span>não realizadas</span></div></div>
-              {(() => { const otif = otifValues(item); return <div className={cx(styles, commonStyles, "detail-otif")}><strong>OTIF</strong>{otif ? <span>{rateText(otif.otif)} · No prazo {rateText(otif.onTimeRate)} · Completas {rateText(otif.inFullRate)}</span> : <span>Sem contagens para calcular</span>}</div>; })()}
+              {(() => { const otif = otifValue(item); const total = item.quantidade_realizada + item.quantidade_nao_realizada; return <div className={cx(styles, commonStyles, "detail-otif")}><strong>OTIF</strong>{otif === null ? <span>Sem entregas registradas para calcular</span> : <span>{rateText(otif)} · {item.quantidade_nao_realizada.toLocaleString("pt-BR")} não realizadas de {total.toLocaleString("pt-BR")}</span>}</div>; })()}
               <div className={cx(styles, commonStyles, "detail-team")}><span>Equipe</span>{item.participantes.map((person) => <span className={cx(styles, commonStyles, "team-chip")} key={`${person.id_pessoa}-${person.papel_participante}`}>{person.nome_exibicao}<small>{person.papel_participante === "MOTORISTA" ? "Motorista" : "Ajudante"}</small></span>)}</div>
               {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivos</span>{item.motivos.map((reason) => <span key={reason.id_motivo_nao_entrega}>{reason.descricao_motivo} <b>{reason.quantidade}</b></span>)}</div>}
               {item.observacao && <p className={cx(styles, commonStyles, "detail-observation")}>{item.observacao}</p>}
@@ -279,11 +274,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         ["equipe", (row) => teamDescription(row.delivery)],
         ["realizadas", (row) => row.delivery.quantidade_realizada],
         ["nao_realizadas", (row) => row.delivery.quantidade_nao_realizada],
-        ["quantidade_entregas_no_prazo", (row) => row.delivery.quantidade_entregas_no_prazo ?? ""],
-        ["quantidade_entregas_completas", (row) => row.delivery.quantidade_entregas_completas ?? ""],
-        ["percentual_entregas_no_prazo", (row) => { const values = otifValues(row.delivery); return values ? rateText(values.onTimeRate) : ""; }],
-        ["percentual_entregas_completas", (row) => { const values = otifValues(row.delivery); return values ? rateText(values.inFullRate) : ""; }],
-        ["otif_percentual", (row) => { const values = otifValues(row.delivery); return values ? rateText(values.otif) : ""; }],
+        ["otif_percentual", (row) => { const value = otifValue(row.delivery); return value === null ? "" : rateText(value); }],
         ["lancamento", (row) => row.launch.codigo_lancamento],
         ["status", (row) => statusLabels[row.launch.estado]],
         ["motivos_das_ocorrencias", (row) => reasonDescription(row.delivery)],
@@ -346,14 +337,14 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
 
         <div className={cx(styles, commonStyles, "notice notice-info history-otif-note")} role="note">
           <span className={cx(styles, commonStyles, "otif-note-icon")} aria-hidden="true">i</span>
-          <div><strong>Registros antigos podem não ter dados de OTIF.</strong> Nos novos lançamentos, informe as quantidades que chegaram no prazo e as que foram entregues completas; ambas são opcionais quando a informação não estiver disponível.</div>
+          <div><strong>OTIF:</strong> entregas não realizadas ÷ total registrado (realizadas + não realizadas).</div>
         </div>
 
         {error && <div className={cx(styles, commonStyles, "notice notice-error history-error")} role="alert">{error}<button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => failedDetail ? void openDetail(failedDetail) : setReloadVersion((value) => value + 1)}>Tentar novamente</button></div>}
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lançamentos...</div> : items.length === 0 ? (
           <div className={cx(styles, commonStyles, "history-empty")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌕</div><h3>Nenhum lançamento encontrado</h3><p>{canCreate ? "Ajuste os filtros ou crie um novo lançamento de Entregas." : "Ajuste os filtros para localizar outros lançamentos."}</p><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button></div>
         ) : (
-          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Loja</th><th>Equipe</th><th>Realizadas</th><th>Não realizadas</th><th><span title="Contagens de entregas que chegaram no prazo e foram completas">Dados OTIF</span></th><th>Lançamento</th><th>Motivos das ocorrências</th><th>Observações</th><th>Ações</th></tr></thead><tbody>
+          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Loja</th><th>Equipe</th><th>Realizadas</th><th>Não realizadas</th><th><span title="Não realizadas ÷ total registrado">OTIF</span></th><th>Lançamento</th><th>Motivos das ocorrências</th><th>Observações</th><th>Ações</th></tr></thead><tbody>
           {items.flatMap((launch) => launch.itens.map((delivery) => {
               const driver = delivery.participantes.find((person) => person.papel_participante === "MOTORISTA");
               const helpers = delivery.participantes.filter((person) => person.papel_participante === "AJUDANTE");
@@ -367,9 +358,9 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
                 </div></td>
                 <td><span className={cx(styles, commonStyles, "table-count count-positive")}>{delivery.quantidade_realizada}</span></td>
                 <td><span className={cx(styles, commonStyles, `table-count${delivery.quantidade_nao_realizada > 0 ? " count-muted" : ""}`)}>{delivery.quantidade_nao_realizada}</span></td>
-                <td>{(() => { const otif = otifValues(delivery); return !otif
-                  ? <span className={cx(styles, commonStyles, "history-otif-unavailable")} aria-label="Contagens de OTIF não informadas">Sem dados</span>
-                  : <span className={cx(styles, commonStyles, "history-otif-values")}>OTIF: {rateText(otif.otif)}<br />No prazo: {rateText(otif.onTimeRate)} ({delivery.quantidade_entregas_no_prazo?.toLocaleString("pt-BR")})<br />Completas: {rateText(otif.inFullRate)} ({delivery.quantidade_entregas_completas?.toLocaleString("pt-BR")})</span>; })()}</td>
+                <td>{(() => { const otif = otifValue(delivery); return otif === null
+                  ? <span className={cx(styles, commonStyles, "history-muted-cell")}>—</span>
+                  : <span className={cx(styles, commonStyles, "history-otif-values")}>{rateText(otif)}</span>; })()}</td>
                 <td><div className={cx(styles, commonStyles, "history-launch-cell")}><strong title={launch.codigo_lancamento}>{launch.codigo_lancamento.slice(0, 8).toUpperCase()}</strong><span className={cx(styles, commonStyles, statusClass(launch.estado))}><i />{statusLabels[launch.estado]}</span><small>Versão {launch.numero_revisao}</small></div></td>
                 <td>{delivery.motivos.length ? <ul className={cx(styles, commonStyles, "history-reasons")}>{delivery.motivos.map((reason) => <li key={reason.id_motivo_nao_entrega}>{reason.descricao_motivo} <b>({reason.quantidade})</b></li>)}</ul> : <span className={cx(styles, commonStyles, "history-muted-cell")}>Sem ocorrências</span>}</td>
                 <td><span className={cx(styles, commonStyles, "history-observation")}>{delivery.observacao || "Sem observações"}</span></td>

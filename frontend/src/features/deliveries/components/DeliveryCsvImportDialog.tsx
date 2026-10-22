@@ -12,16 +12,16 @@ import type {
   LocalityCatalogItem,
   NonDeliveryReasonCatalogItem,
   PersonCatalogItem,
-  SectorCatalogItem,
 } from "../types";
 
 type CsvCatalogs = {
-  sectors: SectorCatalogItem[];
   localities: LocalityCatalogItem[];
   drivers: PersonCatalogItem[];
   helpers: PersonCatalogItem[];
   reasons: NonDeliveryReasonCatalogItem[];
 };
+
+type CsvRecord = { line: number; cells: string[] };
 
 type CsvPreviewRow = {
   line: number;
@@ -30,8 +30,6 @@ type CsvPreviewRow = {
   driver: string;
   completed: string;
   notCompleted: string;
-  onTime: string;
-  inFull: string;
   errors: string[];
 };
 
@@ -49,11 +47,11 @@ const templateHeader = [
   "ajudante_2",
   "quantidade_realizada",
   "quantidade_nao_realizada",
-  "quantidade_entregas_no_prazo",
-  "quantidade_entregas_completas",
   "motivos",
   "observacao",
 ];
+
+const acceptedSectorValues = new Set(["suporte", "entregas", "entregas diarias"]);
 
 const headerAliases: Record<string, string> = {
   data: "data_entrega",
@@ -122,11 +120,13 @@ function delimiterFor(text: string): ";" | "," {
   return semicolons >= commas ? ";" : ",";
 }
 
-function parseCsv(text: string, delimiter: string): string[][] {
-  const rows: string[][] = [];
+function parseCsv(text: string, delimiter: string): CsvRecord[] {
+  const rows: CsvRecord[] = [];
   let row: string[] = [];
   let value = "";
   let quoted = false;
+  let line = 1;
+  let recordLine = 1;
 
   for (let index = 0; index < text.length; index += 1) {
     const character = text[index];
@@ -142,12 +142,21 @@ function parseCsv(text: string, delimiter: string): string[][] {
     } else if (!quoted && character === delimiter) {
       row.push(value);
       value = "";
-    } else if (!quoted && (character === "\n" || character === "\r")) {
-      if (character === "\r" && text[index + 1] === "\n") index += 1;
+    } else if (character === "\n" || character === "\r") {
+      const isCrLf = character === "\r" && text[index + 1] === "\n";
+      if (quoted) {
+        value += isCrLf ? "\r\n" : character;
+        if (isCrLf) index += 1;
+        line += 1;
+        continue;
+      }
       row.push(value);
-      if (row.some((cell) => cell.trim() !== "")) rows.push(row);
+      if (row.some((cell) => cell.trim() !== "")) rows.push({ line: recordLine, cells: row });
       row = [];
       value = "";
+      if (isCrLf) index += 1;
+      line += 1;
+      recordLine = line;
     } else {
       value += character;
     }
@@ -155,7 +164,7 @@ function parseCsv(text: string, delimiter: string): string[][] {
 
   if (quoted) throw new Error("Há uma aspa sem fechamento no arquivo CSV.");
   row.push(value);
-  if (row.some((cell) => cell.trim() !== "")) rows.push(row);
+  if (row.some((cell) => cell.trim() !== "")) rows.push({ line: recordLine, cells: row });
   return rows;
 }
 
@@ -190,7 +199,7 @@ function resolvePerson(value: string, options: PersonCatalogItem[]): { person?: 
 }
 
 function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
-  let records: string[][];
+  let records: CsvRecord[];
   try {
     records = parseCsv(text.replace(/^\uFEFF/, ""), delimiterFor(text));
   } catch (error) {
@@ -199,7 +208,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
 
   if (records.length < 2) return { rows: [], errors: ["O arquivo precisa ter o cabeçalho e ao menos uma linha de entrega."] };
 
-  const headers = records[0].map(normalizeHeader);
+  const headers = records[0].cells.map(normalizeHeader);
   const required = ["data_entrega", "motorista", "quantidade_realizada", "quantidade_nao_realizada"];
   const allowed = [
     ...required,
@@ -207,6 +216,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     "codigo_localidade",
     "ajudante_1",
     "ajudante_2",
+    // Aceita cabeçalhos antigos de importação, mas ignora essas contagens legadas.
     "quantidade_entregas_no_prazo",
     "quantidade_entregas_completas",
     "motivos",
@@ -230,11 +240,9 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
   const column = (name: string) => headers.indexOf(name);
   const rows: CsvPreviewRow[] = [];
   const items: DeliveryItemInput[] = [];
-  const sectorIds = new Set<number>();
   const globalErrors: string[] = [];
 
-  records.slice(1).forEach((cells, index) => {
-    const line = index + 2;
+  records.slice(1).forEach(({ cells, line }) => {
     const get = (name: string) => (cells[column(name)] ?? "").trim();
     const rawDate = get("data_entrega");
     const date = normalizeDate(rawDate) ?? rawDate;
@@ -242,8 +250,6 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     const driverValue = get("motorista");
     const completedValue = get("quantidade_realizada");
     const notCompletedValue = get("quantidade_nao_realizada");
-    const onTimeValue = get("quantidade_entregas_no_prazo");
-    const inFullValue = get("quantidade_entregas_completas");
     const previewRow: CsvPreviewRow = {
       line,
       date,
@@ -251,75 +257,42 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
       driver: driverValue,
       completed: completedValue,
       notCompleted: notCompletedValue,
-      onTime: onTimeValue,
-      inFull: inFullValue,
       errors: [],
     };
     rows.push(previewRow);
 
     const sectorValue = get("setor");
-    const sectorMatches = catalogs.sectors.filter((item) => {
-      const isEntregas = item.codigo === "ENTREGAS" || normalize(item.nome) === "entregas";
-      if (!isEntregas) return false;
-      return !sectorValue || normalize(item.codigo) === normalize(sectorValue) || normalize(item.nome) === normalize(sectorValue);
-    });
-    const sector = sectorMatches.length === 1 ? sectorMatches[0] : undefined;
-    if (!sector) {
-      previewRow.errors.push(
-        sectorMatches.length > 1
-          ? "O setor Entregas está duplicado no catálogo."
-          : sectorValue
-            ? `O setor "${sectorValue}" não corresponde ao setor Entregas deste Portal.`
-            : "O setor Entregas não está cadastrado ou disponível no seu acesso.",
-      );
-    } else {
-      sectorIds.add(sector.id_setor);
+    if (sectorValue && !acceptedSectorValues.has(normalize(sectorValue))) {
+      previewRow.errors.push(`setor: "${sectorValue}" não corresponde ao setor fixo Suporte.`);
     }
 
-    if (!validDate(date)) previewRow.errors.push("Data inválida; use AAAA-MM-DD ou DD/MM/AAAA.");
+    if (!validDate(date)) previewRow.errors.push("data_entrega: valor inválido; use AAAA-MM-DD ou DD/MM/AAAA.");
     const localityMatches = catalogs.localities.filter((item) => normalize(item.nome_localidade) === normalize(localityValue) || normalize(item.codigo_localidade) === normalize(localityValue));
     const locality = localityMatches.length === 1 ? localityMatches[0] : undefined;
-    if (!locality) previewRow.errors.push(localityMatches.length > 1 ? `Loja "${localityValue}" ambígua; confira o nome no cadastro.` : `Loja "${localityValue}" não encontrada.`);
+    if (!locality) previewRow.errors.push(localityMatches.length > 1 ? `loja: "${localityValue}" ambígua; confira o nome no cadastro.` : `loja: "${localityValue}" não encontrada.`);
 
     const driverMatch = resolvePerson(driverValue, catalogs.drivers);
-    if (!driverMatch.person) previewRow.errors.push(driverMatch.error ?? "Informe o motorista.");
+    if (!driverMatch.person) previewRow.errors.push(`motorista: ${driverMatch.error ?? "informe o motorista."}`);
 
-    const helperValues = [get("ajudante_1"), get("ajudante_2")].filter(Boolean);
-    const helperMatches = helperValues.map((value) => ({ value, ...resolvePerson(value, catalogs.helpers) }));
-    helperMatches.forEach((match) => { if (!match.person) previewRow.errors.push(match.error ?? "Ajudante inválido."); });
+    const helperValues = [{ field: "ajudante_1", value: get("ajudante_1") }, { field: "ajudante_2", value: get("ajudante_2") }].filter((item) => item.value);
+    const helperMatches = helperValues.map(({ field, value }) => ({ field, value, ...resolvePerson(value, catalogs.helpers) }));
+    helperMatches.forEach((match) => { if (!match.person) previewRow.errors.push(`${match.field}: ${match.error ?? "ajudante inválido."}`); });
 
     const completed = quantity(completedValue);
     const notCompleted = quantity(notCompletedValue);
-    if (completed === undefined) previewRow.errors.push("Quantidade realizada deve ser um inteiro não negativo.");
-    if (notCompleted === undefined) previewRow.errors.push("Quantidade não realizada deve ser um inteiro não negativo.");
+    if (completed === undefined) previewRow.errors.push("quantidade_realizada: informe um inteiro não negativo.");
+    if (notCompleted === undefined) previewRow.errors.push("quantidade_nao_realizada: informe um inteiro não negativo.");
     if (completed !== undefined && notCompleted !== undefined && completed + notCompleted === 0) {
-      previewRow.errors.push("Informe ao menos uma entrega realizada ou não realizada.");
-    }
-
-    let onTime: number | null = null;
-    let inFull: number | null = null;
-    if (Boolean(onTimeValue) !== Boolean(inFullValue)) {
-      previewRow.errors.push("Preencha as duas contagens de OTIF ou deixe ambas vazias.");
-    } else if (onTimeValue && inFullValue) {
-      const parsedOnTime = quantity(onTimeValue);
-      const parsedInFull = quantity(inFullValue);
-      if (parsedOnTime === undefined || parsedInFull === undefined) {
-        previewRow.errors.push("As contagens de OTIF devem ser inteiros não negativos.");
-      } else if (completed !== undefined && (parsedOnTime > completed || parsedInFull > completed)) {
-        previewRow.errors.push("As contagens no prazo e completas não podem superar as realizadas.");
-      } else {
-        onTime = parsedOnTime;
-        inFull = parsedInFull;
-      }
+      previewRow.errors.push("quantidade_realizada/quantidade_nao_realizada: informe ao menos uma entrega.");
     }
 
     const reasonValue = get("motivos");
-    if (get("observacao").length > 5000) previewRow.errors.push("A observação não pode ultrapassar 5.000 caracteres.");
+    if (get("observacao").length > 5000) previewRow.errors.push("observacao: não pode ultrapassar 5.000 caracteres.");
     const reasons: DeliveryItemInput["motivos"] = [];
     if (notCompleted !== undefined && notCompleted === 0 && reasonValue) {
-      previewRow.errors.push("Não informe motivos quando a quantidade não realizada for zero.");
+      previewRow.errors.push("motivos: remova os motivos quando quantidade_nao_realizada for zero.");
     } else if (notCompleted !== undefined && notCompleted > 0 && !reasonValue) {
-      previewRow.errors.push("Informe os motivos no formato descrição:quantidade.");
+      previewRow.errors.push("motivos: informe no formato descrição:quantidade.");
     } else if (reasonValue) {
       const reasonEntries = reasonValue.split("|").map((entry) => entry.trim()).filter(Boolean);
       for (const entry of reasonEntries) {
@@ -330,17 +303,17 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
         const resolvedReasonLabel = useWholeReasonAsLabel || separator < 0 ? entry : entry.slice(0, separator).trim();
         const resolvedMatches = catalogs.reasons.filter((item) => normalize(item.descricao_motivo) === normalize(resolvedReasonLabel) || normalize(item.codigo_motivo) === normalize(resolvedReasonLabel));
         if (!resolvedReasonLabel || amount === undefined || amount <= 0 || resolvedMatches.length !== 1) {
-          previewRow.errors.push(`Motivo "${entry}" inválido ou não encontrado. Use uma descrição ou descrição:quantidade; em vários motivos, informe a quantidade de cada um.`);
+          previewRow.errors.push(`motivos: "${entry}" inválido ou não encontrado; use código ou descrição:quantidade.`);
           continue;
         }
         reasons.push({ id_motivo_nao_entrega: resolvedMatches[0].id_motivo_nao_entrega, quantidade: amount });
       }
       if (new Set(reasons.map((reason) => reason.id_motivo_nao_entrega)).size !== reasons.length) {
-        previewRow.errors.push("Cada motivo deve aparecer uma vez por linha.");
+        previewRow.errors.push("motivos: cada motivo deve aparecer uma vez por linha.");
       }
     }
     if (notCompleted !== undefined && reasons.reduce((sum, reason) => sum + reason.quantidade, 0) !== notCompleted) {
-      previewRow.errors.push("A soma dos motivos deve igualar a quantidade não realizada.");
+      previewRow.errors.push("motivos: a soma das quantidades deve igualar quantidade_nao_realizada.");
     }
 
     const participants: DeliveryItemInput["participantes"] = [];
@@ -349,11 +322,11 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
       if (match.person) participants.push({ id_pessoa: match.person.id_pessoa, papel_participante: "AJUDANTE" });
     });
     if (new Set(participants.map((person) => person.id_pessoa)).size !== participants.length) {
-      previewRow.errors.push("Uma pessoa não pode ocupar dois papéis na mesma linha.");
+      previewRow.errors.push("motorista/ajudantes: uma pessoa não pode ocupar dois papéis na mesma linha.");
     }
 
     if (
-      sector && locality && validDate(date) && completed !== undefined && notCompleted !== undefined &&
+      (!sectorValue || acceptedSectorValues.has(normalize(sectorValue))) && locality && validDate(date) && completed !== undefined && notCompleted !== undefined &&
       driverMatch.person && helperMatches.every((match) => match.person) && previewRow.errors.length === 0
     ) {
       items.push({
@@ -361,8 +334,6 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
         id_localidade: locality.id_localidade,
         quantidade_realizada: completed,
         quantidade_nao_realizada: notCompleted,
-        quantidade_entregas_no_prazo: onTime,
-        quantidade_entregas_completas: inFull,
         observacao: get("observacao") || null,
         participantes: participants,
         motivos: reasons,
@@ -371,15 +342,13 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
   });
 
   if (rows.length > 100) globalErrors.push("O CSV pode ter no máximo 100 linhas de entrega por importação.");
-  if (sectorIds.size > 1) globalErrors.push("Cada arquivo deve conter lançamentos de um único setor.");
   if (rows.some((row) => row.errors.length > 0)) globalErrors.push("Corrija os erros indicados antes de importar; nenhuma linha foi gravada.");
 
-  const sectorId = sectorIds.size === 1 ? [...sectorIds][0] : undefined;
-  const canImport = rows.length > 0 && rows.length <= 100 && sectorId !== undefined && globalErrors.length === 0 && items.length === rows.length;
+  const canImport = rows.length > 0 && rows.length <= 100 && globalErrors.length === 0 && items.length === rows.length;
   return {
     rows,
     errors: globalErrors,
-    ...(canImport && sectorId !== undefined ? { payload: { id_setor: sectorId, itens: items } } : {}),
+    ...(canImport ? { payload: { itens: items } } : {}),
   };
 }
 
@@ -405,14 +374,13 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
   useEffect(() => {
     let active = true;
     void Promise.all([
-      catalogsApi.sectors(),
       catalogsApi.localities(),
       catalogsApi.people("MOTORISTA"),
       catalogsApi.people("AJUDANTE"),
       catalogsApi.reasons(),
     ])
-      .then(([sectors, localities, drivers, helpers, reasons]) => {
-        if (active) setCatalogs({ sectors: sectors.items, localities: localities.items, drivers: drivers.items, helpers: helpers.items, reasons: reasons.items });
+      .then(([localities, drivers, helpers, reasons]) => {
+        if (active) setCatalogs({ localities: localities.items, drivers: drivers.items, helpers: helpers.items, reasons: reasons.items });
       })
       .catch((error: unknown) => { if (active) setCatalogError(messageFromApiError(error)); });
     return () => { active = false; };
@@ -460,11 +428,11 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
         <p className={cx(styles, commonStyles, "csv-import-description")}>O CSV histórico de Entregas pode ser validado antes de criar um rascunho. Importamos até 100 linhas por vez; nenhuma linha é gravada se houver erro.</p>
 
         <div className={cx(styles, commonStyles, "csv-template-help")}>
-          <div><strong>Prepare o arquivo</strong><span>O setor é fixo como Entregas. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Um motivo sem quantidade recebe o total não realizado; para vários motivos, informe CODIGO_MOTIVO:QUANTIDADE e separe com |. As duas colunas OTIF são opcionais.</span></div>
+          <div><strong>Prepare o arquivo</strong><span>Novos lançamentos ficam vinculados ao setor Suporte. O histórico também pode informar Entregas como setor de origem. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Um motivo sem quantidade recebe o total não realizado; para vários motivos, informe CODIGO_MOTIVO:QUANTIDADE e separe com |.</span></div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={downloadTemplate}>Baixar modelo CSV</button>
         </div>
         <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Colunas:</strong> {templateHeader.join(" · ")}</p>
-          <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Motorista, entregadores e loja:</strong> use os nomes do cadastro. Também aceitamos as colunas do histórico (“Data”, “Loja”, “Entregador 1/2” e quantidades pelo motorista). <strong>OTIF:</strong> informe as duas contagens ou deixe ambas vazias.</p>
+          <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Motorista, entregadores e loja:</strong> use os nomes do cadastro. Também aceitamos as colunas do histórico (“Data”, “Loja”, “Entregador 1/2” e quantidades pelo motorista).</p>
 
         {catalogError ? <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">Não foi possível carregar os cadastros necessários: {catalogError}</div> : !catalogs ? (
           <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando cadastros para validar o CSV...</div>
@@ -479,8 +447,8 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
             <span>{preview.payload ? "Será criado um rascunho para conferência; depois você confirma o lançamento." : `${preview.rows.length} linhas lidas; corrija os problemas antes de gravar.`}</span>
           </div>
           {preview.errors.map((error) => <p className={cx(styles, commonStyles, "csv-import-error")} key={error}>{error}</p>)}
-          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "csv-preview-scroll")}><table className={cx(styles, commonStyles, "csv-preview-table")}><thead><tr><th>Linha</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Realizadas</th><th>Não realizadas</th><th>No prazo</th><th>Completas</th><th>Validação</th></tr></thead><tbody>
-            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.completed || "0"}</td><td>{row.notCompleted || "0"}</td><td>{row.onTime || "—"}</td><td>{row.inFull || "—"}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
+          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "csv-preview-scroll")}><table className={cx(styles, commonStyles, "csv-preview-table")}><thead><tr><th>Linha</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Realizadas</th><th>Não realizadas</th><th>Validação</th></tr></thead><tbody>
+            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.completed || "0"}</td><td>{row.notCompleted || "0"}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
           </tbody></table>{preview.rows.length > 15 && <small>Exibindo as 15 primeiras de {preview.rows.length} linhas.</small>}</div>}
         </>}
 

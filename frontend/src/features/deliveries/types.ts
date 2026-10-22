@@ -45,13 +45,11 @@ export type DeliveryItemInput = {
   id_localidade: number;
   quantidade_realizada: number;
   quantidade_nao_realizada: number;
-  quantidade_entregas_no_prazo?: number | null;
-  quantidade_entregas_completas?: number | null;
   observacao?: string | null;
   participantes: DeliveryParticipantInput[];
   motivos: DeliveryReasonInput[];
 };
-export type DeliveryDraftRequest = { id_setor: number; itens: DeliveryItemInput[] };
+export type DeliveryDraftRequest = { itens: DeliveryItemInput[] };
 export type DeliveryDraftUpdateRequest = { itens: DeliveryItemInput[] };
 
 export type DeliveryParticipantResponse = DeliveryParticipantInput & {

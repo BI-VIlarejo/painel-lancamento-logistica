@@ -12,7 +12,6 @@ import type {
   LocalityCatalogItem,
   NonDeliveryReasonCatalogItem,
   PersonCatalogItem,
-  SectorCatalogItem,
 } from "../types";
 
 type ReasonDraft = { key: string; id: string; quantity: string };
@@ -25,14 +24,11 @@ type DeliveryDraftLine = {
   helpers: [string, string];
   completed: string;
   notCompleted: string;
-  onTime: string;
-  inFull: string;
   reasons: ReasonDraft[];
   observation: string;
 };
 
 type DeliveryFormProps = {
-  sectors: SectorCatalogItem[];
   localities: LocalityCatalogItem[];
   drivers: PersonCatalogItem[];
   helpers: PersonCatalogItem[];
@@ -59,8 +55,6 @@ function newLine(): DeliveryDraftLine {
     helpers: ["", ""],
     completed: "",
     notCompleted: "",
-    onTime: "",
-    inFull: "",
     reasons: [],
     observation: "",
   };
@@ -85,8 +79,6 @@ function linesFromLaunch(launch: DeliveryLaunchDetail): DeliveryDraftLine[] {
       helpers: [String(helpers[0]?.id_pessoa ?? ""), String(helpers[1]?.id_pessoa ?? "")] as [string, string],
       completed: String(item.quantidade_realizada),
       notCompleted: String(item.quantidade_nao_realizada),
-      onTime: item.quantidade_entregas_no_prazo == null ? "" : String(item.quantidade_entregas_no_prazo),
-      inFull: item.quantidade_entregas_completas == null ? "" : String(item.quantidade_entregas_completas),
       reasons: item.motivos.map((reason) => ({
         key: `${item.codigo_item_lancamento}-${reason.id_motivo_nao_entrega}`,
         id: String(reason.id_motivo_nao_entrega),
@@ -107,10 +99,6 @@ function validateLines(lines: DeliveryDraftLine[]): Record<string, string> {
     const prefix = `item-${index + 1}`;
     const completed = numberValue(line.completed);
     const notCompleted = numberValue(line.notCompleted);
-    const hasOnTime = line.onTime.trim() !== "";
-    const hasInFull = line.inFull.trim() !== "";
-    const onTime = hasOnTime ? Number(line.onTime) : null;
-    const inFull = hasInFull ? Number(line.inFull) : null;
     if (!line.date) errors[`${prefix}-date`] = "Informe a data da entrega.";
     if (!line.locality) errors[`${prefix}-locality`] = "Selecione a localidade.";
     if (!line.driver) errors[`${prefix}-driver`] = "Selecione o motorista.";
@@ -118,15 +106,6 @@ function validateLines(lines: DeliveryDraftLine[]): Record<string, string> {
       errors[`${prefix}-total`] = `As quantidades devem ser inteiros entre zero e ${maximumQuantity}.`;
     }
     if (completed + notCompleted <= 0) errors[`${prefix}-total`] = "Informe pelo menos uma entrega realizada ou não realizada.";
-    if (hasOnTime !== hasInFull) {
-      errors[`${prefix}-otif`] = "Informe as duas contagens de OTIF ou deixe ambas vazias.";
-    } else if (hasOnTime && hasInFull) {
-      if (![onTime, inFull].every((value) => Number.isSafeInteger(value) && value! >= 0 && value! <= maximumQuantity)) {
-        errors[`${prefix}-otif`] = `As contagens de OTIF devem ser inteiros entre zero e ${maximumQuantity}.`;
-      } else if (onTime! > completed || inFull! > completed) {
-        errors[`${prefix}-otif`] = "As contagens no prazo e completas não podem superar as entregas realizadas.";
-      }
-    }
     const selectedPeople = [line.driver, ...line.helpers].filter(Boolean);
     if (new Set(selectedPeople).size !== selectedPeople.length) errors[`${prefix}-team`] = "Uma pessoa não pode ocupar dois papéis.";
 
@@ -165,8 +144,6 @@ function toPayloadLine(line: DeliveryDraftLine): DeliveryItemInput {
     id_localidade: Number(line.locality),
     quantidade_realizada: numberValue(line.completed),
     quantidade_nao_realizada: numberValue(line.notCompleted),
-    quantidade_entregas_no_prazo: line.onTime.trim() ? Number(line.onTime) : null,
-    quantidade_entregas_completas: line.inFull.trim() ? Number(line.inFull) : null,
     observacao: line.observation.trim() || null,
     participantes: participants,
     motivos: line.reasons
@@ -178,8 +155,7 @@ function toPayloadLine(line: DeliveryDraftLine): DeliveryItemInput {
   };
 }
 
-export function DeliveryForm({ sectors, localities, drivers, helpers, reasons, responsibleName, canLaunch, initialLaunch, onSaved }: DeliveryFormProps) {
-  const [sectorId, setSectorId] = useState(initialLaunch ? String(initialLaunch.id_setor) : sectors[0] ? String(sectors[0].id_setor) : "");
+export function DeliveryForm({ localities, drivers, helpers, reasons, responsibleName, canLaunch, initialLaunch, onSaved }: DeliveryFormProps) {
   const [lines, setLines] = useState<DeliveryDraftLine[]>(() => initialLaunch ? linesFromLaunch(initialLaunch) : [newLine()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [requestError, setRequestError] = useState("");
@@ -240,7 +216,6 @@ export function DeliveryForm({ sectors, localities, drivers, helpers, reasons, r
 
   function validateForm(): boolean {
     const nextErrors = validateLines(lines);
-    if (!sectorId) nextErrors.sector = "Selecione o setor responsável.";
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       document.querySelector("[data-form-error]")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -253,7 +228,7 @@ export function DeliveryForm({ sectors, localities, drivers, helpers, reasons, r
     const draft = savedDraft ?? initialLaunch;
     const saved = draft
       ? await deliveriesApi.updateDraft(draft.codigo_lancamento, { itens: items }, saveIdempotencyKey.current)
-      : await deliveriesApi.createDraft({ id_setor: Number(sectorId), itens: items } satisfies DeliveryDraftRequest, saveIdempotencyKey.current);
+      : await deliveriesApi.createDraft({ itens: items } satisfies DeliveryDraftRequest, saveIdempotencyKey.current);
     setSavedDraft(saved);
     return saved;
   }
@@ -310,17 +285,10 @@ export function DeliveryForm({ sectors, localities, drivers, helpers, reasons, r
       {!reviewing ? <>
       <section className={cx(styles, commonStyles, "form-section form-section-basic")}>
         <div className={cx(styles, commonStyles, "section-heading")}>
-          <div><h2>Identificação do lançamento</h2><p>{initialLaunch ? "O setor do rascunho está definido. Confira quem está registrando." : "Selecione o setor da operação e confira quem está registrando."}</p></div>
+          <div><h2>Identificação do lançamento</h2><p>Setor definido automaticamente para Suporte. Confira quem está registrando.</p></div>
         </div>
         <div className={cx(styles, commonStyles, "field-grid field-grid-basic")}>
-          {initialLaunch ? <div className={cx(styles, commonStyles, "form-field form-field-readonly")}><span>Setor responsável</span><div className={cx(styles, commonStyles, "readonly-value")}>{initialLaunch.nome_setor}</div></div> : <label className={cx(styles, commonStyles, "form-field")}>
-            <span>Setor responsável <b>*</b></span>
-            <select value={sectorId} onChange={(event) => { renewIdempotencyKeys(); setErrors({}); setRequestError(""); setSectorId(event.target.value); }} required>
-              <option value="">Selecione o setor</option>
-              {sectors.map((sector) => <option key={sector.id_setor} value={sector.id_setor}>{sector.nome}</option>)}
-            </select>
-            {errors.sector && <small className={cx(styles, commonStyles, "field-error")}>{errors.sector}</small>}
-          </label>}
+          <div className={cx(styles, commonStyles, "form-field form-field-readonly")}><span>Setor responsável</span><div className={cx(styles, commonStyles, "readonly-value")}>{initialLaunch?.nome_setor ?? "Suporte"}</div></div>
           <div className={cx(styles, commonStyles, "form-field form-field-readonly")}>
             <span>Responsável pelo registro</span>
             <div className={cx(styles, commonStyles, "readonly-value")}><span className={cx(styles, commonStyles, "mini-avatar")}>{responsibleName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span> {responsibleName} <span className={cx(styles, commonStyles, "field-hint")}>Preenchido automaticamente</span></div>
@@ -413,12 +381,6 @@ export function DeliveryForm({ sectors, localities, drivers, helpers, reasons, r
                 </div>
                 {errors[`${prefix}-total`] && <small className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-total`]}</small>}
 
-                <div className={cx(styles, commonStyles, "otif-fields")}>
-                  <label className={cx(styles, commonStyles, "form-field")}><span>Entregas realizadas no prazo</span><input type="number" min="0" max={completed || maximumQuantity} step="1" value={line.onTime} onChange={(event) => updateLine(line.key, { onTime: event.target.value })} placeholder="Opcional" /><small className={cx(styles, commonStyles, "field-hint")}>Conte apenas as realizadas que chegaram no prazo.</small></label>
-                  <label className={cx(styles, commonStyles, "form-field")}><span>Entregas completas</span><input type="number" min="0" max={completed || maximumQuantity} step="1" value={line.inFull} onChange={(event) => updateLine(line.key, { inFull: event.target.value })} placeholder="Opcional" /><small className={cx(styles, commonStyles, "field-hint")}>Conte apenas as realizadas sem falta ou dano.</small></label>
-                </div>
-                {errors[`${prefix}-otif`] && <small className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-otif`]}</small>}
-
                 {notCompleted > 0 && (
                   <div className={cx(styles, commonStyles, "reasons-panel")}>
                     <div className={cx(styles, commonStyles, "reasons-heading")}><div><strong>Motivos de não realização</strong><p>Distribua as {notCompleted} entrega(s) não realizada(s).</p></div><button type="button" className={cx(styles, commonStyles, "text-button")} disabled={line.reasons.length >= 30 || saving} onClick={() => addReason(line)}>＋ Adicionar motivo</button></div>
@@ -457,7 +419,7 @@ export function DeliveryForm({ sectors, localities, drivers, helpers, reasons, r
 
       </> : <section className={cx(styles, commonStyles, "review-panel")} aria-labelledby="review-title">
         <div className={cx(styles, commonStyles, "review-panel-heading")}><div><p className={cx(styles, commonStyles, "eyebrow")}>CONFERÊNCIA FINAL</p><h2 id="review-title">Confira antes de lançar</h2><p>Confira as quantidades, as equipes e as localidades. Ao confirmar, o lançamento será registrado e já contará nos indicadores.</p></div><span className={cx(styles, commonStyles, "review-draft-badge")}>Rascunho salvo</span></div>
-        <div className={cx(styles, commonStyles, "review-meta-grid")}><div><span>Setor responsável</span><strong>{savedDraft?.nome_setor ?? initialLaunch?.nome_setor ?? sectors.find((item) => String(item.id_setor) === sectorId)?.nome ?? "—"}</strong></div><div><span>Responsável pelo registro</span><strong>{responsibleName}</strong></div><div><span>Entregas registradas</span><strong>{lines.length}</strong></div></div>
+        <div className={cx(styles, commonStyles, "review-meta-grid")}><div><span>Setor responsável</span><strong>{savedDraft?.nome_setor ?? initialLaunch?.nome_setor ?? "Suporte"}</strong></div><div><span>Responsável pelo registro</span><strong>{responsibleName}</strong></div><div><span>Entregas registradas</span><strong>{lines.length}</strong></div></div>
         <div className={cx(styles, commonStyles, "review-delivery-list")}>{lines.map((line, index) => {
           const originalItem = initialLaunch?.itens.find((item) => item.codigo_item_lancamento === line.itemCode);
           const locality = localities.find((item) => String(item.id_localidade) === line.locality)?.nome_localidade ?? originalItem?.nome_localidade ?? "Localidade indisponível";
@@ -467,7 +429,7 @@ export function DeliveryForm({ sectors, localities, drivers, helpers, reasons, r
           const reasonLabels = line.reasons.map((reason) => `${reasons.find((item) => String(item.id_motivo_nao_entrega) === reason.id)?.descricao_motivo ?? originalItem?.motivos.find((item) => String(item.id_motivo_nao_entrega) === reason.id)?.descricao_motivo ?? "Motivo"} (${numberValue(reason.quantity)})`);
           return <article className={cx(styles, commonStyles, "review-delivery-card")} key={line.key}>
             <div className={cx(styles, commonStyles, "review-delivery-heading")}><span className={cx(styles, commonStyles, "delivery-index")}>{String(index + 1).padStart(2, "0")}</span><div><h3>{locality}</h3><p>{date}</p></div></div>
-            <div className={cx(styles, commonStyles, "review-data-grid")}><div><span>Motorista</span><strong>{driverName}</strong></div><div><span>Ajudantes</span><strong>{helperNames.length ? helperNames.join(", ") : "Nenhum"}</strong></div><div><span>Realizadas</span><strong>{numberValue(line.completed).toLocaleString("pt-BR")}</strong></div><div><span>Não realizadas</span><strong>{numberValue(line.notCompleted).toLocaleString("pt-BR")}</strong></div><div><span>No prazo</span><strong>{line.onTime || "Sem dado"}</strong></div><div><span>Completas</span><strong>{line.inFull || "Sem dado"}</strong></div></div>
+            <div className={cx(styles, commonStyles, "review-data-grid")}><div><span>Motorista</span><strong>{driverName}</strong></div><div><span>Ajudantes</span><strong>{helperNames.length ? helperNames.join(", ") : "Nenhum"}</strong></div><div><span>Realizadas</span><strong>{numberValue(line.completed).toLocaleString("pt-BR")}</strong></div><div><span>Não realizadas</span><strong>{numberValue(line.notCompleted).toLocaleString("pt-BR")}</strong></div></div>
             {reasonLabels.length > 0 && <p className={cx(styles, commonStyles, "review-reasons")}><strong>Motivos:</strong> {reasonLabels.join(", ")}</p>}
             {line.observation.trim() && <p className={cx(styles, commonStyles, "review-observation")}><strong>Observação:</strong> {line.observation.trim()}</p>}
           </article>;

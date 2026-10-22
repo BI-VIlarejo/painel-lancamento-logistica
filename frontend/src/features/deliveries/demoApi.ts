@@ -28,7 +28,7 @@ export const demoUser: AuthenticatedUser = {
 };
 
 const sectors: SectorCatalogItem[] = [
-  { id_setor: 1, codigo: "ENTREGAS", nome: "Entregas" },
+  { id_setor: 1, codigo: "SUPORTE", nome: "Suporte" },
 ];
 const localities: LocalityCatalogItem[] = [
   { id_localidade: 11, codigo_localidade: "MAC", nome_localidade: "Macaé", tipo_localidade: "LOJA" },
@@ -105,8 +105,8 @@ function makeLaunch(status: DeliveryStatus, daysAgo: number, localityId: number,
   return {
     codigo_lancamento: uuid(),
     id_setor: 1,
-    codigo_setor: "ENTREGAS",
-    nome_setor: "Entregas",
+    codigo_setor: "SUPORTE",
+    nome_setor: "Suporte",
     codigo_revisao: uuid(),
     numero_revisao: 1,
     estado: status,
@@ -278,9 +278,9 @@ export const demoApi = {
     const now = new Date().toISOString();
     const launch: DeliveryLaunchDetail = {
       codigo_lancamento: uuid(),
-      id_setor: payload.id_setor,
-      codigo_setor: "ENTREGAS",
-      nome_setor: "Entregas",
+      id_setor: sectors.find((sector) => sector.codigo === "SUPORTE")?.id_setor ?? 1,
+      codigo_setor: "SUPORTE",
+      nome_setor: "Suporte",
       codigo_revisao: uuid(),
       numero_revisao: 1,
       estado: "RASCUNHO",

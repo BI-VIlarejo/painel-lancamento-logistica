@@ -30,8 +30,6 @@ class DeliveryRequestTests(TestCase):
                 id_localidade=1,
                 quantidade_realizada=4,
                 quantidade_nao_realizada=2,
-                quantidade_entregas_no_prazo=3,
-                quantidade_entregas_completas=4,
                 participantes=[
                     DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
                 ],
@@ -46,8 +44,6 @@ class DeliveryRequestTests(TestCase):
             id_localidade=1,
             quantidade_realizada=4,
             quantidade_nao_realizada=0,
-            quantidade_entregas_no_prazo=3,
-            quantidade_entregas_completas=2,
             participantes=[
                 DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
             ],
@@ -55,7 +51,7 @@ class DeliveryRequestTests(TestCase):
 
         self.assertEqual(item.codigo_item_lancamento, item_code)
 
-    def test_otif_counts_must_be_both_known_and_not_exceed_completed_deliveries(self) -> None:
+    def test_request_rejects_legacy_otif_count_fields(self) -> None:
         base = {
             "data_entrega": date(2026, 10, 20),
             "id_localidade": 1,
@@ -69,21 +65,8 @@ class DeliveryRequestTests(TestCase):
             DeliveryItemInput(
                 **base,
                 quantidade_entregas_no_prazo=3,
-                quantidade_entregas_completas=None,
-            )
-        with self.assertRaises(ValidationError):
-            DeliveryItemInput(
-                **base,
-                quantidade_entregas_no_prazo=5,
                 quantidade_entregas_completas=3,
             )
-
-        legacy_item = DeliveryItemInput(
-            **base,
-            quantidade_entregas_no_prazo=None,
-            quantidade_entregas_completas=None,
-        )
-        self.assertIsNone(legacy_item.quantidade_entregas_no_prazo)
 
 
 class DashboardRuleTests(TestCase):
@@ -91,10 +74,7 @@ class DashboardRuleTests(TestCase):
         self.assertEqual(_rate(8, 2), 80.0)
         self.assertIsNone(_rate(0, 0))
 
-    def test_otif_percentages_use_all_recorded_deliveries_as_denominator(self) -> None:
-        on_time = _percentage(90, 100)
-        complete = _percentage(80, 100)
-        self.assertEqual(on_time, 90.0)
-        self.assertEqual(complete, 80.0)
-        self.assertEqual(round(on_time * complete / 100, 2), 72.0)
+    def test_otif_uses_not_completed_over_total_registered(self) -> None:
+        self.assertEqual(_percentage(20, 100), 20.0)
+        self.assertIsNone(_percentage(0, 0))
 
