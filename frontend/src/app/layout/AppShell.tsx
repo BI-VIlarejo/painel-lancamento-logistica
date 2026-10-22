@@ -37,6 +37,11 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
   const canManageCatalogs = permissions.includes("CADASTROS:ADMINISTRAR");
   const canManageAccess = permissions.includes("CONTROLE_ACESSO:ADMINISTRAR");
   const canViewAudit = permissions.includes("AUDITORIA:VER");
+  const administrationTitle = canManageCatalogs && canManageAccess
+    ? "Cadastros e acessos"
+    : canManageCatalogs
+      ? "Cadastros operacionais"
+      : "Usuários e acessos";
   const sections = [
     {
       id: "operation",
@@ -91,7 +96,7 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
       items: [
         {
           path: "/cadastros",
-          label: "Cadastros e acessos",
+          label: administrationTitle,
           visible: canManageCatalogs || canManageAccess,
           icon: <svg viewBox="0 0 24 24"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9" /><circle cx="18" cy="17.5" r="2.5" /></svg>,
         },
@@ -130,7 +135,7 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
   const pageTitle = path === "/painel"
     ? "Painel gerencial"
     : path === "/cadastros"
-      ? "Cadastros e acessos"
+      ? administrationTitle
     : path === "/feedback"
       ? "Reclamações e elogios"
     : path === "/auditoria"
@@ -196,10 +201,6 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
           </nav>
         </div>
 
-        <div className={cx(styles, commonStyles, "sidebar-support")}>
-          <div className={cx(styles, commonStyles, "support-orbit")}><span>?</span></div>
-          <div><strong>Precisa de ajuda?</strong><span>Fale com a liderança do setor.</span></div>
-        </div>
         <div className={cx(styles, commonStyles, "sidebar-user")}>
           <span className={cx(styles, commonStyles, "user-avatar")}>{initials(user.nome_completo)}</span>
           <div className={cx(styles, commonStyles, "sidebar-user-info")}><strong>{user.nome_completo}</strong><span>Portal de Logística</span></div>

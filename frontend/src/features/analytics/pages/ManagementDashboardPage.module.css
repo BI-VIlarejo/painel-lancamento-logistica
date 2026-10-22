@@ -35,6 +35,9 @@
 
 .otif-definition-note { display: flex; align-items: flex-start; gap: 11px; padding: 13px 15px; border: 1px solid #eadfc8; border-radius: 8px; background: #fcf8ef; }
 .ranking-position { color: #516974; font-weight: 700; font-variant-numeric: tabular-nums; }
+.ranking-status { display: inline-flex; min-height: 23px; align-items: center; padding: 0 8px; border-radius: 99px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.ranking-status-active { color: var(--success); background: var(--success-soft); }
+.ranking-status-inactive { color: #818982; background: #f0f2f0; }
 .otif-note-icon { display: grid; width: 21px; height: 21px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #795e2f; background: #efe3c9; font-size: 13px; font-weight: 700; }
 .otif-definition-note strong { color: #6d552d; font-size: 13px; }
 .otif-definition-note p { margin: 3px 0 0; color: #756443; font-size: 12px; line-height: 1.55; }
@@ -84,6 +87,8 @@
 .rate-cell { display: flex; min-width: 90px; align-items: center; justify-content: flex-end; gap: 7px; }
 .rate-meter-track { display: block; width: 44px; height: 5px; overflow: hidden; border-radius: 99px; background: #edf1ed; }
 .rate-meter-track i { display: block; height: 100%; border-radius: inherit; background: var(--success); }
+.rate-meter-track-neutral { display: block; width: 44px; height: 5px; overflow: hidden; border-radius: 99px; background: #edf1ed; }
+.rate-meter-track-neutral i { display: block; height: 100%; border-radius: inherit; background: #748995; }
 .rate-value { color: var(--brand-navy); font-size: 12px; font-variant-numeric: tabular-nums; }
 .rate-empty { color: #87928a; }
 .person-cell-name { display: block; overflow: hidden; text-overflow: ellipsis; }
@@ -100,7 +105,7 @@
 .analysis-note-panel { align-self: start; }
 .metric-notes { display: grid; gap: 10px; margin: 0; padding: 17px 20px 19px 35px; color: #596a5f; font-size: 12px; line-height: 1.55; }
 .metric-notes li::marker { color: var(--brand-navy); }
-.table-more-button { display: block; width: 100%; padding: 11px 14px; border: 0; border-top: 1px solid #edf0ed; color: var(--brand-navy); background: #fff; cursor: pointer; font-size: 12px; font-weight: 700; }
+.table-more-button { display: flex; width: 100%; align-items: center; justify-content: center; padding: 11px 14px; border: 0; border-top: 1px solid #edf0ed; color: var(--brand-navy); background: #fff; cursor: pointer; font-size: 12px; font-weight: 600; line-height: 1.25; text-align: center; }
 .table-more-button:hover { background: var(--surface-subtle); }
 
 @media (max-width: 1250px) {

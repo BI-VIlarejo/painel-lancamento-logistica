@@ -1,7 +1,7 @@
 .eyebrow { margin-bottom: 11px; color: #7c8d82; font-size: 13px; font-weight: 700; letter-spacing: 1.55px; }
 .eyebrow-light { color: rgba(255,255,255,.74); }
 .field-hint { color: #63748a; font-size: 13px; font-weight: 400; }
-.button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 9px; padding: 0 17px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 700; text-decoration: none; transition: background .18s, border-color .18s, box-shadow .18s, transform .18s; }
+.button { display: inline-flex; min-height: 42px; align-items: center; justify-content: center; gap: 9px; padding: 0 17px; border: 1px solid transparent; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; line-height: 1.25; letter-spacing: .005em; text-align: center; text-decoration: none; transition: background .18s, border-color .18s, box-shadow .18s, transform .18s; }
 .button:disabled { cursor: wait; opacity: .74; }
 .button-primary { color: #fff; background: var(--primary); box-shadow: 0 5px 12px rgba(32,51,81,.16); }
 .button-primary:hover:not(:disabled) { background: var(--primary-hover); box-shadow: 0 8px 18px rgba(32,51,81,.22); transform: translateY(-1px); }
@@ -43,7 +43,7 @@
 .dialog-heading { display: flex; align-items: flex-start; justify-content: space-between; padding: 20px 22px 15px; border-bottom: 1px solid #eef1ee; }
 .dialog-heading .eyebrow { margin-bottom: 6px; color: var(--primary); font-size: 12px; }
 .dialog-heading h2 { margin: 0; color: var(--brand-navy); font-size: 17px; }
-.dialog-heading h2 span { color: #63748a; font-family: "Roboto", Arial, sans-serif; font-size: 13px; font-weight: 500; }
+.dialog-heading h2 span { color: #63748a; font-family: var(--font-sans); font-size: 13px; font-weight: 500; }
 .dialog-close { width: 31px; height: 31px; font-size: 20px; }
 .dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 22px; border-top: 1px solid #eef1ee; color: #63748a; font-size: 12px; }
 .dialog-actions { display: flex; align-items: center; gap: 8px; }

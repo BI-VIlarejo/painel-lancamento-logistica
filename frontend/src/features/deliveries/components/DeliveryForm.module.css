@@ -52,8 +52,6 @@
 .quantity-total { display: flex; min-width: 95px; flex-direction: column; gap: 5px; padding: 4px 0 8px 14px; border-left: 1px solid #e6ebe6; }
 .quantity-total span { color: #96a199; font-size: 12px; }
 .quantity-total strong { color: #40536d; font-size: 18px; font-weight: 700; }
-.otif-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; margin-top: 12px; padding: 13px 14px; border: 1px solid #dbe7ed; border-radius: 7px; background: #f7fafb; }
-.otif-fields .field-hint { font-weight: 400; }
 .reasons-panel { margin-top: 12px; padding: 13px 14px; border: 1px solid #f0e6d3; border-radius: 7px; background: #fdfaf5; }
 .reasons-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 11px; }
 .reasons-heading strong { color: #705c38; font-size: 13px; }
@@ -131,7 +129,6 @@
 .quantity-field { min-width: calc(50% - 6px); gap: 6px; }
 .quantity-dot { margin-top: 28px; }
 .quantity-field .form-field input { max-width: none; }
-.otif-fields { grid-template-columns: 1fr; gap: 11px; padding: 11px 9px; }
 .quantity-total { min-width: 100%; flex-direction: row; align-items: baseline; gap: 9px; padding: 8px 0 0; border-top: 1px solid #e6ebe6; border-left: 0; }
 .quantity-total strong { font-size: 15px; }
 .reasons-panel { padding: 11px 9px; }

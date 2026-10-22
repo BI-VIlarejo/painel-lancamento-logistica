@@ -4,6 +4,7 @@
 .feedback-heading h1 { margin: 0 0 7px; color: var(--brand-navy); font-size: clamp(27px, 2.5vw, 34px); letter-spacing: -.8px; }
 .feedback-lead { margin: 0; color: var(--muted); font-size: 15px; }
 .heading-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.heading-action-icon { display: inline-flex; width: 16px; height: 16px; flex: 0 0 16px; align-items: center; justify-content: center; font-size: 16px; font-weight: 500; line-height: 1; }
 .preview-label { display: inline-flex; align-items: center; gap: 7px; margin-right: 4px; padding: 7px 10px; border: 1px solid var(--brand-blue-line); border-radius: 999px; color: var(--brand-navy); background: var(--brand-blue-soft); font-size: 12px; font-weight: 700; white-space: nowrap; }
 .preview-label i { width: 7px; height: 7px; border-radius: 50%; background: var(--brand-blue); }
 .page-notice { width: 100%; }
@@ -105,6 +106,26 @@
 .detail-report p { margin: 0; color: #41556f; font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 22px; border-top: 1px solid #edf0f3; color: #78879a; font-size: 11px; }
 .detail-footer > button { min-height: 35px; padding: 0 12px; font-size: 12px; }
+.feedback-import-body { gap: 12px; }
+.feedback-import-body > p { margin: 0; color: #63758b; font-size: 12px; line-height: 1.55; }
+.feedback-import-template { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid #e2e8ed; border-radius: 8px; background: #fbfcfd; }
+.feedback-import-template > div { display: flex; min-width: 0; flex-direction: column; gap: 4px; }
+.feedback-import-template strong, .feedback-import-file > span { color: #465971; font-size: 12px; }
+.feedback-import-template small, .feedback-import-file > small { color: #718095; font-size: 11px; overflow-wrap: anywhere; }
+.feedback-import-hint { padding: 10px; border-left: 3px solid #9bbdcb; background: #f4f8fa; }
+.feedback-import-file { display: flex; flex-direction: column; gap: 6px; color: #465971; font-size: 12px; font-weight: 700; }
+.feedback-import-file input { min-height: 38px; padding: 6px; border: 1px solid #dce3e9; border-radius: 7px; color: #52647a; background: #fbfcfd; font: inherit; font-size: 12px; }
+.feedback-import-summary { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px; border: 1px solid #efd5be; border-radius: 7px; color: #885326; background: #fff8f1; font-size: 12px; }
+.feedback-import-summary span { color: #755f4c; font-size: 11px; }
+.feedback-import-valid { border-color: #b9dcc9; color: #276846; background: #f2faf5; }
+.feedback-import-error { margin: 0; color: #a13838; font-size: 11px; line-height: 1.45; }
+.feedback-import-table-scroll { max-height: 230px; overflow: auto; border: 1px solid #e5e9ed; border-radius: 7px; }
+.feedback-import-table { width: 100%; border-collapse: collapse; text-align: left; }
+.feedback-import-table th, .feedback-import-table td { padding: 8px; border-bottom: 1px solid #edf0f3; color: #516278; font-size: 10px; vertical-align: top; }
+.feedback-import-table th { position: sticky; top: 0; color: #788697; background: #fcfdfe; font-weight: 800; text-transform: uppercase; }
+.feedback-import-table td:nth-child(4) { max-width: 150px; overflow-wrap: anywhere; }
+.feedback-import-row-error td { color: #9b3d3d; background: #fff8f8; }
+.feedback-import-table-scroll > small { display: block; padding: 7px 9px; color: #718095; font-size: 10px; }
 
 @media (max-width: 1050px) {
   .feedback-filters { flex-wrap: wrap; }
@@ -143,6 +164,8 @@
   .form-actions { flex-direction: column-reverse; }
   .form-actions > button { width: 100%; }
   .detail-content { padding: 15px; }
+  .feedback-import-template { align-items: flex-start; flex-direction: column; }
+  .feedback-import-template .button { width: 100%; }
   .detail-facts { grid-template-columns: 1fr; gap: 11px; margin: 15px 0; }
   .detail-footer { align-items: stretch; flex-direction: column; padding: 12px 15px; }
   .detail-footer > button { width: 100%; }

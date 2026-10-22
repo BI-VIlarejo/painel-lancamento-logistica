@@ -2,7 +2,7 @@
 .app-sidebar { position: fixed; z-index: 30; top: 0; bottom: 0; left: 0; display: flex; width: 250px; flex-direction: column; overflow: hidden; padding: 25px 17px 17px; color: #fff; background: linear-gradient(180deg, var(--brand-navy) 0%, #162741 100%); }
 .sidebar-brand { padding: 2px 8px 23px; }
 .sidebar-rule { height: 1px; margin: 0 8px 24px; background: rgba(255,255,255,.12); }
-.sidebar-brand, .sidebar-rule, .sidebar-support, .sidebar-user { flex-shrink: 0; }
+.sidebar-brand, .sidebar-rule, .sidebar-user { flex-shrink: 0; }
 .sidebar-caption { margin: 0 10px 10px; color: rgba(255,255,255,.66); font-size: 12px; font-weight: 700; letter-spacing: 1.2px; }
 .sidebar-navigation { min-height: 0; flex: 1 1 auto; margin-right: -4px; overflow-x: hidden; overflow-y: auto; padding-right: 4px; overscroll-behavior-y: contain; scrollbar-color: rgba(255,255,255,.26) transparent; scrollbar-width: thin; }
 .sidebar-navigation::-webkit-scrollbar { width: 6px; }
@@ -26,11 +26,6 @@
 .nav-link-active .nav-active-mark { opacity: 1; }
 .nav-icon { display: grid; width: 18px; height: 18px; place-items: center; }
 .nav-icon svg, .sign-out-button svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
-.sidebar-support { display: flex; align-items: center; gap: 11px; margin: 14px 2px 15px; padding: 13px 10px; border: 1px solid rgba(255,255,255,.12); border-radius: 8px; background: rgba(255,255,255,.055); }
-.support-orbit { display: grid; width: 29px; height: 29px; flex: 0 0 auto; place-items: center; border: 1px solid rgba(255,255,255,.34); border-radius: 50%; color: var(--brand-orange); font-size: 15px; }
-.sidebar-support strong, .sidebar-support span { display: block; }
-.sidebar-support strong { margin-bottom: 3px; color: #fff; font-size: 13px; }
-.sidebar-support span { color: rgba(255,255,255,.54); font-size: 12px; }
 .sidebar-user { display: flex; align-items: center; gap: 10px; padding: 13px 3px 0; border-top: 1px solid rgba(255,255,255,.12); }
 .user-avatar, .topbar-avatar { display: inline-grid; flex: 0 0 auto; place-items: center; border-radius: 50%; font-weight: 700; }
 .user-avatar { width: 33px; height: 33px; color: var(--brand-navy); background: #e1e9f2; font-size: 13px; }
