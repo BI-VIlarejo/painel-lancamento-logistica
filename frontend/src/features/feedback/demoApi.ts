@@ -2,6 +2,10 @@ import { demoApi } from "../deliveries/demoApi";
 import type {
   FeedbackCreateInput,
   FeedbackDeliveryItem,
+  FeedbackImportPreviewResponse,
+  FeedbackImportPreviewRequest,
+  FeedbackImportRequest,
+  FeedbackImportResult,
   FeedbackItem,
   FeedbackLocality,
   FeedbackListFilters,
@@ -75,7 +79,7 @@ export const demoFeedbackApi = {
         ...participant,
         nome_exibicao: people.find((person) => person.id_pessoa === participant.id_pessoa)?.nome_exibicao ?? participant.nome_exibicao,
       })),
-    })).filter((item) => !filters.q || [item.relato, item.nome_localidade, ...item.participantes.map((person) => person.nome_exibicao)].join(" ").toLocaleLowerCase("pt-BR").includes(filters.q.toLocaleLowerCase("pt-BR")))
+    })).filter((item) => !filters.q || [item.nome_cliente ?? "", item.relato, item.nome_localidade, ...item.participantes.map((person) => person.nome_exibicao)].join(" ").toLocaleLowerCase("pt-BR").includes(filters.q.toLocaleLowerCase("pt-BR")))
       .filter((item) => !filters.tipo || filters.tipo === "TODOS" || item.tipo === filters.tipo)
       .filter((item) => !filters.id_localidade || item.id_localidade === filters.id_localidade)
       .filter((item) => !filters.data_de || item.data_feedback >= filters.data_de)
@@ -93,6 +97,13 @@ export const demoFeedbackApi = {
     const delivery = launch?.itens.find((entry) => entry.codigo_item_lancamento === input.codigo_item_lancamento);
     if (!launch || !delivery) throw new Error("A entrega confirmada selecionada não está disponível.");
     if (input.data_feedback < delivery.data_entrega) throw new Error("A data da manifestação não pode anteceder a data da entrega.");
+    if (input.participantes) {
+      const selected = input.participantes.map((person) => `${person.id_pessoa}:${person.papel_participante}`).sort();
+      const actual = delivery.participantes.map((person) => `${person.id_pessoa}:${person.papel_participante}`).sort();
+      if (selected.length !== actual.length || selected.some((person, index) => person !== actual[index])) {
+        throw new Error("Motorista e ajudantes selecionados devem corresponder à equipe da entrega confirmada.");
+      }
+    }
     const currentItems = readItems();
     const item: FeedbackItem = {
       ...input,
@@ -111,6 +122,52 @@ export const demoFeedbackApi = {
     return item;
   },
 
+  async previewImport(payload: FeedbackImportPreviewRequest): Promise<FeedbackImportPreviewResponse> {
+    await pause();
+    const deliveries = await demoApi.listDeliveries({ estado: "ENVIADA", limit: 100, offset: 0 });
+    return {
+      rows: payload.rows.map(({ line, item }) => {
+        const launch = deliveries.items.find((entry) => entry.codigo_lancamento === item.codigo_lancamento && entry.codigo_revisao === item.codigo_revisao);
+        const delivery = launch?.itens.find((entry) => entry.codigo_item_lancamento === item.codigo_item_lancamento);
+        const errors = !delivery
+          ? ["A entrega confirmada relacionada não foi encontrada."]
+          : item.data_feedback < delivery.data_entrega
+            ? ["A data da manifestação não pode anteceder a data da entrega."]
+            : [];
+        return { line, valid: errors.length === 0, errors };
+      }),
+    };
+  },
+
+  async importCsv(payload: FeedbackImportRequest): Promise<FeedbackImportResult> {
+    await pause();
+    const preview = await this.previewImport(payload);
+    const invalidRow = preview.rows.find((row) => !row.valid);
+    if (invalidRow) throw new Error(`Linha ${invalidRow.line}: ${invalidRow.errors.join(" ")}`);
+
+    const deliveries = await demoApi.listDeliveries({ estado: "ENVIADA", limit: 100, offset: 0 });
+    const currentItems = readItems();
+    const imported = payload.rows.map(({ item }, index) => {
+      const launch = deliveries.items.find((entry) => entry.codigo_lancamento === item.codigo_lancamento && entry.codigo_revisao === item.codigo_revisao)!;
+      const delivery = launch.itens.find((entry) => entry.codigo_item_lancamento === item.codigo_item_lancamento)!;
+      return {
+        ...item,
+        id_feedback: Math.max(Date.now(), ...currentItems.map((entry) => entry.id_feedback + 1)) + index,
+        data_entrega: delivery.data_entrega,
+        id_localidade: delivery.id_localidade,
+        nome_localidade: delivery.nome_localidade,
+        participantes: delivery.participantes.map((person) => ({
+          id_pessoa: person.id_pessoa,
+          nome_exibicao: person.nome_exibicao,
+          papel_participante: person.papel_participante,
+        })),
+        criado_em: new Date().toISOString(),
+      } satisfies FeedbackItem;
+    });
+    writeItems([...imported, ...currentItems]);
+    return { imported: imported.length };
+  },
+
   async export(filters: FeedbackListFilters = {}): Promise<Blob> {
     let offset = 0;
     const allItems: FeedbackItem[] = [];
@@ -122,15 +179,12 @@ export const demoFeedbackApi = {
       offset += page.limit;
     } while (offset < total);
     const rows = [
-      ["data_manifestacao", "data_entrega", "tipo", "loja", "equipe", "relato"],
-      ...allItems.map((item) => [
-        item.data_feedback,
-        item.data_entrega,
-        item.tipo,
-        item.nome_localidade,
-        item.participantes.map((person) => person.nome_exibicao).join(", "),
-        item.relato,
-      ]),
+      ["data_manifestacao", "data_entrega", "tipo", "cliente", "loja", "motorista", "entregador_1", "entregador_2", "descricao"],
+      ...allItems.map((item) => {
+        const driver = item.participantes.find((person) => person.papel_participante === "MOTORISTA")?.nome_exibicao ?? "";
+        const helpers = item.participantes.filter((person) => person.papel_participante === "AJUDANTE").map((person) => person.nome_exibicao);
+        return [item.data_feedback, item.data_entrega, item.tipo, item.nome_cliente ?? "", item.nome_localidade, driver, helpers[0] ?? "", helpers[1] ?? "", item.relato];
+      }),
     ];
     const csv = `\uFEFF${rows.map((row) => row.map((value) => {
       const text = String(value);

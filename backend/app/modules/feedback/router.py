@@ -19,6 +19,10 @@ from app.modules.feedback import service
 from app.modules.feedback.schemas import (
     FeedbackCreateRequest,
     FeedbackDeliveryItem,
+    FeedbackImportRequest,
+    FeedbackImportPreviewResponse,
+    FeedbackImportPreviewRequest,
+    FeedbackImportResult,
     FeedbackItem,
     FeedbackLocality,
     FeedbackPage,
@@ -88,6 +92,36 @@ def create_feedback(
 ) -> FeedbackItem:
     _no_store(response)
     return service.create_feedback(
+        db,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        access=access,
+    )
+
+
+@router.post("/import/preview", response_model=FeedbackImportPreviewResponse)
+def preview_feedback_import(
+    payload: FeedbackImportPreviewRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_create_access),
+) -> FeedbackImportPreviewResponse:
+    _no_store(response)
+    return service.preview_feedback_import(db, payload=payload, access=access)
+
+
+@router.post("/import", response_model=FeedbackImportResult)
+def import_feedbacks(
+    payload: FeedbackImportRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    idempotency_key: UUID = Header(alias="Idempotency-Key"),
+    access: AuthorizationContext = Depends(_create_access),
+) -> FeedbackImportResult:
+    _no_store(response)
+    return service.import_feedbacks(
         db,
         payload=payload,
         idempotency_key=idempotency_key,

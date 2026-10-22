@@ -3,6 +3,10 @@ import { demoFeedbackApi } from "./demoApi";
 import type {
   FeedbackCreateInput,
   FeedbackDeliveryItem,
+  FeedbackImportPreviewResponse,
+  FeedbackImportPreviewRequest,
+  FeedbackImportRequest,
+  FeedbackImportResult,
   FeedbackItem,
   FeedbackLocality,
   FeedbackListFilters,
@@ -39,10 +43,20 @@ export const feedbackApi = {
     const params = new URLSearchParams({ data_entrega: dataEntrega, id_localidade: String(idLocalidade) });
     return apiRequest<FeedbackDeliveryItem[]>(`/feedbacks/delivery-items?${params}`);
   },
-  create(payload: FeedbackCreateInput): Promise<FeedbackItem> {
+  create(payload: FeedbackCreateInput, idempotencyKey: string): Promise<FeedbackItem> {
     return isDemoMode
       ? demoFeedbackApi.create(payload)
-      : apiRequest<FeedbackItem>("/feedbacks", { method: "POST", body: payload });
+      : apiRequest<FeedbackItem>("/feedbacks", { method: "POST", body: payload, idempotencyKey });
+  },
+  previewImport(payload: FeedbackImportPreviewRequest): Promise<FeedbackImportPreviewResponse> {
+    return isDemoMode
+      ? demoFeedbackApi.previewImport(payload)
+      : apiRequest<FeedbackImportPreviewResponse>("/feedbacks/import/preview", { method: "POST", body: payload });
+  },
+  importCsv(payload: FeedbackImportRequest, idempotencyKey: string): Promise<FeedbackImportResult> {
+    return isDemoMode
+      ? demoFeedbackApi.importCsv(payload)
+      : apiRequest<FeedbackImportResult>("/feedbacks/import", { method: "POST", body: payload, idempotencyKey });
   },
   export(filters: FeedbackListFilters = {}): Promise<Blob> {
     if (isDemoMode) return demoFeedbackApi.export(filters);
