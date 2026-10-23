@@ -1,6 +1,6 @@
 import { demoApi } from "../deliveries/demoApi";
 import { demoFeedbackApi } from "../feedback/demoApi";
-import { demoAdministrationApi } from "../../administration/demoApi";
+import { demoAdministrationApi } from "../administration/demoApi";
 import type { DashboardFilters, DashboardResponse } from "./types";
 
 const percentage = (count: number, total: number): number | null =>
