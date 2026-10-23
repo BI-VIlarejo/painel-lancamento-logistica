@@ -10,7 +10,7 @@ O portal usa frontend e backend separados dentro do mesmo repositório. O backen
 flowchart LR
     P[Pessoa usuária] -->|HTTPS| V[Frontend React + TypeScript na Vercel]
     V -->|HTTPS / JSON| LB[ALB ou proxy aprovado]
-    LB -->|TCP 8080 privado| N[Nginx em EC2]
+    LB -->|TCP 8081 privado| N[Nginx de Logística em EC2]
     N -->|rede Docker| A[API FastAPI]
     A -->|TCP 3306 privado| R[(RDS MySQL)]
     D[Desenvolvedor] -->|HTTPS local| VDEV[Frontend Vite local]
@@ -46,7 +46,7 @@ O backend implantado na AWS deve conectar diretamente ao endpoint privado da RDS
 4. manter uma credencial separada para migrations, liberada somente na etapa controlada de release;
 5. separar endpoints, credenciais e catálogos de staging e produção.
 
-O backend do Portal será executado na EC2 e acessará a RDS diretamente pela rede privada; não abrirá túnel SSH por requisição. O túnel SSH via EC2/Tailscale continua sendo somente uma opção para desenvolvimento local. A configuração em [`deploy/ec2/`](../deploy/ec2/README.md) segue o deploy EC2 do VilarejoBI: Docker Compose, Nginx na porta 8080 do host e FastAPI somente na rede Docker. O desenho-base termina TLS no ALB/proxy aprovado pela Infra. DNS, certificado, encaminhamento para a EC2 e regras dos Security Groups ainda precisam ser aplicados.
+O backend do Portal será executado na EC2 e acessará a RDS diretamente pela rede privada; não abrirá túnel SSH por requisição. O túnel SSH via EC2/Tailscale continua sendo somente uma opção para desenvolvimento local. A configuração em [`deploy/ec2/`](../deploy/ec2/README.md) usa Docker Compose, Nginx na porta 8081 do host (a 8080 já é usada pelo BI) e FastAPI somente na rede Docker. O desenho-base termina TLS no ALB/proxy aprovado pela Infra. DNS, certificado, encaminhamento para a EC2 e regras dos Security Groups ainda precisam ser aplicados.
 
 ## Variáveis de ambiente
 

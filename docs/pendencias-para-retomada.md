@@ -127,7 +127,7 @@ Os clientes do frontend já chamam as rotas correspondentes da API, e o `compose
 - [ ] Revisar os arquivos alterados antes de versionar.
 - [ ] Medir o tempo do painel com volume representativo de dados; as agregações principais já usam SQL.
 - [x] Definir a EC2 como hospedagem da API e `vilarejo_bi_logistica_staging` como banco de staging; seguir o padrão de conectividade do VilarejoBI.
-- [x] Preparar Compose de staging no padrão EC2 do VilarejoBI: Nginx na porta 8080, API interna, health check e modelo de variáveis em `deploy/ec2/`.
+- [x] Preparar Compose de staging com API interna e Nginx na porta 8081 (a porta 8080 já está ocupada pelo BI), health check e modelo de variáveis em `deploy/ec2/`.
 - [x] Preparar publicação manual da imagem no GHCR e deploy da API por GitHub Actions, com execução restrita à branch `staging`.
 - [x] Implementar túnel SSH opcional para a API executada localmente, com destino da EC2 pela rede Tailscale; o runtime da EC2 mantém conexão direta à RDS.
 - [ ] Aplicar na EC2 aprovada: confirmar região/instância, domínios, ALB/proxy e target group, Security Groups, papel IAM, método de deploy, segredo de sessão e URL/credencial operacional para conexão privada à RDS.
@@ -169,8 +169,8 @@ Os nomes/endpoints já existentes no `.env` local servem como pistas para locali
 ### B. Aprovar e preparar o caminho de rede
 
 - [ ] Confirmar com a Infra o domínio público da API, o DNS, quem termina TLS (ALB ou proxy corporativo) e o certificado HTTPS. O navegador na Vercel precisa alcançar a API por HTTPS.
-- [ ] Configurar o target group para enviar tráfego do listener HTTPS ao Nginx da EC2 na porta `8080`, com health check aprovado (o guia usa `/health`).
-- [ ] No Security Group da EC2, permitir TCP `8080` somente a partir do Security Group do ALB/proxy. Não abrir a porta `8000`.
+- [ ] Configurar o target group para enviar tráfego do listener HTTPS ao Nginx da EC2 na porta `8081`, com health check aprovado (o guia usa `/health`).
+- [ ] No Security Group da EC2, permitir TCP `8081` somente a partir do Security Group do ALB/proxy. Não abrir a porta `8000`.
 - [ ] No Security Group da RDS, permitir TCP `3306` com origem no Security Group da EC2. Manter a RDS privada; não liberar `3306` para a internet nem usar allowlist de IP público como substituto da regra entre Security Groups.
 - [ ] Aprovar o acesso SSH `22` somente pelo método administrativo/deploy autorizado. O workflow abre temporariamente a porta `22` para o runner do GitHub e remove a regra que ele criou ao final.
 - [ ] Confirmar a rota de saída da EC2 para GHCR e Docker Hub, necessária para baixar a imagem do backend e `nginx:alpine`.

@@ -1,10 +1,10 @@
 # API de staging na EC2
 
-Esta configuração segue o padrão que o VilarejoBI já usa para os serviços em EC2: imagem da API publicada no GHCR, deploy controlado pelo GitHub Actions, FastAPI atrás do Nginx na porta 8080 do host e frontend publicado separadamente na Vercel. O TLS deve terminar no ALB ou no proxy corporativo aprovado pela Infra. O container da API não publica uma porta no host, não roda migrations ao iniciar e não publica o MySQL.
+Esta configuração segue o padrão do VilarejoBI para publicar a API no GHCR e atualizar a EC2 pelo GitHub Actions, com o frontend separado na Vercel. Como o Nginx do BI já ocupa a porta 8080 na instância compartilhada, o Nginx da Logística publica a porta 8081 do host. O TLS deve terminar no ALB ou no proxy corporativo aprovado pela Infra. O container da API não publica uma porta no host, não roda migrations ao iniciar e não publica o MySQL.
 
 ## Arquivos e variáveis
 
-- `compose.yaml` usa a imagem `ghcr.io/bi-vilarejo/painel-lan-amento-logistica/backend` e sobe a API e o Nginx. O Nginx publica `8080:80`; o backend fica acessível somente pela rede interna do Compose.
+- `compose.yaml` usa a imagem `ghcr.io/bi-vilarejo/painel-lan-amento-logistica/backend` e sobe a API e o Nginx. O Nginx publica `8081:80`; o backend fica acessível somente pela rede interna do Compose.
 - `nginx.conf` encaminha todas as rotas à API e repassa os cabeçalhos de proxy. Não há cache de respostas, pois a API atende sessões e operações de escrita.
 - `${EC2_DEPLOY_DIR}/.env` contém as variáveis privadas de runtime, ao lado de `compose.yaml`. O Compose usa `env_file: ./.env`, no mesmo padrão do VilarejoBI. Use `api.env.example` como modelo; mantenha o arquivo fora do Git e com proprietário `ubuntu` e modo `0600`, pois o usuário de deploy `ubuntu` executa o Docker Compose.
 - `backend/.env` e `backend/.env.example` são configurações locais. Nenhum deles é enviado à EC2.
@@ -26,15 +26,15 @@ O arquivo `.env` fica no diretório de deploy e é ignorado pelo `.gitignore` do
 
 ## Rede AWS
 
-O fluxo esperado é navegador → Vercel → HTTPS da API → ALB/proxy aprovado → EC2 na porta 8080 → RDS privada na porta 3306.
+O fluxo esperado é navegador → Vercel → HTTPS da API → ALB/proxy aprovado → EC2 na porta 8081 → RDS privada na porta 3306.
 
-- DNS `api-staging` deve apontar para o ALB/proxy que termina TLS e encaminha para a EC2 na porta 8080. Configure certificado HTTPS nesse componente. Se a Infra já tiver um proxy padrão para o BI, reutilize a mesma solução aprovada.
-- No Security Group da EC2, permita TCP 8080 somente a partir do Security Group do ALB/proxy. Permita SSH 22 apenas pelo acesso administrativo/deploy aprovado. Não abra 8000.
+- DNS `api-staging` deve apontar para o ALB/proxy que termina TLS e encaminha para a EC2 na porta 8081. Configure certificado HTTPS nesse componente. Se a Infra já tiver um proxy padrão para o BI, reutilize a mesma solução aprovada e encaminhe este host para a porta 8081.
+- No Security Group da EC2, permita TCP 8081 somente a partir do Security Group do ALB/proxy. Permita SSH 22 apenas pelo acesso administrativo/deploy aprovado. Não abra 8000.
 - No Security Group da RDS, permita TCP 3306 com origem no Security Group da EC2. Mantenha a RDS em sub-rede privada e sem acesso público.
 - Use o papel IAM da instância para acesso a serviços AWS. Não instale access keys de usuário na EC2.
 - O proxy precisa encaminhar `Host` e `X-Forwarded-Proto`; o Nginx repassa esses cabeçalhos à API.
 
-O `docker-compose.prod.yml` do VilarejoBI publica o Nginx na porta 8080 e usa o backend na 8000. Aqui mantive o padrão de porta do Nginx, mas deixei a porta 8000 da API apenas interna ao Compose para evitar um caminho que contorne o proxy.
+O `docker-compose.prod.yml` do VilarejoBI publica o Nginx na porta 8080 e usa o backend na 8000. Como os dois projetos compartilham a EC2, a Logística usa a porta 8081 no host; sua porta 8000 continua apenas interna ao Compose para evitar um caminho que contorne o proxy.
 
 ## Preparar a EC2
 
