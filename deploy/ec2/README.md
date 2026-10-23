@@ -6,20 +6,23 @@ Esta configuração segue o padrão que o VilarejoBI já usa para os serviços e
 
 - `compose.yaml` usa a imagem `ghcr.io/bi-vilarejo/painel-lan-amento-logistica/backend` e sobe a API e o Nginx. O Nginx publica `8080:80`; o backend fica acessível somente pela rede interna do Compose.
 - `nginx.conf` encaminha todas as rotas à API e repassa os cabeçalhos de proxy. Não há cache de respostas, pois a API atende sessões e operações de escrita.
-- `/etc/lancamento-logistica/api.env` contém as variáveis privadas de runtime. Use `api.env.example` como lista de campos; mantenha o arquivo fora do Git, com proprietário `root` e modo `0600`.
+- `${EC2_DEPLOY_DIR}/.env` contém as variáveis privadas de runtime, ao lado de `compose.yaml`. O Compose usa `env_file: ./.env`, no mesmo padrão do VilarejoBI. Use `api.env.example` como modelo; mantenha o arquivo fora do Git e com proprietário `ubuntu` e modo `0600`, pois o usuário de deploy `ubuntu` executa o Docker Compose.
 - `backend/.env` e `backend/.env.example` são configurações locais. Nenhum deles é enviado à EC2.
 
 Configure `APP_ENV=staging`, o catálogo `vilarejo_bi_logistica_staging`, a URL privada da RDS e uma credencial operacional aprovada com privilégio mínimo. Codifique caracteres especiais do usuário/senha em URL encoding. Não coloque `OP_LOGISTICA_MIGRATION_DATABASE_URL` no ambiente do serviço; a credencial de migration é separada e usada somente numa operação controlada.
 
 Gere `SESSION_SECRET` com `openssl rand -hex 32`. Configure `CORS_ALLOWED_ORIGINS` com a origem exata do frontend, sem `/*` nem barra final. Para a sessão funcionar sem depender de cookies de terceiros, prefira um domínio próprio da Vercel e um domínio de API no mesmo domínio registrável, por exemplo `portal-staging.empresa.com` e `api-staging.empresa.com`. O backend usa `SESSION_COOKIE_SECURE=true` e `SESSION_COOKIE_SAMESITE=lax`.
 
-Criação do arquivo privado na instância:
+Criação do arquivo privado no diretório configurado em `EC2_DEPLOY_DIR`, onde o workflow colocou o `compose.yaml`:
 
 ```bash
-sudo install -d -o root -g root -m 700 /etc/lancamento-logistica
-sudo install -o root -g root -m 600 /dev/null /etc/lancamento-logistica/api.env
-sudoedit /etc/lancamento-logistica/api.env
+touch .env
+chmod 600 .env
+sudoedit .env
+chmod 600 .env
 ```
+
+O arquivo `.env` fica no diretório de deploy e é ignorado pelo `.gitignore` do Portal.
 
 ## Rede AWS
 
@@ -38,7 +41,7 @@ O `docker-compose.prod.yml` do VilarejoBI publica o Nginx na porta 8080 e usa o 
 Depois que a Infra confirmar a instância, região, acesso administrativo, ALB/proxy e Security Groups:
 
 1. Instale/valide Docker Engine e Docker Compose na EC2. O usuário de deploy precisa executar Docker sem `sudo` e gravar no diretório configurado em `EC2_DEPLOY_DIR`.
-2. Crie `/etc/lancamento-logistica/api.env` com a credencial de runtime e os valores aprovados. Restrinja a leitura a `root`.
+2. No diretório `EC2_DEPLOY_DIR`, crie `.env` com a credencial de runtime e os valores aprovados. Mantenha o proprietário como o usuário de deploy e use modo `0600`.
 3. Confirme saída HTTPS da EC2 para GHCR e Docker Hub. A instância precisa baixar a imagem da API e `nginx:alpine`.
 4. Na primeira implantação, prepare o diretório de deploy; o workflow copia `compose.yaml` e `nginx.conf` para ele.
 
@@ -72,4 +75,4 @@ As migrations da base compartilhada são coordenadas pela cadeia Alembic `logist
 
 ## Publicação na Vercel
 
-No projeto Vercel, use `frontend/` como Root Directory. Para uma Preview conectada à API, configure `VITE_API_BASE_URL` com a URL HTTPS pública acima e `VITE_DEMO_MODE=false`. A variável `VITE_API_BASE_URL` é pública no bundle; nunca coloque credenciais nela. Configure a origem exata no `CORS_ALLOWED_ORIGINS` do arquivo de runtime e mantenha frontend/API sob o mesmo domínio registrável para cookies `SameSite=Lax`. Uma prévia somente visual usa `VITE_DEMO_MODE=true` e não aponta para a API nem para o banco.
+No projeto Vercel, use `frontend/` como Root Directory. Para uma Preview conectada à API, configure `VITE_API_BASE_URL` com a URL HTTPS pública acima e `VITE_DEMO_MODE=false`. A variável `VITE_API_BASE_URL` é pública no bundle; nunca coloque credenciais nela. Configure a origem exata no `CORS_ALLOWED_ORIGINS` do `${EC2_DEPLOY_DIR}/.env` e mantenha frontend/API sob o mesmo domínio registrável para cookies `SameSite=Lax`. Uma prévia somente visual usa `VITE_DEMO_MODE=true` e não aponta para a API nem para o banco.

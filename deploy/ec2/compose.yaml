@@ -2,7 +2,7 @@ services:
   backend:
     image: ghcr.io/bi-vilarejo/painel-lan-amento-logistica/backend:${IMAGE_TAG:-staging}
     env_file:
-      - /etc/lancamento-logistica/api.env
+      - ./.env
     expose:
       - "8000"
     restart: unless-stopped

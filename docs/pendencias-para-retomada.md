@@ -11,6 +11,19 @@
 - Não haverá integração com o BI nesta etapa. O Portal manterá seu próprio cadastro de lojas/filiais.
 - A migration de localidades `b817e6c2a904` foi aplicada em staging em 22/10/2026; `alembic --name logistica current` confirmou essa revisão como `head`.
 
+## Estado para retomada — 22/10/2026
+
+- [x] Os dez commits desta rodada foram publicados em `origin/staging`; a branch local `staging` estava sincronizada e sem alterações pendentes na última conferência.
+- [x] O workflow manual que constrói a imagem no GHCR e publica a API na EC2 está versionado em `.github/workflows/deploy-staging.yml`.
+- [x] O Compose/Nginx de staging, o modelo de variáveis e o guia de deploy estão em `deploy/ec2/`.
+- [x] A migration operacional `b817e6c2a904` está registrada como `head` em staging; em 22/10 também foi confirmada por uma checagem somente de leitura a conexão e a presença das tabelas necessárias.
+- [x] O túnel Tailscale opcional para desenvolvimento local foi implementado. A API em EC2 deve conectar diretamente à RDS pela VPC, com `USE_DB_TUNNEL=false`.
+- [ ] O deploy da API na EC2 ainda não foi confirmado. Também não foi confirmado o deploy Preview conectado à API na Vercel.
+- [ ] O resultado da CI para o último commit deve ser conferido no GitHub Actions antes de disparar o deploy.
+- [ ] A configuração real de EC2, ALB/proxy, DNS/TLS, Security Groups, secrets do GitHub, usuário de runtime da RDS e variáveis da Vercel ainda precisa ser inventariada ou confirmada. Não registrar valores de senhas, tokens ou chaves neste documento.
+
+O registro do BI que trata da baseline analítica é de outro escopo. Para o Portal, não reaplicar a migration `b817e6c2a904` nem executar migration automaticamente no início do container.
+
 ### Separação de cadastros e controle de acesso
 
 - [x] Separar `CADASTROS:ADMINISTRAR` de `CONTROLE_ACESSO:ADMINISTRAR` na interface e na API. Quem tem apenas a primeira permissão mantém lojas, equipe e motivos, sem ver a aba de usuários e acessos nem consultar suas rotas.
@@ -128,17 +141,97 @@ Os clientes do frontend já chamam as rotas correspondentes da API, e o `compose
 - [x] Associar automaticamente novos lançamentos e importações de Entregas ao setor `SUPORTE`; lançamentos antigos em `ENTREGAS` mantêm seus vínculos históricos.
 - [x] Incluir nome do cliente conforme a decisão de produto e adicionar importação de feedback em lote com modelo CSV, prévia, validação de vínculos e erros por linha; a conferência com o arquivo histórico real continua pendente.
 
-## Para retomar amanhã
+## Plano completo para retomar amanhã
 
-1. Abrir a aplicação localmente em modo demonstração ou subir uma instância Compose isolada com a conta `dev-gabriel` (instruções em [rodar-localmente.md](./rodar-localmente.md)).
-2. [x] Corrigir o balão informativo no histórico; o espaçamento foi ajustado nesta retomada.
-3. [x] Implementar gráficos no Painel Gerencial; o painel já contém gráfico de evolução e barras de composição.
-4. Validar o projeto com o Vyctor e levantar se ele pede alguma mudança.
-5. Carregar em staging o cadastro real de lojas/filiais depois de receber a lista oficial com código, nome, cidade e UF e confirmar seus responsáveis. A migration `b817e6c2a904` já está aplicada; as tabelas de catálogo estão vazias.
-6. Validar com uma amostra anonimizada o formato do histórico de Entregas e ajustar o mapeamento se necessário.
-7. Validar com uma amostra anonimizada o modelo de feedback (`data_feedback`, `tipo`, `nome_cliente`, códigos do lançamento/revisão/item e `relato`); o export histórico atual não tem os códigos necessários para reimportação.
-8. Definir retenção de nome/relato antes de usar feedback real; metas/faixas do OTIF ficam para depois do piloto.
-9. Preparar carga real de staging e seguir com validação técnica e operacional.
+**Objetivo:** concluir a preparação do primeiro staging funcional para o Diretor de Logística testar. A publicação visual isolada na Vercel é a alternativa se a API ou a rede da AWS ainda não estiverem prontas. Staging não é produção.
+
+### A. Conferir o repositório e iniciar o inventário AWS — primeiro passo
+
+- [ ] Abrir o GitHub Actions e confirmar se a CI do último commit em `staging` passou. Resolver qualquer falha antes do workflow de deploy.
+- [ ] Entrar no Console AWS, selecionar `us-east-1` (região indicada pelo endpoint RDS já usado no projeto) e confirmar que é a conta AWS esperada.
+- [ ] Em **EC2 → Instances**, localizar a instância indicada por `EC2_HOST` no `.env` local. Confirmar que ela está aprovada para hospedar o Portal; não presumir que uma EC2 usada pelo BI pode ser reutilizada sem validação da Infra.
+- [ ] Registrar para a instância: nome/ID, estado, VPC, subnet, IP privado, Security Groups anexados, IAM Role, versão/estado de Docker e Compose, usuário de deploy e diretório de deploy disponível.
+- [ ] Em **RDS → Databases**, localizar a instância `vilarejo-bi` e conferir endpoint, porta `3306`, VPC, subnet group, Security Groups e **Publicly accessible = No**.
+- [ ] Confirmar que o endpoint usado pela aplicação aponta para o catálogo `vilarejo_bi_logistica_staging`. O estado registrado do Portal é `b817e6c2a904 (head)`; não executar upgrade nem bootstrap Alembic de novo.
+- [ ] Em **EC2 → Load Balancers** (ou junto à Infra, se o tráfego passar por proxy corporativo), identificar se já existe um ALB/proxy aprovado para a API. Registrar DNS/domínio, esquema público/interno, listener HTTPS `443`, certificado, target group, porta de destino e health check.
+- [ ] Registrar os resultados sem incluir senhas, chaves privadas, tokens ou valores secretos. Modelo para preencher:
+
+  ```text
+  Conta/região AWS:
+  EC2: ID / estado / VPC / subnet / IP privado / Security Groups / IAM Role / Docker-Compose / usuário e diretório de deploy:
+  RDS: instância / endpoint (mascarado neste documento) / porta / VPC / subnet group / acesso público? / Security Group:
+  Banco do Portal: vilarejo_bi_logistica_staging / revisão Alembic observada:
+  ALB/proxy: existe? / domínio / listener HTTPS e certificado / target group / porta / health check:
+  ```
+
+Os nomes/endpoints já existentes no `.env` local servem como pistas para localizar os recursos, não como confirmação de que estão aprovados para o Portal. Não copiar o conteúdo do `.env` para o Git ou para este arquivo. O IP Tailscale `100.64.0.2` é endereço de acesso privado de desenvolvimento; não é o domínio HTTPS público da API.
+
+### B. Aprovar e preparar o caminho de rede
+
+- [ ] Confirmar com a Infra o domínio público da API, o DNS, quem termina TLS (ALB ou proxy corporativo) e o certificado HTTPS. O navegador na Vercel precisa alcançar a API por HTTPS.
+- [ ] Configurar o target group para enviar tráfego do listener HTTPS ao Nginx da EC2 na porta `8080`, com health check aprovado (o guia usa `/health`).
+- [ ] No Security Group da EC2, permitir TCP `8080` somente a partir do Security Group do ALB/proxy. Não abrir a porta `8000`.
+- [ ] No Security Group da RDS, permitir TCP `3306` com origem no Security Group da EC2. Manter a RDS privada; não liberar `3306` para a internet nem usar allowlist de IP público como substituto da regra entre Security Groups.
+- [ ] Aprovar o acesso SSH `22` somente pelo método administrativo/deploy autorizado. O workflow abre temporariamente a porta `22` para o runner do GitHub e remove a regra que ele criou ao final.
+- [ ] Confirmar a rota de saída da EC2 para GHCR e Docker Hub, necessária para baixar a imagem do backend e `nginx:alpine`.
+- [ ] Confirmar o IAM Role da EC2 e os privilégios mínimos necessários. Não instalar access keys pessoais na instância.
+- [ ] Instalar/validar Docker Engine e Docker Compose; confirmar que o usuário de deploy pode executar Docker e escrever no diretório definido, sem `sudo` interativo.
+
+### C. Preparar credenciais privadas e secrets
+
+- [ ] Criar ou confirmar um usuário de runtime exclusivo para o Portal no catálogo de staging, com privilégio mínimo. Não usar a credencial de migration do BI como credencial da aplicação.
+- [ ] Na EC2, criar `.env` no diretório `EC2_DEPLOY_DIR`, ao lado do `compose.yaml`, com proprietário do usuário de deploy e modo `0600`, usando `deploy/ec2/api.env.example` como modelo. Preencher `APP_ENV=staging`, `USE_DB_TUNNEL=false`, a URL privada da RDS com senha codificada em URL, origem exata da Vercel em `CORS_ALLOWED_ORIGINS`, sessão segura e o segredo gerado no host com `openssl rand -hex 32`.
+- [ ] Usar `SESSION_COOKIE_SECURE=true` e `SESSION_COOKIE_SAMESITE=lax`. Para evitar bloqueio de cookies, preferir domínio próprio do frontend e da API sob o mesmo domínio registrável, conforme `deploy/ec2/README.md`.
+- [ ] Não colocar credenciais em `VITE_*`, no bundle do frontend, no repositório ou no histórico do terminal. `VITE_API_BASE_URL` é pública e pode conter somente a URL da API.
+- [ ] Em **GitHub → Settings → Environments → staging**, configurar os secrets exigidos pelo workflow: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `EC2_SECURITY_GROUP_ID`, `EC2_HOST`, `EC2_USER`, `EC2_PRIVATE_KEY`, `EC2_HOST_FINGERPRINT` e `EC2_DEPLOY_DIR`.
+- [ ] Restringir a credencial AWS do Actions a autorizar/remover ingress TCP `22` apenas no Security Group de staging. Conferir o fingerprint SSH por canal confiável. `GITHUB_TOKEN` é fornecido pelo Actions e não deve ser cadastrado manualmente.
+
+### D. Fazer deploy da API
+
+- [ ] Confirmar que a instância e o serviço têm `${EC2_DEPLOY_DIR}/.env` pronto e que o caminho de rede à RDS está liberado antes de publicar.
+- [ ] Em **Actions → Deploy Portal API to Staging → Run workflow**, selecionar `staging` e iniciar o deploy manual. O workflow constrói a imagem no GHCR, copia `compose.yaml`/`nginx.conf` e atualiza os containers; ele não aplica migrations.
+- [ ] Conferir o resultado de cada etapa do workflow, principalmente publicação da imagem, SSH, cópia dos arquivos, `docker compose pull/up` e remoção da regra temporária de SSH.
+- [ ] Validar `https://<domínio-da-api>/health` pelo endpoint HTTPS aprovado.
+- [ ] Executar o check de conectividade DB descrito no guia a partir do container do backend (`scripts.check_staging_db`) e confirmar a conexão sem gravar dados. Investigar DNS privado, rota, Security Groups e credencial se falhar; não tornar a RDS pública para contornar falha de rede.
+
+### E. Preparar Vercel e escolher tipo de prévia
+
+- [ ] Confirmar ou criar o projeto Vercel ligado ao repositório, com `frontend/` como **Root Directory** e Preview associado à branch `staging`.
+- [ ] Para uma prévia funcional, configurar `VITE_API_BASE_URL=https://<domínio-da-api>/api/v1` e `VITE_DEMO_MODE=false`. Configurar o domínio próprio do frontend, preferencialmente no mesmo domínio registrável da API.
+- [ ] Atualizar `CORS_ALLOWED_ORIGINS` na EC2 com a origem exata do frontend (sem `/*` nem barra final) e publicar novamente a API se essa variável mudar.
+- [ ] Fazer o deploy Preview na Vercel e conferir no navegador login, cookie de sessão, CORS e chamadas da API.
+- [ ] Se a API/rede ainda não estiverem prontas, disponibilizar somente a prévia visual com `VITE_DEMO_MODE=true`, sem URL de API ou banco. Identificar para o Diretor que essa prévia não persiste dados.
+
+### F. Provisionar acesso e dados de demonstração/piloto
+
+- [ ] Definir o username e o nome completo da primeira conta DEV de staging. Depois de confirmar ambiente, URL e migration, executar interativamente `python -m scripts.provision_staging_dev` no host com acesso privado ao banco, conforme [provisionar-staging.md](./provisionar-staging.md). O script prepara a conta DEV global, setor `SUPORTE` e versão do formulário; não executá-lo apontando para banco local ou produção.
+- [ ] Guardar/entregar a senha temporária por canal privado; o script a mostra uma vez se criar a conta. Não colar senha em arquivo, ticket, chat de grupo ou logs.
+- [ ] Solicitar a lista oficial aprovada de lojas/filiais com código, nome, cidade e UF, e identificar quem responde pela conferência. A migration está aplicada, mas o catálogo operacional de localidades está vazio.
+- [ ] Solicitar lista aprovada de motoristas/ajudantes e motivos de ocorrência. Carregar e revisar cadastros antes de conceder escopos aos usuários finais.
+- [ ] Criar/atribuir usuários operacionais e escopos autorizados para `SUPORTE` e localidades. Concessões legadas para `ENTREGAS` não migram automaticamente.
+- [ ] Se as listas oficiais ainda não estiverem disponíveis, usar apenas dados sintéticos claramente identificados para demonstração; não apresentar os registros fictícios como dados reais.
+
+### G. Validar fluxo funcional e decidir liberação de dados reais
+
+- [ ] Conferir que a CI passou e executar/confirmar a suíte de testes de backend e a validação integrada documentadas na seção 9. Não há suíte de testes de frontend registrada.
+- [ ] Validar com o Diretor o grão implementado: um lançamento por data, localidade e equipe, permitindo várias equipes na mesma loja/data; confirmar que esse resumo diário representa o processo real.
+- [ ] Testar login e sessão a partir do domínio da Vercel, expiração/logout, CORS e acesso da API pela HTTPS pública.
+- [ ] Testar um ciclo de Entregas: criar rascunho, editar, validar totais e motivos, confirmar, repetir a confirmação sem duplicar, consultar histórico, criar correção/cancelamento com justificativa e conferir auditoria; testar exportação/importação com amostra anonimizada. Confirmar setor `SUPORTE` nos lançamentos novos.
+- [ ] Testar Feedback: registrar, pré-visualizar/importar CSV, consultar e exportar, garantindo vínculo com entrega confirmada e erros por linha. O export histórico disponível não tem todos os códigos necessários para reimportar; validar o mapeamento com uma amostra anonimizada antes de prometer migração histórica.
+- [ ] Testar Painel e ranking por período, loja, motorista/equipe, realizados/não realizados, OTIF, elogios/reclamações, score e status; conferir que motoristas e ajudantes aparecem juntos e que os totais coletivos não sejam somados entre pessoas.
+- [ ] Testar com contas/perfis distintos que OPERADOR pode manter catálogos e lançar dentro do escopo, mas não vê indicadores, auditoria nem usuários e acessos; validar também as permissões de CADASTRADOR, GESTOR, DIRETORIA e DEV.
+- [ ] Validar auditoria, exportação, responsividade e principais ações por teclado/foco; conferir que logs não gravem nome do cliente nem relato.
+- [ ] Definir retenção e destino do nome do cliente e relato (prazo e apagamento ou anonimização) antes de usar feedback real. Enquanto isso, feedback de demonstração/teste deve ser sintético ou anonimizado.
+- [ ] Antes de inserir dados reais, confirmar backup/snapshot, monitoramento/logs e um procedimento de restauração com a Infra.
+- [ ] Fazer demonstração ao Diretor, coletar feedback e registrar solicitações novas separadamente do escopo aprovado do primeiro piloto.
+
+### H. Itens adiados ou fora do bloqueio do primeiro deploy
+
+- Metas e faixas de cor do OTIF foram adiadas por decisão do responsável; não bloquear a publicação inicial.
+- A integração e a sincronização automática com o BI estão fora deste release; o Portal mantém catálogo próprio.
+- O filtro global de setor nas pastas da navegação foi discutido, mas não consta como requisito confirmado para bloquear o primeiro piloto. Reavaliar após feedback do Diretor.
+- Outros setores além de `SUPORTE`, expansão de módulos e refinamentos de desempenho com volume de produção ficam para depois do piloto, salvo necessidade identificada na validação.
+- O cadastro real de lojas, pessoas, motivos e histórico depende de fontes aprovadas e arquivos anonimizados; não extrair automaticamente do BI.
 
 ## Observação sobre a conta DEV local
 
