@@ -1,0 +1,137 @@
+name: Deploy Portal API to Staging
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: portal-api-staging
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push API image
+        uses: docker/build-push-action@v7.4.0
+        with:
+          context: ./backend
+          file: Dockerfile
+          push: true
+          tags: |
+            ghcr.io/bi-vilarejo/painel-lan-amento-logistica/backend:staging
+            ghcr.io/bi-vilarejo/painel-lan-amento-logistica/backend:staging-${{ github.sha }}
+
+  deploy:
+    if: github.ref == 'refs/heads/staging'
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout staging deploy files
+        uses: actions/checkout@v4
+
+      - name: Get GitHub runner public IP
+        id: runner_ip
+        shell: bash
+        run: |
+          runner_ip="$(curl --fail --silent --show-error https://checkip.amazonaws.com)"
+          echo "cidr=${runner_ip}/32" >> "$GITHUB_OUTPUT"
+
+      - name: Temporarily allow SSH from this runner
+        id: allow_ssh
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          EC2_SECURITY_GROUP_ID: ${{ secrets.EC2_SECURITY_GROUP_ID }}
+          RUNNER_CIDR: ${{ steps.runner_ip.outputs.cidr }}
+        run: |
+          set -euo pipefail
+          if output="$(aws ec2 authorize-security-group-ingress \
+            --group-id "$EC2_SECURITY_GROUP_ID" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "$RUNNER_CIDR" 2>&1)"; then
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          elif grep -q 'InvalidPermission.Duplicate' <<< "$output"; then
+            echo "The SSH rule already exists; it will be left in place." >&2
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$output" >&2
+            exit 1
+          fi
+
+      - name: Prepare deployment directory on EC2
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          envs: EC2_DEPLOY_DIR
+          script: mkdir -p "$EC2_DEPLOY_DIR"
+        env:
+          EC2_DEPLOY_DIR: ${{ secrets.EC2_DEPLOY_DIR }}
+
+      - name: Copy Compose and Nginx configuration
+        uses: appleboy/scp-action@v1.0.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          source: deploy/ec2/compose.yaml,deploy/ec2/nginx.conf
+          target: ${{ secrets.EC2_DEPLOY_DIR }}
+          strip_components: 2
+
+      - name: Pull image and update services
+        uses: appleboy/ssh-action@v1.2.5
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_PRIVATE_KEY }}
+          fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          envs: EC2_DEPLOY_DIR,GITHUB_TOKEN,GITHUB_ACTOR,IMAGE_TAG
+          script: |
+            set -eu
+            cd "$EC2_DEPLOY_DIR"
+            printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+            IMAGE_TAG="$IMAGE_TAG" docker compose --project-name logistica-staging -f compose.yaml pull
+            IMAGE_TAG="$IMAGE_TAG" docker compose --project-name logistica-staging -f compose.yaml up -d --no-build --force-recreate --remove-orphans
+        env:
+          EC2_DEPLOY_DIR: ${{ secrets.EC2_DEPLOY_DIR }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          IMAGE_TAG: staging-${{ github.sha }}
+
+      - name: Remove temporary SSH rule
+        if: always() && steps.allow_ssh.outputs.created == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+          EC2_SECURITY_GROUP_ID: ${{ secrets.EC2_SECURITY_GROUP_ID }}
+          RUNNER_CIDR: ${{ steps.runner_ip.outputs.cidr }}
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$EC2_SECURITY_GROUP_ID" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "$RUNNER_CIDR"
