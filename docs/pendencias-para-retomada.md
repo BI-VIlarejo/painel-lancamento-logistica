@@ -1,7 +1,7 @@
 # Pendências para retomada — Portal de Logística
 
-**Atualizado:** 22/10/2026
-**Objetivo:** registrar o escopo e o trabalho restante para continuar amanhã sem depender das decisões antigas deste arquivo.
+**Atualizado:** 23/10/2026
+**Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
 
 ## Escopo confirmado
 
@@ -11,16 +11,45 @@
 - Não haverá integração com o BI nesta etapa. O Portal manterá seu próprio cadastro de lojas/filiais.
 - A migration de localidades `b817e6c2a904` foi aplicada em staging em 22/10/2026; `alembic --name logistica current` confirmou essa revisão como `head`.
 
-## Estado para retomada — 22/10/2026
+## Estado atual — 23/10/2026
 
-- [x] Os dez commits desta rodada foram publicados em `origin/staging`; a branch local `staging` estava sincronizada e sem alterações pendentes na última conferência.
-- [x] O workflow manual que constrói a imagem no GHCR e publica a API na EC2 está versionado em `.github/workflows/deploy-staging.yml`.
-- [x] O Compose/Nginx de staging, o modelo de variáveis e o guia de deploy estão em `deploy/ec2/`.
-- [x] A migration operacional `b817e6c2a904` está registrada como `head` em staging; em 22/10 também foi confirmada por uma checagem somente de leitura a conexão e a presença das tabelas necessárias.
-- [x] O túnel Tailscale opcional para desenvolvimento local foi implementado. A API em EC2 deve conectar diretamente à RDS pela VPC, com `USE_DB_TUNNEL=false`.
-- [ ] O deploy da API na EC2 ainda não foi confirmado. Também não foi confirmado o deploy Preview conectado à API na Vercel.
-- [ ] O resultado da CI para o último commit deve ser conferido no GitHub Actions antes de disparar o deploy.
-- [ ] A configuração real de EC2, ALB/proxy, DNS/TLS, Security Groups, secrets do GitHub, usuário de runtime da RDS e variáveis da Vercel ainda precisa ser inventariada ou confirmada. Não registrar valores de senhas, tokens ou chaves neste documento.
+- [x] O projeto Vercel foi criado e a prévia visual chegou a `Ready`. Ela usa `VITE_DEMO_MODE=true`, portanto ainda funciona com dados de demonstração e não chama a API.
+- [x] A correção visual de Reclamações e Elogios foi publicada em `staging` no commit `2258144`; a correção deixa claro que motorista e ajudantes dependem de uma entrega confirmada para a data e loja escolhidas.
+- [x] O usuário criou `${EC2_DEPLOY_DIR}/.env` na pasta `~/dev/Vilarejo-Logistica-Lancamento`. No workflow seguinte, o Compose encontrou o arquivo, baixou a imagem e o backend passou o health check.
+- [x] O workflow da API falhou ao iniciar o Nginx porque a porta `8080` já é usada pelo Nginx do VilarejoBI na mesma EC2.
+- [x] A Logística foi movida para a porta `8081`; Compose e documentação foram publicados em `origin/staging` no commit `2470aff`.
+- [ ] O deploy com a porta `8081` ainda precisa ser executado e confirmado. O último log conhecido terminou com erro, então a API ainda não está confirmada como implantada por completo.
+- [ ] A prévia Vercel precisa ser conferida novamente depois dos commits `2258144` e `2470aff`.
+- [ ] A URL HTTPS pública da API, o ALB/proxy, DNS, certificado e regras de rede para a porta `8081` ainda precisam ser confirmados com a Infra.
+
+## Ordem para terminar o primeiro staging funcional
+
+1. [ ] Em **GitHub → Actions → Deploy Portal API to Staging → Run workflow**, escolher `staging` depois de confirmar que o branch inclui o commit `2470aff`. Conferir que o secret `EC2_DEPLOY_DIR` é `/home/ubuntu/dev/Vilarejo-Logistica-Lancamento` e que `.env` está ao lado do `compose.yaml`.
+2. [ ] Na EC2, conferir que `backend` e `nginx` estão ativos e saudáveis. A Logística deve publicar `8081:80`; não parar nem alterar o Nginx do BI na porta `8080`.
+3. [ ] Validar a conexão da API com a RDS, sem gravar dados:
+
+   ```bash
+   docker compose --project-name logistica-staging -f compose.yaml exec -T backend python -m scripts.check_staging_db
+   ```
+
+   A checagem do endpoint `/health` confirma que a API inicia, mas não substitui esse teste de banco.
+
+4. [ ] Com a Infra, configurar o ALB/proxy HTTPS e o DNS `api-staging`, encaminhando para EC2:8081. Permitir TCP `8081` na EC2 somente a partir do Security Group do ALB/proxy; manter `8000` interno e a RDS privada.
+5. [ ] Confirmar a revisão Alembic `b817e6c2a904` e as tabelas necessárias no catálogo `vilarejo_bi_logistica_staging`. Ela foi registrada como `head` e checada anteriormente; revalidar a conexão usando a credencial de runtime agora instalada na EC2. Não executar bootstrap local nem migrations automaticamente pelo container.
+6. [ ] Definir os domínios de staging do frontend e da API. Para login/cookies, preferir domínios próprios no mesmo domínio registrável, por exemplo `portal-staging.empresa.com` e `api-staging.empresa.com`.
+7. [ ] Na Vercel, conferir a prévia da branch `staging` e adicionar, somente no ambiente **Preview**, `VITE_API_BASE_URL=https://<dominio-api-staging>/api/v1` e `VITE_DEMO_MODE=false`. Fazer um novo deploy da Vercel após salvar as variáveis.
+8. [ ] Na EC2, atualizar `CORS_ALLOWED_ORIGINS` no `.env` para a origem HTTPS exata do frontend, sem caminho nem barra final. Depois, executar novamente o workflow da API para aplicar o CORS atualizado.
+9. [ ] Com API e RDS validadas, provisionar a conta DEV de staging pelo procedimento de [`provisionar-staging.md`](./provisionar-staging.md), usando somente o banco de staging e entregando a senha temporária por canal privado.
+10. [ ] Cadastrar dados de demonstração identificados como fictícios ou carregar cadastros oficiais aprovados de lojas, motoristas/ajudantes e motivos. Configurar usuários e escopos autorizados para `SUPORTE`.
+11. [ ] Validar no navegador, com a prévia conectada à API: login/sessão, criação e confirmação de Entrega, registro de Reclamação/Elogio ligado à equipe correta, painel, exportação/importação permitidas, permissões/escopos e auditoria. Conferir também o formulário de ajudantes corrigido no commit `2258144`.
+12. [ ] Antes do piloto com dados reais, fechar retenção de nome/relato de cliente, validar CSVs com amostras anonimizadas, confirmar backup/restauração e monitoramento/logs com a Infra.
+
+## Produção — etapa posterior
+
+- [ ] Não promover a prévia atual para produção. Ela é uma demonstração até API, domínio, banco e dados de produção estarem configurados.
+- [ ] Após validar staging, integrar o frontend de `staging` em `main` por PR; a `main` atual ainda não contém o frontend.
+- [ ] Definir infraestrutura, domínio HTTPS, banco/catálogo, secrets e processo de deploy próprios de produção; o workflow existente publica apenas em staging.
+- [ ] Aplicar migrations de produção de forma controlada e repetir as validações funcionais e de segurança antes de liberar dados reais.
 
 O registro do BI que trata da baseline analítica é de outro escopo. Para o Portal, não reaplicar a migration `b817e6c2a904` nem executar migration automaticamente no início do container.
 
@@ -196,7 +225,9 @@ Os nomes/endpoints já existentes no `.env` local servem como pistas para locali
 
 ### E. Preparar Vercel e escolher tipo de prévia
 
-- [ ] Confirmar ou criar o projeto Vercel ligado ao repositório, com `frontend/` como **Root Directory** e Preview associado à branch `staging`.
+- [x] Criar o projeto Vercel ligado ao repositório, configurar `frontend/` como **Root Directory** e publicar uma prévia visual `Ready` na branch `staging`.
+- [x] Configurar a prévia visual com `VITE_DEMO_MODE=true`; ela usa dados locais de demonstração e não chama API/banco.
+- [ ] Conferir se a prévia gerada após os commits `2258144` e `2470aff` está `Ready` e mostra a correção de alinhamento/equipe.
 - [ ] Para uma prévia funcional, configurar `VITE_API_BASE_URL=https://<domínio-da-api>/api/v1` e `VITE_DEMO_MODE=false`. Configurar o domínio próprio do frontend, preferencialmente no mesmo domínio registrável da API.
 - [ ] Atualizar `CORS_ALLOWED_ORIGINS` na EC2 com a origem exata do frontend (sem `/*` nem barra final) e publicar novamente a API se essa variável mudar.
 - [ ] Fazer o deploy Preview na Vercel e conferir no navegador login, cookie de sessão, CORS e chamadas da API.

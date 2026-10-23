@@ -53,7 +53,7 @@ O workflow [deploy-staging.yml](../../.github/workflows/deploy-staging.yml) segu
 
    - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` e `EC2_SECURITY_GROUP_ID`: credencial AWS restrita a autorizar/remover SSH na porta 22 somente no Security Group da EC2 de staging.
    - `EC2_HOST`, `EC2_USER`, `EC2_PRIVATE_KEY` e `EC2_HOST_FINGERPRINT`: acesso SSH da automação à instância. Verifique o fingerprint com a Infra por um canal confiável.
-   - `EC2_DEPLOY_DIR`: diretório de deploy, por exemplo `/home/ubuntu/dev/lancamento-logistica/deploy/ec2`.
+   - `EC2_DEPLOY_DIR`: diretório de deploy desta instância: `/home/ubuntu/dev/Vilarejo-Logistica-Lancamento`.
 
    `GITHUB_TOKEN` é fornecido automaticamente pelo Actions e permite publicar/baixar a imagem do pacote deste repositório. Não reutilize uma chave AWS com acesso amplo.
 
