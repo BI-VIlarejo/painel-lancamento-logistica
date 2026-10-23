@@ -33,7 +33,7 @@ class LocalBootstrapPermissionTests(unittest.TestCase):
                 }
                 self.assertEqual(granted, all_codes)
 
-    def test_operator_keeps_the_delivery_entry_permissions(self) -> None:
+    def test_operator_receives_expected_pilot_permissions(self) -> None:
         granted = {
             permission.codigo
             for permission in _profile_permissions(
@@ -45,9 +45,14 @@ class LocalBootstrapPermissionTests(unittest.TestCase):
         self.assertEqual(
             granted,
             {
+                "CADASTROS:ADMINISTRAR",
                 "ENTREGAS_DIARIAS:VER",
                 "ENTREGAS_DIARIAS:CRIAR",
                 "ENTREGAS_DIARIAS:EDITAR_RASCUNHO",
+                "FEEDBACK_CLIENTES:ACESSAR",
+                "FEEDBACK_CLIENTES:VER",
+                "FEEDBACK_CLIENTES:CRIAR",
+                "FEEDBACK_CLIENTES:EXPORTAR",
             },
         )
 
