@@ -19,6 +19,7 @@
 - [x] O workflow da API falhou ao iniciar o Nginx porque a porta `8080` já é usada pelo Nginx do VilarejoBI na mesma EC2.
 - [x] A Logística foi movida para a porta `8081`; Compose e documentação foram publicados em `origin/staging` no commit `2470aff`.
 - [x] O workflow foi executado novamente com a configuração `8081`; o usuário confirmou `backend` e `nginx` como `Up (healthy)`, com o Nginx publicado em `0.0.0.0:8081`.
+- [x] O usuário confirmou `HTTP/1.1 200 OK` em `http://127.0.0.1:8081/health` na EC2.
 - [ ] Ainda falta testar `http://127.0.0.1:8081/health` e confirmar a conectividade da credencial de runtime com a RDS pelo script `scripts.check_staging_db`.
 - [ ] A prévia Vercel precisa ser conferida novamente depois dos commits `2258144` e `2470aff`.
 - [ ] A URL HTTPS pública da API, o ALB/proxy, DNS, certificado e regras de rede para a porta `8081` ainda precisam ser confirmados com a Infra.
@@ -27,7 +28,7 @@
 
 1. [x] Em **GitHub → Actions → Deploy Portal API to Staging → Run workflow**, executar `staging` com a correção do commit `2470aff`. O `.env` foi encontrado no diretório de deploy e o workflow concluiu.
 2. [x] Na EC2, confirmar `backend` e `nginx` como `Up (healthy)`. A Logística publica `8081:80`; o Nginx do BI permanece na porta `8080`.
-3. [ ] Na EC2, confirmar o health endpoint pelo caminho local:
+3. [x] Na EC2, confirmar o health endpoint pelo caminho local; retornou HTTP `200`:
 
    ```bash
    curl -i http://127.0.0.1:8081/health
