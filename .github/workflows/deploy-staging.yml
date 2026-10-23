@@ -29,7 +29,6 @@ jobs:
         uses: docker/build-push-action@v7.4.0
         with:
           context: ./backend
-          file: Dockerfile
           push: true
           tags: |
             ghcr.io/bi-vilarejo/painel-lan-amento-logistica/backend:staging
