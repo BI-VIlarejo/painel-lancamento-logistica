@@ -18,15 +18,24 @@
 - [x] O usuário criou `${EC2_DEPLOY_DIR}/.env` na pasta `~/dev/Vilarejo-Logistica-Lancamento`. No workflow seguinte, o Compose encontrou o arquivo, baixou a imagem e o backend passou o health check.
 - [x] O workflow da API falhou ao iniciar o Nginx porque a porta `8080` já é usada pelo Nginx do VilarejoBI na mesma EC2.
 - [x] A Logística foi movida para a porta `8081`; Compose e documentação foram publicados em `origin/staging` no commit `2470aff`.
-- [ ] O deploy com a porta `8081` ainda precisa ser executado e confirmado. O último log conhecido terminou com erro, então a API ainda não está confirmada como implantada por completo.
+- [x] O workflow foi executado novamente com a configuração `8081`; o usuário confirmou `backend` e `nginx` como `Up (healthy)`, com o Nginx publicado em `0.0.0.0:8081`.
+- [ ] Ainda falta testar `http://127.0.0.1:8081/health` e confirmar a conectividade da credencial de runtime com a RDS pelo script `scripts.check_staging_db`.
 - [ ] A prévia Vercel precisa ser conferida novamente depois dos commits `2258144` e `2470aff`.
 - [ ] A URL HTTPS pública da API, o ALB/proxy, DNS, certificado e regras de rede para a porta `8081` ainda precisam ser confirmados com a Infra.
 
 ## Ordem para terminar o primeiro staging funcional
 
-1. [ ] Em **GitHub → Actions → Deploy Portal API to Staging → Run workflow**, escolher `staging` depois de confirmar que o branch inclui o commit `2470aff`. Conferir que o secret `EC2_DEPLOY_DIR` é `/home/ubuntu/dev/Vilarejo-Logistica-Lancamento` e que `.env` está ao lado do `compose.yaml`.
-2. [ ] Na EC2, conferir que `backend` e `nginx` estão ativos e saudáveis. A Logística deve publicar `8081:80`; não parar nem alterar o Nginx do BI na porta `8080`.
-3. [ ] Validar a conexão da API com a RDS, sem gravar dados:
+1. [x] Em **GitHub → Actions → Deploy Portal API to Staging → Run workflow**, executar `staging` com a correção do commit `2470aff`. O `.env` foi encontrado no diretório de deploy e o workflow concluiu.
+2. [x] Na EC2, confirmar `backend` e `nginx` como `Up (healthy)`. A Logística publica `8081:80`; o Nginx do BI permanece na porta `8080`.
+3. [ ] Na EC2, confirmar o health endpoint pelo caminho local:
+
+   ```bash
+   curl -i http://127.0.0.1:8081/health
+   ```
+
+   Esperar HTTP `200`.
+
+4. [ ] Validar a conexão da API com a RDS, sem gravar dados:
 
    ```bash
    docker compose --project-name logistica-staging -f compose.yaml exec -T backend python -m scripts.check_staging_db
@@ -34,15 +43,15 @@
 
    A checagem do endpoint `/health` confirma que a API inicia, mas não substitui esse teste de banco.
 
-4. [ ] Com a Infra, configurar o ALB/proxy HTTPS e o DNS `api-staging`, encaminhando para EC2:8081. Permitir TCP `8081` na EC2 somente a partir do Security Group do ALB/proxy; manter `8000` interno e a RDS privada.
-5. [ ] Confirmar a revisão Alembic `b817e6c2a904` e as tabelas necessárias no catálogo `vilarejo_bi_logistica_staging`. Ela foi registrada como `head` e checada anteriormente; revalidar a conexão usando a credencial de runtime agora instalada na EC2. Não executar bootstrap local nem migrations automaticamente pelo container.
-6. [ ] Definir os domínios de staging do frontend e da API. Para login/cookies, preferir domínios próprios no mesmo domínio registrável, por exemplo `portal-staging.empresa.com` e `api-staging.empresa.com`.
-7. [ ] Na Vercel, conferir a prévia da branch `staging` e adicionar, somente no ambiente **Preview**, `VITE_API_BASE_URL=https://<dominio-api-staging>/api/v1` e `VITE_DEMO_MODE=false`. Fazer um novo deploy da Vercel após salvar as variáveis.
-8. [ ] Na EC2, atualizar `CORS_ALLOWED_ORIGINS` no `.env` para a origem HTTPS exata do frontend, sem caminho nem barra final. Depois, executar novamente o workflow da API para aplicar o CORS atualizado.
-9. [ ] Com API e RDS validadas, provisionar a conta DEV de staging pelo procedimento de [`provisionar-staging.md`](./provisionar-staging.md), usando somente o banco de staging e entregando a senha temporária por canal privado.
-10. [ ] Cadastrar dados de demonstração identificados como fictícios ou carregar cadastros oficiais aprovados de lojas, motoristas/ajudantes e motivos. Configurar usuários e escopos autorizados para `SUPORTE`.
-11. [ ] Validar no navegador, com a prévia conectada à API: login/sessão, criação e confirmação de Entrega, registro de Reclamação/Elogio ligado à equipe correta, painel, exportação/importação permitidas, permissões/escopos e auditoria. Conferir também o formulário de ajudantes corrigido no commit `2258144`.
-12. [ ] Antes do piloto com dados reais, fechar retenção de nome/relato de cliente, validar CSVs com amostras anonimizadas, confirmar backup/restauração e monitoramento/logs com a Infra.
+5. [ ] Com a Infra, configurar o ALB/proxy HTTPS e o DNS `api-staging`, encaminhando para EC2:8081. Permitir TCP `8081` na EC2 somente a partir do Security Group do ALB/proxy; manter `8000` interno e a RDS privada.
+6. [ ] Confirmar a revisão Alembic `b817e6c2a904` e as tabelas necessárias no catálogo `vilarejo_bi_logistica_staging`. Ela foi registrada como `head` e checada anteriormente; revalidar a conexão usando a credencial de runtime agora instalada na EC2. Não executar bootstrap local nem migrations automaticamente pelo container.
+7. [ ] Definir os domínios de staging do frontend e da API. Para login/cookies, preferir domínios próprios no mesmo domínio registrável, por exemplo `portal-staging.empresa.com` e `api-staging.empresa.com`.
+8. [ ] Na Vercel, conferir a prévia da branch `staging` e adicionar, somente no ambiente **Preview**, `VITE_API_BASE_URL=https://<dominio-api-staging>/api/v1` e `VITE_DEMO_MODE=false`. Fazer um novo deploy da Vercel após salvar as variáveis.
+9. [ ] Na EC2, atualizar `CORS_ALLOWED_ORIGINS` no `.env` para a origem HTTPS exata do frontend, sem caminho nem barra final. Depois, executar novamente o workflow da API para aplicar o CORS atualizado.
+10. [ ] Com API e RDS validadas, provisionar a conta DEV de staging pelo procedimento de [`provisionar-staging.md`](./provisionar-staging.md), usando somente o banco de staging e entregando a senha temporária por canal privado.
+11. [ ] Cadastrar dados de demonstração identificados como fictícios ou carregar cadastros oficiais aprovados de lojas, motoristas/ajudantes e motivos. Configurar usuários e escopos autorizados para `SUPORTE`.
+12. [ ] Validar no navegador, com a prévia conectada à API: login/sessão, criação e confirmação de Entrega, registro de Reclamação/Elogio ligado à equipe correta, painel, exportação/importação permitidas, permissões/escopos e auditoria. Conferir também o formulário de ajudantes corrigido no commit `2258144`.
+13. [ ] Antes do piloto com dados reais, fechar retenção de nome/relato de cliente, validar CSVs com amostras anonimizadas, confirmar backup/restauração e monitoramento/logs com a Infra.
 
 ## Produção — etapa posterior
 
@@ -217,9 +226,9 @@ Os nomes/endpoints já existentes no `.env` local servem como pistas para locali
 
 ### D. Fazer deploy da API
 
-- [ ] Confirmar que a instância e o serviço têm `${EC2_DEPLOY_DIR}/.env` pronto e que o caminho de rede à RDS está liberado antes de publicar.
-- [ ] Em **Actions → Deploy Portal API to Staging → Run workflow**, selecionar `staging` e iniciar o deploy manual. O workflow constrói a imagem no GHCR, copia `compose.yaml`/`nginx.conf` e atualiza os containers; ele não aplica migrations.
-- [ ] Conferir o resultado de cada etapa do workflow, principalmente publicação da imagem, SSH, cópia dos arquivos, `docker compose pull/up` e remoção da regra temporária de SSH.
+- [x] Confirmar `.env` ao lado do `compose.yaml` no diretório de deploy da EC2.
+- [x] Em **Actions → Deploy Portal API to Staging → Run workflow**, selecionar `staging`. A imagem foi publicada no GHCR, os arquivos foram copiados e os containers iniciaram; o workflow não aplica migrations.
+- [x] Conferir que o workflow terminou e que os containers estão `healthy`; o Nginx da Logística usa a porta `8081`.
 - [ ] Validar `https://<domínio-da-api>/health` pelo endpoint HTTPS aprovado.
 - [ ] Executar o check de conectividade DB descrito no guia a partir do container do backend (`scripts.check_staging_db`) e confirmar a conexão sem gravar dados. Investigar DNS privado, rota, Security Groups e credencial se falhar; não tornar a RDS pública para contornar falha de rede.
 
