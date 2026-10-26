@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import date
+from time import perf_counter
 
 from sqlalchemy import and_, case, exists, false, func, inspect, or_, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -31,6 +33,17 @@ from app.modules.deliveries.models import (
     LancamentoRevisao,
 )
 from app.modules.feedback.models import Feedback
+
+logger = logging.getLogger("lancamento.api.analytics")
+
+
+def _log_dashboard_step(step: str, request_id: str | None, started_at: float) -> None:
+    logger.info(
+        "dashboard_step request_id=%s step=%s duration_ms=%.2f",
+        request_id or "-",
+        step,
+        (perf_counter() - started_at) * 1000,
+    )
 
 
 def _scope_condition(*, sector_column, locality_column, access: AuthorizationContext):
@@ -85,6 +98,7 @@ def get_dashboard(
     data_de: date | None,
     data_ate: date | None,
     id_localidade: int | None,
+    request_id: str | None = None,
 ) -> DashboardResponse:
     if data_de is not None and data_ate is not None and data_de > data_ate:
         raise APIError(
@@ -150,6 +164,7 @@ def get_dashboard(
     )
 
     try:
+        query_started_at = perf_counter()
         summary_row = db.execute(
             select(
                 func.count(func.distinct(registered_items.c.id_lancamento)).label(
@@ -164,6 +179,7 @@ def get_dashboard(
             )
             .select_from(registered_items)
         ).one()
+        _log_dashboard_step("summary", request_id, query_started_at)
         launch_count = int(summary_row.launch_count)
         completed_total = int(summary_row.completed_total)
         not_completed_total = int(summary_row.not_completed_total)
@@ -171,6 +187,7 @@ def get_dashboard(
 
         otif_percentual = _percentage(not_completed_total, planned_total)
 
+        query_started_at = perf_counter()
         daily_rows = db.execute(
             select(
                 registered_items.c.data_entrega,
@@ -181,6 +198,8 @@ def get_dashboard(
             .group_by(registered_items.c.data_entrega)
             .order_by(registered_items.c.data_entrega)
         ).all()
+        _log_dashboard_step("daily", request_id, query_started_at)
+        query_started_at = perf_counter()
         locality_rows = db.execute(
             select(
                 registered_items.c.id_localidade,
@@ -197,6 +216,7 @@ def get_dashboard(
                 registered_items.c.nome_localidade,
             )
         ).all()
+        _log_dashboard_step("localities", request_id, query_started_at)
         locality_totals: dict[int, dict[str, object]] = {}
         for row in locality_rows:
             locality_totals[row.id_localidade] = {
@@ -209,6 +229,7 @@ def get_dashboard(
                 "complaint": 0,
             }
 
+        query_started_at = perf_counter()
         reason_rows = db.execute(
             select(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
@@ -230,6 +251,7 @@ def get_dashboard(
             )
             .order_by(func.sum(EntregaMotivo.quantidade).desc(), MotivoNaoEntrega.descricao_motivo)
         ).all()
+        _log_dashboard_step("reasons", request_id, query_started_at)
 
         team_members = (
             select(
@@ -278,6 +300,7 @@ def get_dashboard(
             .subquery("entrega_equipe")
         )
 
+        query_started_at = perf_counter()
         team_rows = db.execute(
             select(
                 team_members.c.driver_id,
@@ -305,6 +328,7 @@ def get_dashboard(
                 team_members.c.helper_2_id,
             )
         ).all()
+        _log_dashboard_step("teams", request_id, query_started_at)
 
         participant_ids = {
             int(person_id)
@@ -312,12 +336,17 @@ def get_dashboard(
             for person_id in (row.driver_id, row.helper_1_id, row.helper_2_id)
             if person_id is not None
         }
-        people_by_id = {
-            person.id_pessoa: person
-            for person in db.scalars(
-                select(Pessoa).where(Pessoa.id_pessoa.in_(participant_ids))
-            ).all()
-        } if participant_ids else {}
+        if participant_ids:
+            query_started_at = perf_counter()
+            people_by_id = {
+                person.id_pessoa: person
+                for person in db.scalars(
+                    select(Pessoa).where(Pessoa.id_pessoa.in_(participant_ids))
+                ).all()
+            }
+            _log_dashboard_step("people", request_id, query_started_at)
+        else:
+            people_by_id = {}
 
         person_totals: dict[int, dict[str, object]] = {
             person_id: {
@@ -366,7 +395,9 @@ def get_dashboard(
                     person["completed"] = int(person["completed"]) + int(row.completed or 0)
                     person["not_completed"] = int(person["not_completed"]) + int(row.not_completed or 0)
 
+        query_started_at = perf_counter()
         feedback_available = _feedback_tables_available(db)
+        _log_dashboard_step("feedback_schema", request_id, query_started_at)
         feedback_totals = {"praise": 0, "complaint": 0}
         if feedback_available:
             feedback_delivery = aliased(EntregaDiaria)
@@ -468,6 +499,7 @@ def get_dashboard(
                 )
                 .subquery("feedback_no_recorte")
             )
+            query_started_at = perf_counter()
             feedback_count_rows = db.execute(
                 select(
                     feedback_context.c.codigo_tipo,
@@ -476,10 +508,12 @@ def get_dashboard(
                     ),
                 ).group_by(feedback_context.c.codigo_tipo)
             ).all()
+            _log_dashboard_step("feedback_summary", request_id, query_started_at)
             for row in feedback_count_rows:
                 metric = "praise" if row.codigo_tipo == "ELOGIO" else "complaint"
                 feedback_totals[metric] = int(row.feedback_count or 0)
 
+            query_started_at = perf_counter()
             locality_feedback_rows = db.execute(
                 select(
                     feedback_context.c.id_localidade,
@@ -492,12 +526,14 @@ def get_dashboard(
                     feedback_context.c.codigo_tipo,
                 )
             ).all()
+            _log_dashboard_step("feedback_localities", request_id, query_started_at)
             for row in locality_feedback_rows:
                 locality = locality_totals.get(row.id_localidade)
                 if locality is not None:
                     metric = "praise" if row.codigo_tipo == "ELOGIO" else "complaint"
                     locality[metric] = int(row.feedback_count or 0)
 
+            query_started_at = perf_counter()
             person_feedback_rows = db.execute(
                 select(
                     EntregaParticipante.id_pessoa,
@@ -516,12 +552,14 @@ def get_dashboard(
                     feedback_context.c.codigo_tipo,
                 )
             ).all()
+            _log_dashboard_step("feedback_people", request_id, query_started_at)
             for row in person_feedback_rows:
                 person = person_totals.get(row.id_pessoa)
                 if person is not None:
                     metric = "praise" if row.codigo_tipo == "ELOGIO" else "complaint"
                     person[metric] = int(row.feedback_count or 0)
 
+            query_started_at = perf_counter()
             team_feedback_rows = db.execute(
                 select(
                     feedback_context.c.driver_id,
@@ -539,6 +577,7 @@ def get_dashboard(
                     feedback_context.c.codigo_tipo,
                 )
             ).all()
+            _log_dashboard_step("feedback_teams", request_id, query_started_at)
             for row in team_feedback_rows:
                 member_ids = [
                     int(person_id)
