@@ -156,8 +156,7 @@
 .permission-preview { padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-subtle); }
 .permission-preview > strong { color: #576d5b; font-size: 10px; }
 .permission-preview ul { display: flex; flex-direction: column; gap: 6px; max-height: 145px; overflow: auto; margin: 8px 0 0; padding: 0; list-style: none; }
-.permission-preview li { display: flex; align-items: baseline; justify-content: space-between; gap: 9px; color: #657568; font-size: 10px; }
-.permission-preview li code { color: #8c998d; font-family: ui-monospace, monospace; font-size: 8px; text-align: right; }
+.permission-preview li { color: #657568; font-size: 10px; line-height: 1.45; }
 .permission-preview > p { margin: 6px 0 0; color: #8b958c; font-size: 10px; }
 .status-backdrop { z-index: 120; }
 .status-dialog { max-width: 440px; padding: 23px; }
@@ -279,7 +278,6 @@
 .grant-revoke { font-size: 12px; }
 .permission-preview > strong { font-size: 12px; }
 .permission-preview li { font-size: 12px; }
-.permission-preview li code { font-size: 10px; }
 .permission-preview > p { font-size: 12px; }
 .status-dialog h2 { font-size: 20px; }
 .status-dialog > p { font-size: 14px; }
