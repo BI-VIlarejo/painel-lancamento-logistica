@@ -41,6 +41,7 @@ from app.modules.access_control.schemas import (
     UserScopeGrantResponse,
     UserAccountCreateRequest,
     UserAccountCreated,
+    UserAccountIdentityUpdateRequest,
     UserAccountPage,
     UserAccountStatusRequest,
     UserAccountSummary,
@@ -940,6 +941,80 @@ def reset_user_temporary_password(
     except APIError:
         db.rollback()
         raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def update_user_account_identity(
+    db: Session,
+    *,
+    id_usuario: int,
+    payload: UserAccountIdentityUpdateRequest,
+    id_usuario_ator: int,
+) -> UserAccountSummary:
+    now = _utc_now()
+    try:
+        user = repository.get_user_for_update(db, id_usuario=id_usuario)
+        if user is None:
+            raise NotFoundError("Conta não encontrada.")
+
+        target_grants = repository.list_user_scope_rows(db, id_usuario=id_usuario)
+        target_level = max(
+            (
+                _profile_level(profile.codigo)
+                for grant, profile, _ in target_grants
+                if grant.ativo
+            ),
+            default=-1,
+        )
+        if target_level > _administrator_level(db, id_usuario_ator):
+            raise PermissionDeniedError(
+                "Você não pode alterar uma conta com perfil de administração superior."
+            )
+
+        changes: dict[str, dict[str, str]] = {}
+        if "username" in payload.model_fields_set:
+            new_username = payload.username
+            assert new_username is not None
+            if new_username != user.username:
+                if repository.username_is_taken(
+                    db,
+                    username=new_username,
+                    excluding_id=user.id_usuario,
+                ):
+                    raise ConflictError("Esse nome de usuário já está em uso.")
+                changes["username"] = {"de": user.username, "para": new_username}
+                user.username = new_username
+
+        if "nome_completo" in payload.model_fields_set:
+            new_full_name = payload.nome_completo
+            assert new_full_name is not None
+            if new_full_name != user.nome_completo:
+                changes["nome_completo"] = {
+                    "de": user.nome_completo,
+                    "para": new_full_name,
+                }
+                user.nome_completo = new_full_name
+
+        if changes:
+            user.atualizado_em = now
+            _add_definition_event(
+                db,
+                tipo_evento="USUARIO_ATUALIZADO",
+                id_usuario_ator=id_usuario_ator,
+                detalhes={
+                    "id_usuario": user.id_usuario,
+                    "campos_alterados": changes,
+                },
+            )
+        db.commit()
+        return UserAccountSummary.model_validate(user)
+    except APIError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError("Esse nome de usuário já está em uso.") from exc
     except SQLAlchemyError as exc:
         raise _database_unavailable(db, exc) from exc
 

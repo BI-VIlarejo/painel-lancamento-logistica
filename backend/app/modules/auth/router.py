@@ -24,6 +24,7 @@ from app.modules.auth.schemas import (
     LoginResponse,
     MeResponse,
     ResetPasswordRequest,
+    SessionBootstrapResponse,
 )
 
 logger = logging.getLogger("lancamento.api.auth")
@@ -74,7 +75,13 @@ def login(
         getattr(request.state, "request_id", "-"),
         result.user.id_usuario,
     )
-    return LoginResponse(user=result.user, csrf_token=result.csrf_token)
+    identity = build_me_response(db, user=result.user)
+    return LoginResponse(
+        user=identity.user,
+        permissions=identity.permissions,
+        scopes=identity.scopes,
+        csrf_token=result.csrf_token,
+    )
 
 
 @router.post(
@@ -176,6 +183,32 @@ def get_csrf_token(
             session_token,
             settings.session_signing_key,
         )
+    )
+
+
+@router.get("/auth/session", response_model=SessionBootstrapResponse)
+def get_session_bootstrap(
+    request: Request,
+    response: Response,
+    auth: CurrentAuth,
+    db: DatabaseSession,
+) -> SessionBootstrapResponse:
+    """Retorna identidade e CSRF juntos ao restaurar uma sessão existente."""
+    settings = get_settings()
+    session_token = request.cookies.get(settings.session_cookie_name)
+    if not session_token:
+        raise AuthenticationError()
+
+    identity = build_me_response(db, user=auth.user)
+    _no_store(response)
+    return SessionBootstrapResponse(
+        user=identity.user,
+        permissions=identity.permissions,
+        scopes=identity.scopes,
+        csrf_token=create_csrf_token(
+            session_token,
+            settings.session_signing_key,
+        ),
     )
 
 

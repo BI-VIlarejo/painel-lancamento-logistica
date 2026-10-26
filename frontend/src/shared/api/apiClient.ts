@@ -1,4 +1,5 @@
 import { errorFromResponse } from "./apiError";
+import { clearRequestCache } from "./requestCache";
 
 const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim();
 // This is a build-time switch for isolated demo deployments (including Vercel Preview).
@@ -66,8 +67,15 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     } catch {
       payload = null;
     }
-    if (response.status === 401) clearCsrfToken();
+    if (response.status === 401) {
+      clearCsrfToken();
+      clearRequestCache();
+    }
     throw errorFromResponse(response.status, payload);
+  }
+
+  if (writeMethods.has(method) && (path.startsWith("/cadastros/") || path.startsWith("/access/"))) {
+    clearRequestCache();
   }
 
   if (response.status === 204) return undefined as T;
@@ -97,7 +105,10 @@ export async function apiBlob(path: string): Promise<Blob> {
     } catch {
       payload = null;
     }
-    if (response.status === 401) clearCsrfToken();
+    if (response.status === 401) {
+      clearCsrfToken();
+      clearRequestCache();
+    }
     throw errorFromResponse(response.status, payload);
   }
   return response.blob();

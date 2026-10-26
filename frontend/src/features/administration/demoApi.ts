@@ -190,6 +190,21 @@ export const demoAdministrationApi = {
     users = users.map((item) => item.id_usuario === id ? { ...item, troca_senha_obrigatoria: false } : item);
     return { ...user, troca_senha_obrigatoria: false, senha_inicial: newDemoCredential() };
   },
+  async updateUserIdentity(id: number, input: { username: string; nome_completo: string }): Promise<UserAccount> {
+    await pause();
+    const user = users.find((item) => item.id_usuario === id);
+    if (!user) throw new Error("Conta não encontrada.");
+    const username = input.username.trim().toLowerCase();
+    const nome_completo = input.nome_completo.trim().replace(/\s+/g, " ");
+    if (!/^[a-z0-9._-]{1,80}$/.test(username)) throw new Error("Use letras sem acento, números, ponto, hífen ou _ no usuário.");
+    if (!nome_completo) throw new Error("O nome completo é obrigatório.");
+    if (users.some((item) => item.id_usuario !== id && item.username.toLowerCase() === username)) {
+      throw new Error("Esse nome de usuário já está em uso.");
+    }
+    const updated = { ...user, username, nome_completo };
+    users = users.map((item) => item.id_usuario === id ? updated : item);
+    return updated;
+  },
   async setUserActive(id: number, ativo: boolean) { await pause(); users = users.map((user) => user.id_usuario === id ? { ...user, ativo } : user); },
   async profiles() { await pause(); return profiles.filter((profile) => profile.ativo); },
   async profilePermissions(id: number): Promise<ProfilePermission[]> {

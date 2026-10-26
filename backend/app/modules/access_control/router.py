@@ -26,6 +26,7 @@ from app.modules.access_control.schemas import (
     UserScopeGrantResponse,
     UserAccountCreateRequest,
     UserAccountCreated,
+    UserAccountIdentityUpdateRequest,
     UserAccountPage,
     UserAccountStatusRequest,
     UserAccountSummary,
@@ -114,6 +115,21 @@ def update_user(
     access: AuthorizationContext = Depends(_admin_access),
 ) -> UserAccountSummary:
     return service.update_user_account_status(
+        db,
+        id_usuario=id_usuario,
+        payload=payload,
+        id_usuario_ator=auth.user.id_usuario,
+    )
+
+@router.patch("/users/{id_usuario}/identity", response_model=UserAccountSummary)
+def update_user_identity(
+    id_usuario: int,
+    payload: UserAccountIdentityUpdateRequest,
+    db: DatabaseSession,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_admin_access),
+) -> UserAccountSummary:
+    return service.update_user_account_identity(
         db,
         id_usuario=id_usuario,
         payload=payload,

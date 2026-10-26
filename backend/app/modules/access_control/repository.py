@@ -101,6 +101,19 @@ def get_user(db: Session, *, id_usuario: int) -> Usuario | None:
     return db.get(Usuario, id_usuario)
 
 
+def username_is_taken(
+    db: Session,
+    *,
+    username: str,
+    excluding_id: int,
+) -> bool:
+    statement = select(Usuario.id_usuario).where(
+        func.lower(Usuario.username) == username,
+        Usuario.id_usuario != excluding_id,
+    ).limit(1)
+    return db.scalar(statement) is not None
+
+
 def list_users(
     db: Session,
     *,

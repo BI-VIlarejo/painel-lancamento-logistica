@@ -1,6 +1,6 @@
 # Pendências para retomada — Portal de Logística
 
-**Atualizado:** 23/10/2026
+**Atualizado:** 26/10/2026
 **Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
 
 ## Escopo confirmado
@@ -11,18 +11,23 @@
 - Não haverá integração com o BI nesta etapa. O Portal manterá seu próprio cadastro de lojas/filiais.
 - A migration de localidades `b817e6c2a904` foi aplicada em staging em 22/10/2026; `alembic --name logistica current` confirmou essa revisão como `head`.
 
-## Estado atual — 23/10/2026
+## Estado atual — 26/10/2026
 
-- [x] O projeto Vercel foi criado e a prévia visual chegou a `Ready`. Ela usa `VITE_DEMO_MODE=true`, portanto ainda funciona com dados de demonstração e não chama a API.
+- [x] O projeto Vercel foi criado e a primeira prévia visual chegou a `Ready` em modo demonstração. Depois, a prévia foi configurada para alcançar a API de staging.
 - [x] A correção visual de Reclamações e Elogios foi publicada em `staging` no commit `2258144`; a correção deixa claro que motorista e ajudantes dependem de uma entrega confirmada para a data e loja escolhidas.
 - [x] O usuário criou `${EC2_DEPLOY_DIR}/.env` na pasta `~/dev/Vilarejo-Logistica-Lancamento`. No workflow seguinte, o Compose encontrou o arquivo, baixou a imagem e o backend passou o health check.
 - [x] O workflow da API falhou ao iniciar o Nginx porque a porta `8080` já é usada pelo Nginx do VilarejoBI na mesma EC2.
 - [x] A Logística foi movida para a porta `8081`; Compose e documentação foram publicados em `origin/staging` no commit `2470aff`.
 - [x] O workflow foi executado novamente com a configuração `8081`; o usuário confirmou `backend` e `nginx` como `Up (healthy)`, com o Nginx publicado em `0.0.0.0:8081`.
 - [x] O usuário confirmou `HTTP/1.1 200 OK` em `http://127.0.0.1:8081/health` na EC2.
-- [ ] Ainda falta testar `http://127.0.0.1:8081/health` e confirmar a conectividade da credencial de runtime com a RDS pelo script `scripts.check_staging_db`.
-- [ ] A prévia Vercel precisa ser conferida novamente depois dos commits `2258144` e `2470aff`.
-- [ ] A URL HTTPS pública da API, o ALB/proxy, DNS, certificado e regras de rede para a porta `8081` ainda precisam ser confirmados com a Infra.
+- [x] O usuário confirmou o parse sanitizado da `OP_LOGISTICA_DATABASE_URL` e a conexão da API ao banco `vilarejo_bi_logistica_staging`; o script informou que nenhum dado foi alterado.
+- [x] O usuário confirmou `HTTP 200` em `https://api-bi.vilarejosolucoes.com.br/logistica-staging/health`, usando a regra `/logistica-staging/` no Nginx já existente do BI para encaminhar à Logística na porta `8081`.
+- [x] Depois de configurar a origem Vercel em `CORS_ALLOWED_ORIGINS`, o usuário confirmou que conseguiu entrar no portal e que a sessão persistiu.
+- [ ] Depois de publicar as alterações locais de otimização e edição de identidade, conferir novamente a prévia e repetir as medições.
+- [ ] A conta e os cadastros oficiais do gestor de Logística ainda precisam ser confirmados/cadastrados em staging.
+- [ ] A base de produção ainda não foi provisionada; produção continua bloqueada até haver banco, infraestrutura, secrets e validações próprios.
+
+Esta atualização substitui, para o staging atual, as instruções antigas abaixo que sugeriam criar um ALB e um DNS novos para a API. O caminho HTTPS validado usa o domínio do BI e o prefixo `/logistica-staging/`.
 
 ## Ordem para terminar o primeiro staging funcional
 
@@ -36,13 +41,13 @@
 
    Esperar HTTP `200`.
 
-4. [ ] Validar a conexão da API com a RDS, sem gravar dados:
+4. [x] Validar a conexão da API com a RDS, sem gravar dados. O usuário confirmou que o comando retornou `Conexão ao banco de staging confirmada; nenhum dado foi alterado.` O parse também confirmou o driver `mysql+pymysql`, a porta `3306` e o catálogo `vilarejo_bi_logistica_staging`, sem exibir valores secretos.
 
    ```bash
    docker compose --project-name logistica-staging -f compose.yaml exec -T backend python -m scripts.check_staging_db
    ```
 
-   A checagem do endpoint `/health` confirma que a API inicia, mas não substitui esse teste de banco.
+   A checagem do endpoint `/health` confirma que a API inicia; o comando acima também confirmou a conexão ao catálogo de staging sem alterar dados. A credencial real não deve ser adicionada a este arquivo nem enviada em chat.
 
 5. [ ] Com a Infra, configurar o ALB/proxy HTTPS e o DNS `api-staging`, encaminhando para EC2:8081. Permitir TCP `8081` na EC2 somente a partir do Security Group do ALB/proxy; manter `8000` interno e a RDS privada.
 6. [ ] Confirmar a revisão Alembic `b817e6c2a904` e as tabelas necessárias no catálogo `vilarejo_bi_logistica_staging`. Ela foi registrada como `head` e checada anteriormente; revalidar a conexão usando a credencial de runtime agora instalada na EC2. Não executar bootstrap local nem migrations automaticamente pelo container.

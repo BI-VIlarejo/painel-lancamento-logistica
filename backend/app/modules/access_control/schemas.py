@@ -295,6 +295,33 @@ class UserAccountCreateRequest(BaseModel):
         return normalized
 
 
+class UserAccountIdentityUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str | None = Field(default=None, min_length=1, max_length=80)
+    nome_completo: str | None = Field(default=None, min_length=1, max_length=160)
+
+    @model_validator(mode="after")
+    def normalize_identity(self) -> "UserAccountIdentityUpdateRequest":
+        if not self.model_fields_set:
+            raise ValueError("Informe o nome ou o usuário para atualizar.")
+        if "username" in self.model_fields_set:
+            if self.username is None:
+                raise ValueError("O nome de usuário não pode ser nulo.")
+            username = self.username.strip().lower()
+            if not re.fullmatch(r"[a-z0-9._-]{1,80}", username):
+                raise ValueError("Use letras sem acento, números, ponto, hífen ou _ no usuário.")
+            self.username = username
+        if "nome_completo" in self.model_fields_set:
+            if self.nome_completo is None:
+                raise ValueError("O nome completo não pode ser nulo.")
+            full_name = " ".join(self.nome_completo.split())
+            if not full_name:
+                raise ValueError("O nome completo é obrigatório.")
+            self.nome_completo = full_name
+        return self
+
+
 class UserAccountStatusRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

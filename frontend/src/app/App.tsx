@@ -1,19 +1,21 @@
 import styles from "./App.module.css";
 import commonStyles from "../shared/styles/common.module.css";
 import { cx } from "../shared/styles/classNames";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { AppShell } from "./layout/AppShell";
 import { navigate, usePathname } from "./router";
 import { AuthProvider, useAuth } from "./providers";
-import { LoginPage } from "../features/auth/pages/LoginPage";
-import { DeliveryHistoryPage } from "../features/deliveries/pages/DeliveryHistoryPage";
-import { DeliveryLaunchPage } from "../features/deliveries/pages/DeliveryLaunchPage";
-import { ManagementDashboardPage } from "../features/analytics/pages/ManagementDashboardPage";
-import { RegistriesPage } from "../features/administration/pages/RegistriesPage";
-import { ChangePasswordPage } from "../features/auth/pages/ChangePasswordPage";
-import { ResetPasswordPage } from "../features/auth/pages/ResetPasswordPage";
-import { FeedbackPage } from "../features/feedback/pages/FeedbackPage";
-import { AuditPage } from "../features/audit/pages/AuditPage";
+import { LoadingState } from "../shared/components/LoadingState";
+
+const LoginPage = lazy(() => import("../features/auth/pages/LoginPage").then((module) => ({ default: module.LoginPage })));
+const DeliveryHistoryPage = lazy(() => import("../features/deliveries/pages/DeliveryHistoryPage").then((module) => ({ default: module.DeliveryHistoryPage })));
+const DeliveryLaunchPage = lazy(() => import("../features/deliveries/pages/DeliveryLaunchPage").then((module) => ({ default: module.DeliveryLaunchPage })));
+const ManagementDashboardPage = lazy(() => import("../features/analytics/pages/ManagementDashboardPage").then((module) => ({ default: module.ManagementDashboardPage })));
+const RegistriesPage = lazy(() => import("../features/administration/pages/RegistriesPage").then((module) => ({ default: module.RegistriesPage })));
+const ChangePasswordPage = lazy(() => import("../features/auth/pages/ChangePasswordPage").then((module) => ({ default: module.ChangePasswordPage })));
+const ResetPasswordPage = lazy(() => import("../features/auth/pages/ResetPasswordPage").then((module) => ({ default: module.ResetPasswordPage })));
+const FeedbackPage = lazy(() => import("../features/feedback/pages/FeedbackPage").then((module) => ({ default: module.FeedbackPage })));
+const AuditPage = lazy(() => import("../features/audit/pages/AuditPage").then((module) => ({ default: module.AuditPage })));
 
 function PortalApp() {
   const { user, permissions, loading, bootstrapMessage, login, changePassword, resetPassword, logout } = useAuth();
@@ -47,14 +49,18 @@ function PortalApp() {
   }
 
   if (!user && path === "/redefinir-senha") {
-    return <ResetPasswordPage onResetPassword={resetPassword} onBack={() => navigate("/login")} />;
+    return <Suspense fallback={<LoadingState label="Abrindo recuperação de senha..." />}>
+      <ResetPasswordPage onResetPassword={resetPassword} onBack={() => navigate("/login")} />
+    </Suspense>;
   }
 
   if (!user) {
-    return <LoginPage onLogin={async (username, password) => {
+    return <Suspense fallback={<LoadingState label="Abrindo o Portal..." />}>
+      <LoginPage onLogin={async (username, password) => {
       await login(username, password);
       navigate("/");
-    }} onResetPassword={() => navigate("/redefinir-senha")} bootstrapMessage={bootstrapMessage} />;
+      }} onResetPassword={() => navigate("/redefinir-senha")} bootstrapMessage={bootstrapMessage} />
+    </Suspense>;
   }
 
   const currentPath = ["/historico", "/feedback", "/painel", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
@@ -66,21 +72,23 @@ function PortalApp() {
       onNavigate={navigate}
       onSignOut={() => { void logout().catch(() => undefined).finally(() => navigate("/login")); }}
     >
-      {path === "/trocar-senha"
-        ? <ChangePasswordPage onChangePassword={changePassword} onCancel={() => navigate(defaultPath)} />
-        : path === "/painel" && canViewDashboard
-        ? <ManagementDashboardPage />
-        : path === "/auditoria" && canViewAudit
-        ? <AuditPage />
-        : path === "/feedback" && canAccessFeedback
-        ? <FeedbackPage permissions={permissions} />
-        : path === "/cadastros" && (canManageCatalogs || canManageAccess)
-        ? <RegistriesPage permissions={permissions} currentUserId={user.id_usuario} />
-        : path === "/historico" && canView
-        ? <DeliveryHistoryPage onNavigate={navigate} canCreate={canCreate} canEditDraft={canEditDraft} canCorrect={canCorrect} canCancel={canCancelDelivery} currentUserId={user.id_usuario} />
-        : (path === "/entregas" && canCreate) || (editMatch && canEditDraft && canView)
-          ? <DeliveryLaunchPage onNavigate={navigate} responsibleName={user.nome_completo} canLaunch={canCreate} canManageCatalogs={canManageCatalogs} editId={editMatch?.[1]} />
-          : <div className={cx(styles, commonStyles, "access-denied-card")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌑</div><h1>Acesso não disponível</h1><p>Seu perfil não tem permissão para abrir esta área. Se precisar, peça à pessoa administradora para revisar seus acessos.</p>{canView && currentPath !== "/historico" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/historico")}>Ir para o histórico</button>}{canCreate && currentPath !== "/entregas" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/entregas")}>Novo lançamento</button>}{canAccessFeedback && currentPath !== "/feedback" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/feedback")}>Reclamações e elogios</button>}{canViewDashboard && currentPath !== "/painel" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/painel")}>Abrir painel gerencial</button>}{canViewAudit && currentPath !== "/auditoria" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/auditoria")}>Abrir auditoria</button>}</div>}
+      <Suspense fallback={<LoadingState label="Abrindo esta área..." />}>
+        {path === "/trocar-senha"
+          ? <ChangePasswordPage onChangePassword={changePassword} onCancel={() => navigate(defaultPath)} />
+          : path === "/painel" && canViewDashboard
+          ? <ManagementDashboardPage />
+          : path === "/auditoria" && canViewAudit
+          ? <AuditPage />
+          : path === "/feedback" && canAccessFeedback
+          ? <FeedbackPage permissions={permissions} />
+          : path === "/cadastros" && (canManageCatalogs || canManageAccess)
+          ? <RegistriesPage permissions={permissions} currentUserId={user.id_usuario} />
+          : path === "/historico" && canView
+          ? <DeliveryHistoryPage onNavigate={navigate} canCreate={canCreate} canEditDraft={canEditDraft} canCorrect={canCorrect} canCancel={canCancelDelivery} currentUserId={user.id_usuario} />
+          : (path === "/entregas" && canCreate) || (editMatch && canEditDraft && canView)
+            ? <DeliveryLaunchPage onNavigate={navigate} responsibleName={user.nome_completo} canLaunch={canCreate} canManageCatalogs={canManageCatalogs} editId={editMatch?.[1]} />
+            : <div className={cx(styles, commonStyles, "access-denied-card")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌑</div><h1>Acesso não disponível</h1><p>Seu perfil não tem permissão para abrir esta área. Se precisar, peça à pessoa administradora para revisar seus acessos.</p>{canView && currentPath !== "/historico" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/historico")}>Ir para o histórico</button>}{canCreate && currentPath !== "/entregas" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/entregas")}>Novo lançamento</button>}{canAccessFeedback && currentPath !== "/feedback" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/feedback")}>Reclamações e elogios</button>}{canViewDashboard && currentPath !== "/painel" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/painel")}>Abrir painel gerencial</button>}{canViewAudit && currentPath !== "/auditoria" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/auditoria")}>Abrir auditoria</button></div>}
+      </Suspense>
     </AppShell>
   );
 }

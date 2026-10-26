@@ -86,9 +86,11 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("stores");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ACTIVE");
   const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [catalogLoadErrors, setCatalogLoadErrors] = useState<Partial<Record<CatalogTab, string>>>({});
+  const [usersLoadError, setUsersLoadError] = useState("");
+  const [accessOptionsError, setAccessOptionsError] = useState("");
   const [notice, setNotice] = useState("");
   const [accountError, setAccountError] = useState("");
   const [localities, setLocalities] = useState<LocalityAdminItem[]>([]);
@@ -98,8 +100,17 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [profilePermissions, setProfilePermissions] = useState<ProfilePermission[]>([]);
   const [scopeOptions, setScopeOptions] = useState<ScopeOptions>({ setores: [], localidades: [] });
+  const [loadedCatalogTabs, setLoadedCatalogTabs] = useState<CatalogTab[]>([]);
+  const [loadingCatalogTabs, setLoadingCatalogTabs] = useState<CatalogTab[]>([]);
+  const [usersLoaded, setUsersLoaded] = useState(false);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [accessOptionsLoaded, setAccessOptionsLoaded] = useState(false);
+  const [accessOptionsLoading, setAccessOptionsLoading] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [accountDialog, setAccountDialog] = useState(false);
+  const [identityTarget, setIdentityTarget] = useState<UserAccount | null>(null);
+  const [identityForm, setIdentityForm] = useState({ username: "", nome_completo: "" });
+  const [identityError, setIdentityError] = useState("");
   const [initialCredential, setInitialCredential] = useState<{ name: string; username: string; password: string; purpose: "created" | "reset"; access?: UserAccessGrant } | null>(null);
   const [credentialCopied, setCredentialCopied] = useState(false);
   const [credentialCopyError, setCredentialCopyError] = useState("");
@@ -114,26 +125,66 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const [passwordResetError, setPasswordResetError] = useState("");
   const [statusReason, setStatusReason] = useState("");
 
+  const loadCatalogTab = useCallback(async (tab: CatalogTab, force = false) => {
+    if (!canManageCatalogs || (!force && loadedCatalogTabs.includes(tab))) return;
+    setLoadingCatalogTabs((current) => current.includes(tab) ? current : [...current, tab]);
+    setCatalogLoadErrors((current) => ({ ...current, [tab]: "" }));
+    try {
+      if (tab === "stores") setLocalities(await administrationApi.localities());
+      else if (tab === "people") setPeople(await administrationApi.people());
+      else setReasons(await administrationApi.reasons());
+      setLoadedCatalogTabs((current) => current.includes(tab) ? current : [...current, tab]);
+      setCatalogLoadErrors((current) => ({ ...current, [tab]: "" }));
+    } catch (error: unknown) {
+      setCatalogLoadErrors((current) => ({ ...current, [tab]: messageFromApiError(error) }));
+    } finally {
+      setLoadingCatalogTabs((current) => current.filter((entry) => entry !== tab));
+    }
+  }, [canManageCatalogs, loadedCatalogTabs]);
+
+  const loadUsers = useCallback(async (force = false) => {
+    if (!canManageAccess || (!force && usersLoaded)) return;
+    setUsersLoading(true);
+    setUsersLoadError("");
+    try {
+      setUsers(await administrationApi.users("", true));
+      setUsersLoaded(true);
+    } catch (error: unknown) {
+      setUsersLoadError(messageFromApiError(error));
+    } finally {
+      setUsersLoading(false);
+    }
+  }, [canManageAccess, usersLoaded]);
+
+  const loadAccessOptions = useCallback(async (force = false) => {
+    if (!canManageAccess || (!force && accessOptionsLoaded)) return;
+    setAccessOptionsLoading(true);
+    setAccessOptionsError("");
+    try {
+      const [profileRows, options] = await Promise.all([
+        administrationApi.profiles(),
+        administrationApi.scopeOptions(),
+      ]);
+      setProfiles(profileRows);
+      setScopeOptions(options);
+      setAccessOptionsLoaded(true);
+    } catch (error: unknown) {
+      setAccessOptionsError(messageFromApiError(error));
+    } finally {
+      setAccessOptionsLoading(false);
+    }
+  }, [accessOptionsLoaded, canManageAccess]);
+
   const refresh = useCallback(async () => {
-    setLoading(true);
     setLoadError("");
-    const errors: string[] = [];
-    if (canManageCatalogs) {
-      try {
-        const result = await Promise.all([administrationApi.localities(), administrationApi.people(), administrationApi.reasons()]);
-        setLocalities(result[0]); setPeople(result[1]); setReasons(result[2]);
-      } catch (error) { errors.push(messageFromApiError(error)); }
-    }
-    if (canManageAccess) {
-      try {
-        const result = await Promise.all([administrationApi.users("", true), administrationApi.profiles(), administrationApi.scopeOptions()]);
-        setUsers(result[0]); setProfiles(result[1]); setScopeOptions(result[2]);
-      } catch (error) { errors.push(messageFromApiError(error)); }
-    }
-    setLoadError(errors.join(" "));
-    setLoading(false);
-  }, [canManageAccess, canManageCatalogs]);
-  useEffect(() => { void refresh(); }, [refresh]);
+    if (mainTab === "users") await loadUsers(true);
+    else await loadCatalogTab(catalogTab, true);
+  }, [catalogTab, loadCatalogTab, loadUsers, mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "users") void loadUsers();
+    else void loadCatalogTab(catalogTab);
+  }, [catalogTab, loadCatalogTab, loadUsers, mainTab]);
 
   useEffect(() => {
     if ((!selectedUser && !accountDialog) || !grantForm.id_perfil) {
@@ -141,6 +192,7 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
       return;
     }
     let active = true;
+    setProfilePermissions([]);
     void administrationApi.profilePermissions(Number(grantForm.id_perfil))
       .then((rows) => { if (active) setProfilePermissions(rows); })
       .catch((error: unknown) => { if (active) setLoadError(messageFromApiError(error)); });
@@ -242,7 +294,7 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
     }).catch((error: unknown) => setLoadError(messageFromApiError(error))).finally(() => setSaving(false));
   };
 
-  const openAccount = () => { setForm({ username: "", nome: "" }); setGrantForm(emptyGrantForm()); setAccountDialog(true); setAccountError(""); setNotice(""); setLoadError(""); };
+  const openAccount = () => { setForm({ username: "", nome: "" }); setGrantForm(emptyGrantForm()); setAccountDialog(true); setAccountError(""); setNotice(""); setLoadError(""); void loadAccessOptions(); };
   const closeAccount = () => { setAccountDialog(false); setGrantForm(emptyGrantForm()); };
   const saveAccount = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -285,6 +337,33 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
         setCredentialCopied(false); setCredentialCopyError("");
         return refresh();
       }).catch((error: unknown) => setPasswordResetError(messageFromApiError(error))).finally(() => setSaving(false));
+  };
+
+  const openUserIdentityEditor = (user: UserAccount) => {
+    setIdentityTarget(user);
+    setIdentityForm({ username: user.username, nome_completo: user.nome_completo });
+    setIdentityError("");
+    setLoadError("");
+  };
+  const closeUserIdentityEditor = () => {
+    setIdentityTarget(null);
+    setIdentityError("");
+  };
+  const saveUserIdentity = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!identityTarget) return;
+    setSaving(true);
+    setIdentityError("");
+    void administrationApi.updateUserIdentity(identityTarget.id_usuario, {
+      username: identityForm.username.trim().toLowerCase(),
+      nome_completo: identityForm.nome_completo.trim().replace(/\s+/g, " "),
+    }).then((updated) => {
+      setUsers((current) => current.map((user) => user.id_usuario === updated.id_usuario ? updated : user));
+      setSelectedUser((current) => current?.id_usuario === updated.id_usuario ? updated : current);
+      setNotice("Dados da conta atualizados.");
+      closeUserIdentityEditor();
+      if (updated.id_usuario === currentUserId) window.location.reload();
+    }).catch((error: unknown) => setIdentityError(messageFromApiError(error))).finally(() => setSaving(false));
   };
 
   const openUserAccess = (user: UserAccount) => {
@@ -358,6 +437,11 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
     }));
   };
   const showUsers = mainTab === "users" && canManageAccess;
+  const currentPanelLoaded = showUsers ? usersLoaded : loadedCatalogTabs.includes(catalogTab);
+  const currentPanelError = showUsers ? usersLoadError : catalogLoadErrors[catalogTab] ?? "";
+  const currentPanelLoading = showUsers
+    ? !usersLoaded && (usersLoading || !usersLoadError)
+    : !currentPanelLoaded && (loadingCatalogTabs.includes(catalogTab) || !currentPanelError);
   const catalogTitle = catalogTab === "stores" ? "Lojas e filiais" : catalogTab === "people" ? "Motoristas e ajudantes" : "Motivos de não entrega";
   const catalogWord = catalogTab === "stores" ? "localidade" : catalogTab === "people" ? "pessoa" : "motivo";
   const statusSubject = statusTarget?.kind === "user" ? "conta" : statusTarget?.kind === "locality" ? "localidade" : statusTarget?.kind === "person" ? "pessoa" : "motivo";
@@ -379,7 +463,9 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
       ? "Confirmar desativação"
       : "Reativar " + statusSubject;
   const accessFields = <>
-    <label>Perfil de acesso<select required value={grantForm.id_perfil} onChange={(event) => updateGrantProfile(event.target.value)}><option value="" disabled>Selecione um perfil</option>{profiles.map((profile) => <option key={profile.id_perfil} value={profile.id_perfil}>{profile.nome}</option>)}</select></label>
+    {accessOptionsLoading && <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando perfis e escopos...</div>}
+    {accessOptionsError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{accessOptionsError}<button type="button" onClick={() => void loadAccessOptions(true)}>Tentar novamente</button></div>}
+    <label>Perfil de acesso<select required value={grantForm.id_perfil} disabled={accessOptionsLoading || !profiles.length} onChange={(event) => updateGrantProfile(event.target.value)}><option value="" disabled>{accessOptionsLoading ? "Carregando perfis..." : "Selecione um perfil"}</option>{profiles.map((profile) => <option key={profile.id_perfil} value={profile.id_perfil}>{profile.nome}</option>)}</select></label>
     {grantForm.id_perfil && <div className={cx(styles, commonStyles, "permission-preview")}><strong>Permissões deste perfil</strong>{profilePermissions.length ? <ul>{profilePermissions.map((permission) => <li key={permission.id_permissao}>{permission.descricao}</li>)}</ul> : <p>Este perfil não tem permissões ativas cadastradas.</p>}</div>}
     <label>Onde vale esse acesso?<select required value={grantForm.tipo_escopo} disabled={selectedGrantProfile?.codigo === "DEV" || selectedGrantProfile?.codigo === "CADASTRADOR"} onChange={(event) => setGrantForm((current) => ({ ...current, tipo_escopo: event.target.value as GrantFormState["tipo_escopo"], id_setor: "", id_localidade: "" }))}><option value="" disabled>Selecione um escopo</option><option value="GLOBAL">Todas as áreas</option><option value="SETOR">Um setor</option><option value="LOCALIDADE">Uma loja</option><option value="SETOR_LOCALIDADE">Um setor e uma loja</option></select></label>
     {(grantForm.tipo_escopo === "SETOR" || grantForm.tipo_escopo === "SETOR_LOCALIDADE") && <label>Setor<select required value={grantForm.id_setor} onChange={(event) => setGrantForm((current) => ({ ...current, id_setor: event.target.value }))}><option value="" disabled>Selecione o setor</option>{scopeOptions.setores.map((sector) => <option key={sector.id_setor} value={sector.id_setor}>{sector.nome}</option>)}</select></label>}
@@ -393,41 +479,40 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
     <header className={cx(styles, commonStyles, "registry-heading")}><div><p className={cx(styles, commonStyles, "eyebrow")}>ADMINISTRAÇÃO DO PORTAL</p><h1>{administrationTitle}</h1><p className={cx(styles, commonStyles, "page-lead")}>{administrationDescription}</p></div>{isDemoMode && <span className={cx(styles, commonStyles, "demo-indicator")}><i /> Prévia interativa</span>}</header>
 
     {canManageCatalogs && <section className={cx(styles, commonStyles, "overview-strip")} aria-label="Resumo dos cadastros">
-      <div><span className={cx(styles, commonStyles, "overview-symbol")}>⌂</span><span>Lojas ativas</span><strong>{counts.stores}</strong></div><div><span className={cx(styles, commonStyles, "overview-symbol")}>◎</span><span>Pessoas operacionais</span><strong>{counts.people}</strong></div><div><span className={cx(styles, commonStyles, "overview-symbol")}>≋</span><span>Motivos ativos</span><strong>{counts.reasons}</strong></div>{canManageAccess && <div><span className={cx(styles, commonStyles, "overview-symbol")}>♙</span><span>Contas ativas</span><strong>{counts.users}</strong></div>}
+      <div><span className={cx(styles, commonStyles, "overview-symbol")}>⌂</span><span>Lojas ativas</span><strong>{loadedCatalogTabs.includes("stores") ? counts.stores : "—"}</strong></div><div><span className={cx(styles, commonStyles, "overview-symbol")}>◎</span><span>Pessoas operacionais</span><strong>{loadedCatalogTabs.includes("people") ? counts.people : "—"}</strong></div><div><span className={cx(styles, commonStyles, "overview-symbol")}>≋</span><span>Motivos ativos</span><strong>{loadedCatalogTabs.includes("reasons") ? counts.reasons : "—"}</strong></div>{canManageAccess && <div><span className={cx(styles, commonStyles, "overview-symbol")}>♙</span><span>Contas ativas</span><strong>{usersLoaded ? counts.users : "—"}</strong></div>}
     </section>}
     {canManageCatalogs && canManageAccess && <nav className={cx(styles, commonStyles, "main-tabs")} aria-label="Áreas de administração">
-      <button type="button" className={cx(styles, commonStyles, "main-tab" + (mainTab === "operation" ? " main-tab-active" : ""))} onClick={() => { setMainTab("operation"); setQuery(""); setStatusFilter("ACTIVE"); }}><span>01</span>Dados operacionais</button>
-      <button type="button" className={cx(styles, commonStyles, "main-tab" + (mainTab === "users" ? " main-tab-active" : ""))} onClick={() => { setMainTab("users"); setQuery(""); setStatusFilter("ACTIVE"); }}><span>02</span>Usuários e acessos</button>
+      <button type="button" className={cx(styles, commonStyles, "main-tab" + (mainTab === "operation" ? " main-tab-active" : ""))} onClick={() => { setLoadError(""); setMainTab("operation"); setQuery(""); setStatusFilter("ACTIVE"); }}><span>01</span>Dados operacionais</button>
+      <button type="button" className={cx(styles, commonStyles, "main-tab" + (mainTab === "users" ? " main-tab-active" : ""))} onClick={() => { setLoadError(""); setMainTab("users"); setQuery(""); setStatusFilter("ACTIVE"); }}><span>02</span>Usuários e acessos</button>
     </nav>}
-    {loadError && <div className={cx(styles, commonStyles, "notice notice-error page-alert")} role="alert">{loadError}<button type="button" onClick={() => void refresh()}>Tentar novamente</button></div>}
+    {(loadError || currentPanelError) && <div className={cx(styles, commonStyles, "notice notice-error page-alert")} role="alert">{loadError || currentPanelError}<button type="button" onClick={() => void refresh()}>Tentar novamente</button></div>}
     {notice && <div className={cx(styles, commonStyles, "notice notice-success page-alert")} role="status"><span>✓</span>{notice}<button type="button" aria-label="Fechar mensagem" onClick={() => setNotice("")}>×</button></div>}
 
-    {loading ? <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando cadastros...</div>
-      : !canManageCatalogs && !canManageAccess ? <EmptyState title="Sem acesso à administração" description="Peça à pessoa administradora para conceder a permissão de cadastros ou de controle de acesso." />
+    {!canManageCatalogs && !canManageAccess ? <EmptyState title="Sem acesso à administração" description="Peça à pessoa administradora para conceder a permissão de cadastros ou de controle de acesso." />
         : showUsers ? <>
           <section className={cx(styles, commonStyles, "section-intro")}><div><p className={cx(styles, commonStyles, "section-kicker")}>PESSOAS DO PORTAL</p><h2>Usuários e acessos</h2><p>Contas são criadas pela administração. O perfil define as ações disponíveis; o escopo limita em quais setores ou lojas elas valem.</p></div><div className={cx(styles, commonStyles, "access-note")}><span aria-hidden="true">i</span><p>Uma pessoa pode ter mais de um acesso. Por exemplo: perfil de Gestão e perfil de Operação, cada um no escopo necessário.</p></div></section>
-          <section className={cx(styles, commonStyles, "registry-panel")}><div className={cx(styles, commonStyles, "panel-toolbar")}><div><h3>Contas de funcionários</h3><span>{visibleUsers.length} exibida{visibleUsers.length === 1 ? "" : "s"}</span></div><button className={cx(styles, commonStyles, "button button-primary add-button")} type="button" onClick={openAccount}><span>＋</span>Nova conta</button></div>
+          <section className={cx(styles, commonStyles, "registry-panel")}><div className={cx(styles, commonStyles, "panel-toolbar")}><div><h3>Contas de funcionários</h3><span>{usersLoaded ? `${visibleUsers.length} exibida${visibleUsers.length === 1 ? "" : "s"}` : usersLoadError ? "Falha ao carregar" : "Carregando lista"}</span></div><button className={cx(styles, commonStyles, "button button-primary add-button")} type="button" onClick={openAccount}><span>＋</span>Nova conta</button></div>
             <div className={cx(styles, commonStyles, "list-controls")}><label className={cx(styles, commonStyles, "search-box")}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nome ou usuário" aria-label="Buscar usuários" /></label><StatusFilters value={statusFilter} onChange={setStatusFilter} /></div>
-            {visibleUsers.length === 0 ? <EmptyState title="Nenhuma conta encontrada" description={users.length ? "Altere a busca ou o filtro de situação." : "Crie a primeira conta já definindo o perfil e onde o acesso vale."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table user-table")}><thead><tr><th>Funcionário</th><th>Usuário</th><th>Situação</th><th>Último acesso</th><th aria-label="Ações" /></tr></thead><tbody>
-              {visibleUsers.map((user) => <tr key={user.id_usuario}><td><strong>{user.nome_completo}</strong>{user.id_usuario === currentUserId && <small className={cx(styles, commonStyles, "self-tag")}>Você</small>}</td><td><span className={cx(styles, commonStyles, "username-cell")}>{user.username}</span></td><td><StatusPill active={user.ativo} /></td><td><span className={cx(styles, commonStyles, "last-login")}>{formatDateTime(user.ultimo_login_em)}</span></td><td><div className={cx(styles, commonStyles, "row-actions")}><button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openUserAccess(user)}>Acessos <span aria-hidden="true">↗</span></button>{user.id_usuario !== currentUserId && <button className={cx(styles, commonStyles, "table-action" + (user.ativo ? " action-danger" : ""))} type="button" onClick={() => { setStatusReason(""); setStatusTarget({ kind: "user", id: user.id_usuario, label: user.nome_completo, active: user.ativo }); }}>{user.ativo ? "Desativar" : "Ativar"}</button>}</div></td></tr>)}
+            {currentPanelLoading ? <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando usuários...</div> : currentPanelError && !currentPanelLoaded ? <EmptyState title="Não foi possível carregar os usuários" description="Tente novamente usando o aviso acima." /> : visibleUsers.length === 0 ? <EmptyState title="Nenhuma conta encontrada" description={users.length ? "Altere a busca ou o filtro de situação." : "Crie a primeira conta já definindo o perfil e onde o acesso vale."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table user-table")}><thead><tr><th>Funcionário</th><th>Usuário</th><th>Situação</th><th>Último acesso</th><th aria-label="Ações" /></tr></thead><tbody>
+              {visibleUsers.map((user) => <tr key={user.id_usuario}><td><strong>{user.nome_completo}</strong>{user.id_usuario === currentUserId && <small className={cx(styles, commonStyles, "self-tag")}>Você</small>}</td><td><span className={cx(styles, commonStyles, "username-cell")}>{user.username}</span></td><td><StatusPill active={user.ativo} /></td><td><span className={cx(styles, commonStyles, "last-login")}>{formatDateTime(user.ultimo_login_em)}</span></td><td><div className={cx(styles, commonStyles, "row-actions")}><button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openUserIdentityEditor(user)}>Editar</button><button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openUserAccess(user)}>Acessos <span aria-hidden="true">↗</span></button>{user.id_usuario !== currentUserId && <button className={cx(styles, commonStyles, "table-action" + (user.ativo ? " action-danger" : ""))} type="button" onClick={() => { setStatusReason(""); setStatusTarget({ kind: "user", id: user.id_usuario, label: user.nome_completo, active: user.ativo }); }}>{user.ativo ? "Desativar" : "Ativar"}</button>}</div></td></tr>)}
             </tbody></table></div>}
             <div className={cx(styles, commonStyles, "panel-footnote")}><span aria-hidden="true">⌑</span><p>Ao desativar uma conta, as sessões abertas são encerradas. O histórico e as concessões anteriores ficam preservados.</p></div>
           </section>
         </> : <>
           <section className={cx(styles, commonStyles, "section-intro")}><div><p className={cx(styles, commonStyles, "section-kicker")}>BASE DA OPERAÇÃO</p><h2>Cadastros operacionais</h2><p>Cadastre e mantenha as localidades do portal, a equipe e os motivos de ocorrência.</p></div><div className={cx(styles, commonStyles, "access-note catalog-note")}><span aria-hidden="true">i</span><p>Motoristas, ajudantes e motivos preservam versões. Alterações criam uma nova vigência; registros usados não são apagados.</p></div></section>
           <div className={cx(styles, commonStyles, "catalog-workspace")}><nav className={cx(styles, commonStyles, "catalog-nav")} aria-label="Tipo de cadastro"><p>CATÁLOGOS</p>
-            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "stores" ? " catalog-nav-active" : ""))} onClick={() => { setCatalogTab("stores"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>⌂</span><span>Lojas<small>{counts.stores} ativas</small></span><b>›</b></button>
-            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "people" ? " catalog-nav-active" : ""))} onClick={() => { setCatalogTab("people"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>◎</span><span>Equipe<small>{counts.people} pessoas ativas</small></span><b>›</b></button>
-            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "reasons" ? " catalog-nav-active" : ""))} onClick={() => { setCatalogTab("reasons"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>≋</span><span>Motivos de ocorrência<small>{counts.reasons} ativos</small></span><b>›</b></button>
+            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "stores" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("stores"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>⌂</span><span>Lojas<small>{loadedCatalogTabs.includes("stores") ? `${counts.stores} ativas` : "carrega ao abrir"}</small></span><b>›</b></button>
+            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "people" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("people"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>◎</span><span>Equipe<small>{loadedCatalogTabs.includes("people") ? `${counts.people} pessoas ativas` : "carrega ao abrir"}</small></span><b>›</b></button>
+            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "reasons" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("reasons"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>≋</span><span>Motivos de ocorrência<small>{loadedCatalogTabs.includes("reasons") ? `${counts.reasons} ativos` : "carrega ao abrir"}</small></span><b>›</b></button>
             <div className={cx(styles, commonStyles, "catalog-nav-help")}><strong>Uma base confiável</strong><p>Os formulários usam apenas cadastros ativos e válidos na data do lançamento.</p></div>
           </nav>
           <section className={cx(styles, commonStyles, "registry-panel catalog-panel")}>
             <div className={cx(styles, commonStyles, "panel-toolbar")}>
-              <div><span className={cx(styles, commonStyles, "panel-eyebrow")}>CATÁLOGO OPERACIONAL</span><h3>{catalogTitle}</h3><span>{catalogRows.length} registro{catalogRows.length === 1 ? "" : "s"} na lista</span></div>
+              <div><span className={cx(styles, commonStyles, "panel-eyebrow")}>CATÁLOGO OPERACIONAL</span><h3>{catalogTitle}</h3><span>{currentPanelLoaded ? `${catalogRows.length} registro${catalogRows.length === 1 ? "" : "s"} na lista` : currentPanelError ? "Falha ao carregar" : "Carregando lista"}</span></div>
               <button className={cx(styles, commonStyles, "button button-primary add-button")} type="button" onClick={() => openCatalog(catalogTab === "stores" ? "localities" : catalogTab)}><span>＋</span>{catalogTab === "stores" ? "Cadastrar loja" : catalogTab === "people" ? "Cadastrar pessoa" : "Cadastrar motivo"}</button>
             </div>
             <div className={cx(styles, commonStyles, "list-controls")}><label className={cx(styles, commonStyles, "search-box")}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogTab === "stores" ? "Buscar por loja, código ou cidade" : catalogTab === "people" ? "Buscar por nome ou função" : "Buscar pela descrição do motivo"} aria-label="Buscar cadastros" /></label><StatusFilters value={statusFilter} onChange={setStatusFilter} /></div>
-            {catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={query ? "Altere a busca ou o filtro de situação." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja / filial" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Cidade / UF" : catalogTab === "people" ? "Função" : "Vigência"}</th>{catalogTab === "stores" && <th>Tipo</th>}{catalogTab === "people" && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
+            {currentPanelLoading ? <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando {catalogWord}...</div> : currentPanelError && !currentPanelLoaded ? <EmptyState title={"Não foi possível carregar " + catalogWord} description="Tente novamente usando o aviso acima." /> : catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={query ? "Altere a busca ou o filtro de situação." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja / filial" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Cidade / UF" : catalogTab === "people" ? "Função" : "Vigência"}</th>{catalogTab === "stores" && <th>Tipo</th>}{catalogTab === "people" && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
               {catalogRows.map((row) => <tr key={catalogTab + "-" + row.id}>
                 <td><strong>{row.primary}</strong>{catalogTab === "stores" && isLocality(row.item) && <small>{row.item.codigo_localidade}</small>}</td>
                 <td><span className={cx(styles, commonStyles, "role-cell")}>{row.secondary}</span></td>
@@ -470,6 +555,16 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
       <form onSubmit={saveAccount} className={cx(styles, commonStyles, "modal-form")}><label>Nome completo<input autoFocus value={form.nome ?? ""} onChange={(event) => setField("nome", event.target.value)} required maxLength={160} autoComplete="name" /></label><label>Nome de usuário<input value={form.username ?? ""} onChange={(event) => setField("username", event.target.value.toLowerCase().replace(/\s/g, ""))} required maxLength={80} autoComplete="username" placeholder="Ex.: nome.sobrenome" /><small>Use letras sem acento, números, ponto, hífen ou sublinhado.</small></label><h3 className={cx(styles, commonStyles, "account-access-heading")}>Acesso inicial</h3>{accessFields}{accountError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{accountError}</div>}<div className={cx(styles, commonStyles, "first-access-note")}><span aria-hidden="true">↗</span><p>A conta será criada com este perfil e escopo. A senha inicial de seis dígitos será exibida uma única vez. A pessoa pode usá-la sem troca obrigatória e alterar a senha depois, na área Minha senha.</p></div><div className={cx(styles, commonStyles, "modal-actions")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={closeAccount} disabled={saving}>Cancelar</button><button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={saving || !profiles.length}>{saving ? "Criando..." : "Criar conta e acesso"}</button></div></form>
     </section></div>}
 
+    {identityTarget && <div className={cx(styles, commonStyles, "modal-backdrop")} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) closeUserIdentityEditor(); }}><section className={cx(styles, commonStyles, "modal-card account-modal")} role="dialog" aria-modal="true" aria-labelledby="identity-dialog-title">
+      <ModalHeader eyebrow="CONTA INTERNA" title="Editar funcionário" onClose={closeUserIdentityEditor} id="identity-dialog-title" />
+      <form onSubmit={saveUserIdentity} className={cx(styles, commonStyles, "modal-form")}>
+        <label>Nome completo<input autoFocus value={identityForm.nome_completo} onChange={(event) => setIdentityForm((current) => ({ ...current, nome_completo: event.target.value }))} required maxLength={160} autoComplete="name" /></label>
+        <label>Nome de usuário<input value={identityForm.username} onChange={(event) => setIdentityForm((current) => ({ ...current, username: event.target.value.toLowerCase().replace(/\s/g, "") }))} required maxLength={80} minLength={1} pattern="[a-z0-9._-]+" autoComplete="username" /><small>Use letras sem acento, números, ponto, hífen ou sublinhado. A pessoa usará esse nome no próximo login.</small></label>
+        {identityError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{identityError}</div>}
+        <div className={cx(styles, commonStyles, "modal-actions")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={closeUserIdentityEditor} disabled={saving}>Cancelar</button><button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={saving}>{saving ? "Salvando..." : "Salvar alterações"}</button></div>
+      </form>
+    </section></div>}
+
     {initialCredential && <div className={cx(styles, commonStyles, "modal-backdrop")} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) { setInitialCredential(null); setCredentialCopyError(""); } }}><section className={cx(styles, commonStyles, "modal-card credential-card")} role="dialog" aria-modal="true" aria-labelledby="credential-dialog-title">
       <ModalHeader eyebrow={initialCredential.purpose === "created" ? "ACESSO CRIADO" : "SENHA REDEFINIDA"} title="Senha de acesso" onClose={() => { setInitialCredential(null); setCredentialCopyError(""); }} id="credential-dialog-title" />
       <div className={cx(styles, commonStyles, "credential-content")}>
@@ -489,7 +584,7 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
       <div className={cx(styles, commonStyles, "drawer-header")}><div><p className={cx(styles, commonStyles, "section-kicker")}>GERENCIAR ACESSOS</p><h2 id="access-drawer-title">{selectedUser.nome_completo}</h2><span>@{selectedUser.username}</span></div><button className={cx(styles, commonStyles, "close-button")} type="button" aria-label="Fechar" onClick={() => setSelectedUser(null)}>×</button></div>
       <div className={cx(styles, commonStyles, "drawer-explainer")}><span>i</span><p>O <strong>perfil</strong> define as ações. O <strong>escopo</strong> limita onde elas valem. Adicione mais de uma concessão se a função exigir.</p></div>
       <button className={cx(styles, commonStyles, "table-action password-reset-action")} type="button" disabled={!selectedUser.ativo || selectedUser.id_usuario === currentUserId} title={selectedUser.id_usuario === currentUserId ? "Use a opção de troca de senha da própria conta." : !selectedUser.ativo ? "Ative a conta antes de redefinir a senha." : undefined} onClick={() => { setPasswordResetError(""); setPasswordResetTarget(selectedUser); }}>Gerar nova senha</button><p className={cx(styles, commonStyles, "password-reset-help")}>Se a pessoa não conseguir redefinir pelo login, gere uma senha de acesso nova. A senha anterior não pode ser consultada.</p>
-      <div className={cx(styles, commonStyles, "grant-section-heading")}><div><h3>Perfis e escopos</h3><span>{userGrants.length} concessão{userGrants.length === 1 ? "" : "ões"}</span></div><button className={cx(styles, commonStyles, "button button-secondary compact-button")} type="button" disabled={!selectedUser.ativo} title={!selectedUser.ativo ? "Ative a conta antes de conceder acesso." : undefined} onClick={() => setShowGrantForm((value) => !value)}>{showGrantForm ? "Fechar" : "＋ Adicionar acesso"}</button></div>
+      <div className={cx(styles, commonStyles, "grant-section-heading")}><div><h3>Perfis e escopos</h3><span>{userGrants.length} concessão{userGrants.length === 1 ? "" : "ões"}</span></div><button className={cx(styles, commonStyles, "button button-secondary compact-button")} type="button" disabled={!selectedUser.ativo} title={!selectedUser.ativo ? "Ative a conta antes de conceder acesso." : undefined} onClick={() => { const opening = !showGrantForm; setShowGrantForm(opening); if (opening) void loadAccessOptions(); }}>{showGrantForm ? "Fechar" : "＋ Adicionar acesso"}</button></div>
       {grantsLoading ? <div className={cx(styles, commonStyles, "drawer-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando acessos...</div>
         : userGrants.length ? <div className={cx(styles, commonStyles, "grant-list")}>{userGrants.map((grant) => { const grantStatus = getGrantStatus(grant); return <article className={cx(styles, commonStyles, "grant-card")} key={grant.id_usuario_escopo}><div className={cx(styles, commonStyles, "grant-card-top")}><div className={cx(styles, commonStyles, "grant-profile-icon")}>P</div><div><strong>{grant.nome_perfil}</strong><small>{grant.codigo_perfil}</small></div><StatusPill active={grantStatus.active} label={grantStatus.label} tone={grantStatus.tone} /></div><p className={cx(styles, commonStyles, "grant-scope")}>{scopeLabel(grant)}</p><div className={cx(styles, commonStyles, "grant-dates")}><span>Desde {formatDate(grant.vigente_desde)}</span></div>{grant.ativo && grantStatus.tone !== "expired" && <button className={cx(styles, commonStyles, "table-action action-danger grant-revoke")} type="button" onClick={() => { setStatusReason(""); setStatusTarget({ kind: "grant", id: grant.id_usuario_escopo, userId: selectedUser.id_usuario, label: grant.nome_perfil, active: true }); }}>Revogar este acesso</button>}</article>; })}</div>
           : <EmptyState title="Nenhum acesso concedido" description="A conta existe, mas ainda não consegue acessar os módulos do portal." />}

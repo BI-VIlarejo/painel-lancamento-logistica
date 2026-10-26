@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { ApiError } from "../shared/api/apiError";
+import { clearRequestCache } from "../shared/api/requestCache";
 import { authApi } from "../features/auth/api";
 import type { AuthenticatedUser, MeResponse } from "../features/auth/types";
 
@@ -26,9 +27,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    void authApi.currentIdentity()
-      .then(async (identity) => {
-        if (identity) await authApi.refreshCsrfToken();
+    void authApi.restoreSession()
+      .then((identity) => {
         if (active) {
           setUser(identity?.user ?? null);
           setPermissions(identity?.permissions ?? []);
@@ -57,6 +57,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = useCallback(async (username: string, password: string) => {
+    clearRequestCache();
     const identity: MeResponse = await authApi.login(username, password);
     setBootstrapMessage("");
     setUser(identity.user);
@@ -64,12 +65,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
+    clearRequestCache();
     await authApi.logout();
     setUser(null);
     setPermissions([]);
   }, []);
 
   const refreshIdentity = useCallback(async () => {
+    clearRequestCache();
     const identity = await authApi.currentIdentity();
     setUser(identity?.user ?? null);
     setPermissions(identity?.permissions ?? []);

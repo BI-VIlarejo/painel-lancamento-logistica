@@ -10,7 +10,8 @@ A cadeia operacional começa em `f4a7c9d2e1b6`; `e2b6d4a1c903` cria as tabelas o
 `a92f7c31de04` acrescenta sessões, `c41d8e6f2b70` alinha a auditoria e valida as quantidades de
 entrega, e `d7c9a4f2b610` atualiza OTIF, feedback e os tipos de auditoria. `f3c8a1d6b907` simplifica
 o modelo de feedback e remove publicação adiada; `b817e6c2a904` acrescenta cidade/UF e auditoria de
-edições de localidades. As migrations devem ser revisadas contra o DBML e os modelos ORM.
+edições de localidades; `c9b61a2f4d80` permite auditar alterações de nome e usuário de contas. As
+migrations devem ser revisadas contra o DBML e os modelos ORM.
 
 `d7c9a4f2b610` adiciona `quantidade_entregas_no_prazo` e
 `quantidade_entregas_completas`, ambas nullable. Essas colunas permanecem por compatibilidade com

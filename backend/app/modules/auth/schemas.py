@@ -32,13 +32,6 @@ class AuthenticatedUser(BaseModel):
     troca_senha_obrigatoria: bool = False
 
 
-class LoginResponse(BaseModel):
-    """Resposta de login; o token de sessão vai somente no cookie HttpOnly."""
-
-    user: AuthenticatedUser
-    csrf_token: str
-
-
 class CsrfTokenResponse(BaseModel):
     """Token CSRF público para ser enviado no cabeçalho das operações de escrita."""
 
@@ -51,6 +44,16 @@ class MeResponse(BaseModel):
     user: AuthenticatedUser
     permissions: list[str]
     scopes: list[AccessScopeSummary]
+
+
+class SessionBootstrapResponse(MeResponse):
+    """Identidade autorizada e token CSRF para iniciar o frontend em uma chamada."""
+
+    csrf_token: str
+
+
+class LoginResponse(SessionBootstrapResponse):
+    """Resposta do login; a sessão continua somente no cookie HttpOnly."""
 
 
 class ChangePasswordRequest(BaseModel):

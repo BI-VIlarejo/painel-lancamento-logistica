@@ -22,7 +22,8 @@ export type MeResponse = {
   scopes: AccessScope[];
 };
 
-export type LoginResponse = {
-  user: AuthenticatedUser;
+export type SessionBootstrapResponse = MeResponse & {
   csrf_token: string;
 };
+
+export type LoginResponse = SessionBootstrapResponse;

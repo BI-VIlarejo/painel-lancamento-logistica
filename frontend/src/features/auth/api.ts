@@ -1,8 +1,18 @@
 import { apiRequest, clearCsrfToken, isDemoMode, setCsrfToken } from "../../shared/api/apiClient";
 import { demoApi } from "../deliveries/demoApi";
-import type { LoginResponse, MeResponse } from "./types";
+import type { LoginResponse, MeResponse, SessionBootstrapResponse } from "./types";
 
 export const authApi = {
+  async restoreSession(): Promise<SessionBootstrapResponse | null> {
+    if (isDemoMode) {
+      if (!(await demoApi.currentUser())) return null;
+      return { ...await demoApi.identity(), csrf_token: "" };
+    }
+    const session = await apiRequest<SessionBootstrapResponse>("/auth/session");
+    setCsrfToken(session.csrf_token);
+    return session;
+  },
+
   async currentIdentity(): Promise<MeResponse | null> {
     if (isDemoMode) {
       if (!(await demoApi.currentUser())) return null;
@@ -16,12 +26,12 @@ export const authApi = {
       await demoApi.login();
       return demoApi.identity();
     }
-    const response = await apiRequest<LoginResponse>("/auth/login", {
+    const identity = await apiRequest<LoginResponse>("/auth/login", {
       method: "POST",
       body: { username, password },
     });
-    setCsrfToken(response.csrf_token);
-    return apiRequest<MeResponse>("/me");
+    setCsrfToken(identity.csrf_token);
+    return identity;
   },
 
   async refreshCsrfToken(): Promise<void> {
