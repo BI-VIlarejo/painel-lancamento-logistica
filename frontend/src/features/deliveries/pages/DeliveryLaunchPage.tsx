@@ -13,9 +13,9 @@ import type {
   PersonCatalogItem,
 } from "../types";
 
-type DeliveryLaunchPageProps = { onNavigate: (path: string) => void; responsibleName: string; canLaunch: boolean; editId?: string };
+type DeliveryLaunchPageProps = { onNavigate: (path: string) => void; responsibleName: string; canLaunch: boolean; canManageCatalogs: boolean; editId?: string };
 
-export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, editId }: DeliveryLaunchPageProps) {
+export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, canManageCatalogs, editId }: DeliveryLaunchPageProps) {
   const [localities, setLocalities] = useState<LocalityCatalogItem[]>([]);
   const [drivers, setDrivers] = useState<PersonCatalogItem[]>([]);
   const [helpers, setHelpers] = useState<PersonCatalogItem[]>([]);
@@ -58,7 +58,10 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, edi
   }, [editId]);
 
   const isEdit = Boolean(editId);
-  const missingCatalogs = !localities.length || (!isEdit && !drivers.length);
+  const requiredCatalogs: string[] = [];
+  if (!isEdit && !localities.length) requiredCatalogs.push("uma loja ou filial");
+  if (!isEdit && !drivers.length) requiredCatalogs.push("um motorista");
+  const needsCatalogSetup = !isEdit && (requiredCatalogs.length > 0 || reasons.length === 0);
 
   return (
     <div className={cx(styles, commonStyles, "page-stack")}>
@@ -73,24 +76,34 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, edi
         <div className={cx(styles, commonStyles, "loading-card")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> {isEdit ? "Carregando rascunho e opções de Entregas..." : "Carregando opções de Entregas..."}</div>
       ) : error ? (
         <div className={cx(styles, commonStyles, "notice notice-error")} role="alert"><strong>Não foi possível carregar o formulário.</strong><span>{error}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => window.location.reload()}>Tentar novamente</button></div>
-      ) : missingCatalogs ? (
-        <div className={cx(styles, commonStyles, "empty-card")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌁</div><h2>Os cadastros ainda não estão prontos</h2><p>O formulário precisa de localidades e motoristas ativos. Peça à pessoa administradora para conferir os catálogos.</p></div>
       ) : (
-        <DeliveryForm
-          key={initialLaunch?.codigo_lancamento ?? "novo-lancamento"}
-          localities={localities}
-          drivers={drivers}
-          helpers={helpers}
-          reasons={reasons}
-          responsibleName={responsibleName}
-          canLaunch={canLaunch}
-          initialLaunch={initialLaunch}
-          onSaved={(launch) => {
-            const messageType = launch.estado === "ENVIADA" ? "launched" : isEdit ? "updated" : "created";
-            window.sessionStorage.setItem("lancamento-logistica:show-saved-message", messageType);
-            onNavigate("/historico");
-          }}
-        />
+        <>
+          {needsCatalogSetup && <div className={cx(styles, commonStyles, "notice notice-info catalog-prerequisite")} role="note">
+            <div className={cx(styles, "catalog-prerequisite-copy")}>
+              <strong>Formulário disponível para teste.</strong>
+              {requiredCatalogs.length > 0 && <p>Para salvar, cadastre e mantenha ativos pelo menos {requiredCatalogs.join(" e ")}.</p>}
+              {reasons.length === 0 && <p>Para testar entregas não realizadas, cadastre também um motivo.</p>}
+            </div>
+            {canManageCatalogs
+              ? <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/cadastros")}>Abrir Cadastros</button>
+              : <span>Peça à pessoa gestora para cadastrar esses itens.</span>}
+          </div>}
+          <DeliveryForm
+            key={initialLaunch?.codigo_lancamento ?? "novo-lancamento"}
+            localities={localities}
+            drivers={drivers}
+            helpers={helpers}
+            reasons={reasons}
+            responsibleName={responsibleName}
+            canLaunch={canLaunch}
+            initialLaunch={initialLaunch}
+            onSaved={(launch) => {
+              const messageType = launch.estado === "ENVIADA" ? "launched" : isEdit ? "updated" : "created";
+              window.sessionStorage.setItem("lancamento-logistica:show-saved-message", messageType);
+              onNavigate("/historico");
+            }}
+          />
+        </>
       )}
     </div>
   );
