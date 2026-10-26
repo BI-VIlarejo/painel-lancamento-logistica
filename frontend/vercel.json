@@ -3,6 +3,10 @@
   "outputDirectory": "dist",
   "installCommand": "npm ci",
   "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "https://api-bi.vilarejosolucoes.com.br/logistica-staging/api/v1/:path*"
+    },
     { "source": "/(.*)", "destination": "/" }
   ]
 }
