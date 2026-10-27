@@ -150,7 +150,7 @@ class PersonStatusRequest(BaseModel):
     @model_validator(mode="after")
     def only_deactivate(self) -> "PersonStatusRequest":
         if self.ativo:
-            raise ValueError("Para reativar, crie uma nova versão do cadastro.")
+            raise ValueError("A reativação de pessoas não está disponível por esta ação.")
         return self
 
 
@@ -210,5 +210,5 @@ class ReasonStatusRequest(BaseModel):
     @model_validator(mode="after")
     def only_deactivate(self) -> "ReasonStatusRequest":
         if self.ativo:
-            raise ValueError("Para reativar, crie uma nova versão do motivo.")
+            raise ValueError("A reativação de motivos não está disponível por esta ação.")
         return self

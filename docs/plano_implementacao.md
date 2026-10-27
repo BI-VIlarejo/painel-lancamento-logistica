@@ -1,14 +1,16 @@
 # Plano de implementação do portal de lançamento de dados
 
 **Atualizado em:** 27/10/2026
-**Status em 27/10/2026:** a versão de trabalho altera a API real, os modelos operacionais e a interface para o piloto. A migration `d2a8f6c1b904` foi aplicada em staging e confirmada como `head`. Os bloqueios antes do piloto são a CI no GitHub, publicação da nova versão da API/frontend e aceite funcional com os cadastros oficiais. Produção fica para depois do piloto.
+**Status em 27/10/2026:** a API e a interface em trabalho incluem edição direta de pessoas/motivos e auditoria com ator, alvo e alterações seguras. A migration `d2a8f6c1b904` está aplicada em staging; a nova migration `e31f9a7c2b64` (permitir eventos de edição nos CHECKs) ainda precisa de CI, publicação e aplicação em staging antes de liberar os `PUT`. Produção fica para depois do piloto.
 
 Este documento organiza o trabalho do `LancamentoLogistica` em ordem de implementação. A [especificação do portal](./especificacao_portal_lancamento_logistica.md) continua sendo a referência para campos, regras, arquitetura, segurança e modelo de dados. O [DBML operacional](./modelo_operacional_lancamento_logistica.dbml) é uma proposta, ainda não é uma migration aplicada.
+
+Escopo detalhado da edição no mesmo registro, autoria das ações, gráficos do painel e arquivos alterados: [relatório de edição direta e auditoria](./relatorio-edicao-direta-auditoria.md).
 
 ### Atualização de escopo solicitada — 27/10/2026
 
 - O staging operacional está publicado e a cadeia Alembic `logistica` está em `d2a8f6c1b904 (head)` após aplicar a migration desta alteração. Vyctor e a gerente do setor de Suporte estão preenchendo os cadastros; a carga e validação final permanecem em andamento.
-- Cada motivo exige um grupo controlado: `TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`. Cada pessoa exige tipo `PROPRIA` ou `TERCEIRIZADA`; novas equipes precisam ser homogêneas. Versões históricas sem classificação ficam nulas até revisão.
+- Cada motivo exige um grupo controlado: `TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`. Cada pessoa exige tipo `PROPRIA` ou `TERCEIRIZADA`; novas equipes precisam ser homogêneas. Valores históricos sem classificação ficam nulos até revisão.
 - A observação é gravada por motivo; novos lançamentos não aceitam observação geral. A coluna geral continua preservada para histórico. A migration `d2a8f6c1b904` inclui observação, grupo e tipo como nullable, após `c9b61a2f4d80`.
 - O painel por motivo/grupo exibe participação entre não realizadas e incidência sobre o total. O painel também compara Entregas Próprias e Terceirizadas. O ranking mostra motivos associados às equipes como contexto; não aplica peso/penalidade por motivo sem regra aprovada.
 - Está prevista integração do Portal com o ERP SEAC para buscar automaticamente os dados dos lançamentos antes do lançamento oficial. O acesso, campos, frequência, idempotência e conferência/auto-confirmação ainda serão definidos. Essa entrada do SEAC não equivale à publicação analítica no BI.
@@ -221,7 +223,7 @@ Depois de concluir a parte 4.1:
 4. Completar `GET /api/v1/me` com permissões e escopos calculados pelo servidor para a navegação do frontend.
 5. Negar por padrão conta inativa, concessão vencida, ausência da permissão exigida ou registro fora do escopo. Limitar tentativas e registrar eventos sem expor credenciais ou dados sensíveis.
 
-**Implementado no backend:** as concessões vigentes são resolvidas em `access_control`; `/api/v1/me` retorna permissões e escopos calculados pelo servidor; as dependências `require_permission` e `require_global_permission` protegem rotas; `/api/v1/access` administra perfis, recursos, permissões, contas, associações e escopos. A área administrativa lista/provisiona contas, desativa contas encerrando sessões, atribui múltiplos perfis/escopos e lista as opções de setor/localidade. Os cadastros operacionais podem ser criados, editados e desativados sob `CADASTROS:ADMINISTRAR`; pessoas e motivos são versionados por vigência. Alterações e revogações são registradas em `op_logistica_autorizacao_evento` na mesma transação. As leituras de formulários continuam em `/api/v1/setores`, `/localidades`, `/pessoas` e `/motivos`.
+**Implementado no backend:** as concessões vigentes são resolvidas em `access_control`; `/api/v1/me` retorna permissões e escopos calculados pelo servidor; as dependências `require_permission` e `require_global_permission` protegem rotas; `/api/v1/access` administra perfis, recursos, permissões, contas, associações e escopos. A área administrativa lista/provisiona contas, desativa contas encerrando sessões, atribui múltiplos perfis/escopos e lista opções de setor/localidade. Pessoas e motivos são criados e desativados sob `CADASTROS:ADMINISTRAR`; `PUT` edita a mesma linha, preservando ID/código e gravando antes/depois na auditoria. A consulta `/api/v1/audit/events` apresenta o nome/username do ator, alvo e resumo de alterações para ações de conta, catálogo, escopo, permissão, entrega e feedback, sem devolver textos livres ou segredos. As leituras de formulários continuam em `/api/v1/setores`, `/localidades`, `/pessoas` e `/motivos`.
 
 As rotas de contas e concessões exigem `CONTROLE_ACESSO:ADMINISTRAR` em escopo `GLOBAL`; as rotas de catálogo exigem `CADASTROS:ADMINISTRAR`. O perfil `OPERADOR` contém essa permissão, então uma conta de Suporte pode usar uma única concessão com escopos de setor/localidade para operar e manter os catálogos compartilhados. Isso não amplia o acesso do OPERADOR a lançamentos, feedback ou indicadores. `CADASTRADOR` exige escopo global e pode manter catálogos e consultar/exportar feedback; não recebe operações, indicadores, auditoria ou administração de usuários. A tela omite usuários e acessos sem a permissão correspondente, e a API também bloqueia essas rotas. Restringir cadastros por setor exige acrescentar essa relação ao modelo. O bootstrap local e o provisionador de staging mantêm os perfis padrão sem migration adicional.
 
@@ -254,6 +256,8 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 
 **Critério para avançar:** o lançamento persiste entre dispositivos, as regras são validadas no servidor, retries não duplicam registros e o histórico respeita o escopo.
 
+**Gráficos do painel:** evolução temporal em linha; composição em barra empilhada; grupos/motivos em barras horizontais ordenadas por quantidade; tipo de entrega em barras empilhadas por realizadas/não realizadas; equipe e loja em barras horizontais de taxa ordenadas da menor para a maior. Os gráficos mostram volume junto à taxa. As tabelas atuais, inclusive Ranking por pessoa e Performance por loja, continuam preservadas.
+
 ### Etapa 6 — Completar correções, cadastros e feedback quando autorizado
 
 **Objetivo:** preservar a confiabilidade do histórico após a confirmação e manter referências confiáveis.
@@ -265,7 +269,7 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 1. Tratar `ENVIADA` como estado final de confirmação para novos lançamentos. Os estados `EM_REVISAO`, `DEVOLVIDA` e `APROVADA` permanecem somente para leitura de registros históricos legados.
 2. Validar com o gestor as permissões e justificativas de correção/cancelamento já implementadas. O fluxo cria revisão nova ou evento append-only e não cria fila de aprovação para o fluxo diário.
 3. Registrar estado anterior/novo, ator, horário e comentário em log append-only. Não apagar histórico confirmado por operação comum.
-4. A interface administrativa de lojas, pessoas, motivos e contas está implementada. Revisar o catálogo oficial de lojas e a matriz de perfis/escopos antes do piloto; as alterações de pessoas e motivos preservam versões e vigência.
+4. A interface administrativa de lojas, pessoas, motivos e contas está implementada. Revisar o catálogo oficial de lojas e a matriz de perfis/escopos antes do piloto; pessoas/motivos são editados no registro atual, e a auditoria preserva os campos anteriores e novos. A classificação editada também altera a leitura dos lançamentos históricos relacionados.
 5. O cadastro e o formulário de feedback já oferecem criação, consulta paginada, filtros, importação e exportação; cada manifestação está ligada a uma entrega confirmada. O formulário permite selecionar motorista e até dois ajudantes, valida a equipe contra a entrega e deriva dela a loja e a data. Todos os perfis do piloto podem consultar/exportar dentro dos escopos; OPERADOR também pode registrar/importar. Definir retenção antes de habilitar feedback com dados reais.
 6. Score de atendimento aprovado para uso no ranking misto; sua fórmula atual é +1 por elogio e −1 por reclamação.
 

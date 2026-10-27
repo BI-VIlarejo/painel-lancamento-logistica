@@ -136,6 +136,14 @@ export const demoAdministrationApi = {
     people = [...people, item];
     return item;
   },
+  async updatePerson(id: number, input: Pick<PersonAdminItem, "nome_exibicao" | "tipo_funcao" | "tipo_transporte_entrega">) {
+    await pause();
+    const current = people.find((item) => item.id_pessoa === id);
+    if (!current) throw new Error("Pessoa não encontrada.");
+    const updated = { ...current, ...input };
+    people = people.map((item) => item.id_pessoa === id ? updated : item);
+    return updated;
+  },
   async deactivatePerson(id: number) { await pause(); people = people.map((item) => item.id_pessoa === id ? { ...item, ativo: false, vigente_ate: nextEffectiveDate(item.vigente_desde) } : item); },
   async reasons() { await pause(); return [...reasons]; },
   async createReason(input: Omit<ReasonAdminItem, "id_motivo_nao_entrega" | "ativo" | "vigente_desde" | "vigente_ate" | "codigo_motivo"> & { codigo_motivo?: string }) {
@@ -148,6 +156,14 @@ export const demoAdministrationApi = {
     const item: ReasonAdminItem = { ...input, codigo_motivo, id_motivo_nao_entrega: nextId++, ativo: true, vigente_desde, vigente_ate: null };
     reasons = [...reasons, item];
     return item;
+  },
+  async updateReason(id: number, input: Pick<ReasonAdminItem, "descricao_motivo" | "grupo_motivo">) {
+    await pause();
+    const current = reasons.find((item) => item.id_motivo_nao_entrega === id);
+    if (!current) throw new Error("Motivo não encontrado.");
+    const updated = { ...current, ...input };
+    reasons = reasons.map((item) => item.id_motivo_nao_entrega === id ? updated : item);
+    return updated;
   },
   async deactivateReason(id: number) { await pause(); reasons = reasons.map((item) => item.id_motivo_nao_entrega === id ? { ...item, ativo: false, vigente_ate: nextEffectiveDate(item.vigente_desde) } : item); },
   async users(search = "", includeInactive = true) {

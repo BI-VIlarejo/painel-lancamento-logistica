@@ -257,8 +257,9 @@ class AutorizacaoEvento(Base):
             "'USUARIO_DESATIVADO', 'USUARIO_ATUALIZADO', 'USUARIO_SENHA_ALTERADA', "
             "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATUALIZADA', 'LOCALIDADE_ATIVADA', "
             "'LOCALIDADE_DESATIVADA', "
-            "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
-            "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')",
+            "'PESSOA_CRIADA', 'PESSOA_ATUALIZADA', 'PESSOA_VERSIONADA', "
+            "'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_ATUALIZADO', "
+            "'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO')",
             name="ck_op_logistica_autorizacao_evento_tipo",
         ),
         CheckConstraint(
@@ -286,8 +287,9 @@ class AutorizacaoEvento(Base):
             "'USUARIO_DESATIVADO', 'USUARIO_ATUALIZADO', 'USUARIO_SENHA_ALTERADA', "
             "'LOCALIDADE_CRIADA', 'LOCALIDADE_ATUALIZADA', 'LOCALIDADE_ATIVADA', "
             "'LOCALIDADE_DESATIVADA', "
-            "'PESSOA_CRIADA', 'PESSOA_VERSIONADA', 'PESSOA_DESATIVADA', "
-            "'MOTIVO_CRIADO', 'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') "
+            "'PESSOA_CRIADA', 'PESSOA_ATUALIZADA', 'PESSOA_VERSIONADA', "
+            "'PESSOA_DESATIVADA', 'MOTIVO_CRIADO', 'MOTIVO_ATUALIZADO', "
+            "'MOTIVO_VERSIONADO', 'MOTIVO_DESATIVADO') "
             "and id_perfil is null and id_permissao is null and id_recurso is null "
             "and id_usuario_escopo is null))",
             name="ck_op_logistica_autorizacao_evento_alvo",

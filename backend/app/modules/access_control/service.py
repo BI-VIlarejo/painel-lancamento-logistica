@@ -523,7 +523,16 @@ def create_profile(
             tipo_evento="PERFIL_CRIADO",
             id_usuario_ator=id_usuario_ator,
             id_perfil=profile.id_perfil,
-            detalhes={"codigo": profile.codigo, "nome": profile.nome},
+            detalhes={
+                "alvo_tipo": "PERFIL",
+                "alvo_id": profile.id_perfil,
+                "alvo_codigo": profile.codigo,
+                "alvo_nome": profile.nome,
+                "alteracoes": {
+                    "codigo": {"anterior": None, "novo": profile.codigo},
+                    "nome": {"anterior": None, "novo": profile.nome},
+                },
+            },
         )
         db.commit()
         return ProfileSummary.model_validate(profile)
@@ -564,6 +573,10 @@ def update_profile(
             id_usuario_ator=id_usuario_ator,
             id_perfil=profile.id_perfil,
             detalhes={
+                "alvo_tipo": "PERFIL",
+                "alvo_id": profile.id_perfil,
+                "alvo_codigo": profile.codigo,
+                "alvo_nome": profile.nome,
                 "alteracoes": {
                     name: {"anterior": before[name], "novo": getattr(profile, name)}
                     for name in changes
@@ -610,9 +623,15 @@ def create_resource(
             id_usuario_ator=id_usuario_ator,
             id_recurso=resource.id_recurso,
             detalhes={
-                "codigo": resource.codigo,
-                "nome": resource.nome,
-                "id_setor": resource.id_setor,
+                "alvo_tipo": "RECURSO",
+                "alvo_id": resource.id_recurso,
+                "alvo_codigo": resource.codigo,
+                "alvo_nome": resource.nome,
+                "alteracoes": {
+                    "codigo": {"anterior": None, "novo": resource.codigo},
+                    "nome": {"anterior": None, "novo": resource.nome},
+                    "id_setor": {"anterior": None, "novo": resource.id_setor},
+                },
             },
         )
         db.commit()
@@ -652,6 +671,10 @@ def update_resource(
             id_usuario_ator=id_usuario_ator,
             id_recurso=resource.id_recurso,
             detalhes={
+                "alvo_tipo": "RECURSO",
+                "alvo_id": resource.id_recurso,
+                "alvo_codigo": resource.codigo,
+                "alvo_nome": resource.nome,
                 "alteracoes": {
                     name: {"anterior": before[name], "novo": getattr(resource, name)}
                     for name in changes
@@ -699,10 +722,16 @@ def create_permission(
             id_usuario_ator=id_usuario_ator,
             id_permissao=permission.id_permissao,
             detalhes={
-                "codigo": permission.codigo,
-                "acao": permission.acao,
-                "descricao": permission.descricao,
-                "id_recurso": resource.id_recurso,
+                "alvo_tipo": "PERMISSAO",
+                "alvo_id": permission.id_permissao,
+                "alvo_codigo": permission.codigo,
+                "alvo_nome": permission.descricao,
+                "recurso": resource.nome,
+                "alteracoes": {
+                    "codigo": {"anterior": None, "novo": permission.codigo},
+                    "acao": {"anterior": None, "novo": permission.acao},
+                    "descricao": {"anterior": None, "novo": permission.descricao},
+                },
             },
         )
         db.commit()
@@ -756,6 +785,11 @@ def update_permission(
             id_usuario_ator=id_usuario_ator,
             id_permissao=permission.id_permissao,
             detalhes={
+                "alvo_tipo": "PERMISSAO",
+                "alvo_id": permission.id_permissao,
+                "alvo_codigo": permission.codigo,
+                "alvo_nome": permission.descricao,
+                "recurso": resource.nome,
                 "alteracoes": {
                     name: {"anterior": before[name], "novo": getattr(permission, name)}
                     for name in changes
@@ -860,7 +894,14 @@ def create_user_account(
             db,
             tipo_evento="USUARIO_CRIADO",
             id_usuario_ator=id_usuario_ator,
-            detalhes={"id_usuario": user.id_usuario},
+            detalhes={
+                "alvo_tipo": "USUARIO",
+                "alvo_id": user.id_usuario,
+                "alvo_nome": user.nome_completo,
+                "id_usuario": user.id_usuario,
+                "nome_completo": user.nome_completo,
+                "username": user.username,
+            },
         )
         initial_access = _grant_user_scope(
             db,
@@ -929,6 +970,10 @@ def reset_user_temporary_password(
             tipo_evento="USUARIO_SENHA_ALTERADA",
             id_usuario_ator=id_usuario_ator,
             detalhes={
+                "alvo_tipo": "USUARIO",
+                "alvo_id": user.id_usuario,
+                "alvo_nome": user.nome_completo,
+                "username": user.username,
                 "id_usuario": user.id_usuario,
                 "tipo_alteracao": "SENHA_TEMPORARIA_REDEFINIDA",
             },
@@ -1003,7 +1048,11 @@ def update_user_account_identity(
                 tipo_evento="USUARIO_ATUALIZADO",
                 id_usuario_ator=id_usuario_ator,
                 detalhes={
+                    "alvo_tipo": "USUARIO",
+                    "alvo_id": user.id_usuario,
+                    "alvo_nome": user.nome_completo,
                     "id_usuario": user.id_usuario,
+                    "username": user.username,
                     "campos_alterados": changes,
                 },
             )
@@ -1056,8 +1105,15 @@ def update_user_account_status(
                 id_usuario_ator=id_usuario_ator,
                 motivo=payload.motivo if not payload.ativo else None,
                 detalhes={
+                    "alvo_tipo": "USUARIO",
+                    "alvo_id": user.id_usuario,
+                    "alvo_nome": user.nome_completo,
                     "id_usuario": user.id_usuario,
+                    "username": user.username,
                     "motivo": payload.motivo if not payload.ativo else None,
+                    "alteracoes": {
+                        "ativo": {"anterior": not payload.ativo, "novo": payload.ativo}
+                    },
                 },
             )
             if not payload.ativo:
@@ -1187,6 +1243,24 @@ def _grant_user_scope(
             id_usuario_ator=id_usuario_ator,
             id_usuario_escopo=grant.id_usuario_escopo,
             ocorrido_em=now,
+            detalhes={
+                "alvo_tipo": "USUARIO_ESCOPO",
+                "alvo_id": grant.id_usuario_escopo,
+                "alvo_nome": (
+                    f"{user.nome_completo} (@{user.username}) · "
+                    f"{profile.nome} · {scope.codigo_escopo}"
+                ),
+                "id_usuario": user.id_usuario,
+                "nome_completo": user.nome_completo,
+                "username": user.username,
+                "perfil": f"{profile.nome} ({profile.codigo})",
+                "escopo": scope.codigo_escopo,
+                "tipo_escopo": scope.tipo_escopo,
+                "alteracoes": {
+                    "perfil": {"anterior": None, "novo": profile.nome},
+                    "escopo": {"anterior": None, "novo": scope.codigo_escopo},
+                },
+            },
         )
     )
     return _scope_grant_response(grant, profile, scope)
@@ -1212,9 +1286,15 @@ def revoke_user_scope(
         )
         if grant is None:
             raise NotFoundError("Concessão de acesso não encontrada.")
+        user = repository.get_user_for_update(db, id_usuario=id_usuario)
+        if user is None:
+            raise NotFoundError("Usuário da concessão não encontrado.")
         profile = repository.get_profile(db, id_perfil=grant.id_perfil)
         if profile is None:
             raise NotFoundError("Perfil da concessão não encontrado.")
+        scope = db.get(Escopo, grant.id_escopo)
+        if scope is None:
+            raise NotFoundError("Escopo da concessão não encontrado.")
         if _profile_level(profile.codigo) > _administrator_level(db, id_usuario_ator):
             raise PermissionDeniedError(
                 "Você não pode revogar uma concessão de administração superior."
@@ -1239,6 +1319,24 @@ def revoke_user_scope(
                 id_usuario_escopo=grant.id_usuario_escopo,
                 ocorrido_em=now,
                 motivo=normalized_reason,
+                detalhes={
+                    "alvo_tipo": "USUARIO_ESCOPO",
+                    "alvo_id": grant.id_usuario_escopo,
+                    "alvo_nome": (
+                        f"{user.nome_completo} (@{user.username}) · "
+                        f"{profile.nome} · {scope.codigo_escopo}"
+                    ),
+                    "id_usuario": user.id_usuario,
+                    "nome_completo": user.nome_completo,
+                    "username": user.username,
+                    "perfil": f"{profile.nome} ({profile.codigo})",
+                    "escopo": scope.codigo_escopo,
+                    "tipo_escopo": scope.tipo_escopo,
+                    "alteracoes": {
+                        "perfil": {"anterior": profile.nome, "novo": None},
+                        "escopo": {"anterior": scope.codigo_escopo, "novo": None},
+                    },
+                },
             )
         )
         db.commit()
@@ -1294,6 +1392,20 @@ def grant_profile_permission(
                 id_perfil=id_perfil,
                 id_permissao=id_permissao,
                 ocorrido_em=now,
+                detalhes={
+                    "alvo_tipo": "PERFIL_PERMISSAO",
+                    "alvo_id": id_permissao,
+                    "alvo_nome": (
+                        f"{profile.nome} · {permission.descricao} "
+                        f"({resource.nome})"
+                    ),
+                    "perfil": f"{profile.nome} ({profile.codigo})",
+                    "permissao": permission.codigo,
+                    "recurso": resource.nome,
+                    "alteracoes": {
+                        "permissao": {"anterior": None, "novo": permission.descricao}
+                    },
+                },
             )
         )
         db.commit()
@@ -1343,6 +1455,15 @@ def revoke_profile_permission(
         )
         if assignment is None:
             raise NotFoundError("Permissão concedida ao perfil não encontrada.")
+        permission = repository.get_permission_for_update(
+            db,
+            id_permissao=id_permissao,
+        )
+        if permission is None:
+            raise NotFoundError("Permissão não encontrada.")
+        resource = repository.get_resource(db, id_recurso=permission.id_recurso)
+        if resource is None:
+            raise NotFoundError("Recurso da permissão não encontrado.")
         db.delete(assignment)
         db.add(
             AutorizacaoEvento(
@@ -1352,6 +1473,20 @@ def revoke_profile_permission(
                 id_permissao=id_permissao,
                 ocorrido_em=now,
                 motivo=normalized_reason,
+                detalhes={
+                    "alvo_tipo": "PERFIL_PERMISSAO",
+                    "alvo_id": id_permissao,
+                    "alvo_nome": (
+                        f"{profile.nome} · {permission.codigo} "
+                        f"({resource.nome})"
+                    ),
+                    "perfil": f"{profile.nome} ({profile.codigo})",
+                    "permissao": permission.codigo,
+                    "recurso": resource.nome,
+                    "alteracoes": {
+                        "permissao": {"anterior": permission.descricao, "novo": None}
+                    },
+                },
             )
         )
         db.commit()

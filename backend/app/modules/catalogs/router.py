@@ -195,14 +195,30 @@ def get_admin_people(
     response_model=PersonAdminItem,
     status_code=status.HTTP_201_CREATED,
 )
-def create_person_version(
+def create_person(
     payload: PersonCreateRequest,
     db: DatabaseSession,
     auth: CsrfProtectedAuth,
     access: AuthorizationContext = Depends(_catalog_admin_access),
 ) -> PersonAdminItem:
-    return admin_service.create_person_version(
+    return admin_service.create_person(
         db,
+        payload=payload,
+        actor_id=auth.user.id_usuario,
+    )
+
+
+@router.put("/cadastros/pessoas/{id_pessoa}", response_model=PersonAdminItem)
+def update_person(
+    id_pessoa: int,
+    payload: PersonCreateRequest,
+    db: DatabaseSession,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_catalog_admin_access),
+) -> PersonAdminItem:
+    return admin_service.update_person(
+        db,
+        id_pessoa=id_pessoa,
         payload=payload,
         actor_id=auth.user.id_usuario,
     )
@@ -239,14 +255,30 @@ def get_admin_reasons(
     response_model=ReasonAdminItem,
     status_code=status.HTTP_201_CREATED,
 )
-def create_reason_version(
+def create_reason(
     payload: ReasonCreateRequest,
     db: DatabaseSession,
     auth: CsrfProtectedAuth,
     access: AuthorizationContext = Depends(_catalog_admin_access),
 ) -> ReasonAdminItem:
-    return admin_service.create_reason_version(
+    return admin_service.create_reason(
         db,
+        payload=payload,
+        actor_id=auth.user.id_usuario,
+    )
+
+
+@router.put("/cadastros/motivos/{id_motivo_nao_entrega}", response_model=ReasonAdminItem)
+def update_reason(
+    id_motivo_nao_entrega: int,
+    payload: ReasonCreateRequest,
+    db: DatabaseSession,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_catalog_admin_access),
+) -> ReasonAdminItem:
+    return admin_service.update_reason(
+        db,
+        id_motivo_nao_entrega=id_motivo_nao_entrega,
         payload=payload,
         actor_id=auth.user.id_usuario,
     )

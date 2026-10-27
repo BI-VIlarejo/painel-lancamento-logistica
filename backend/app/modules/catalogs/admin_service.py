@@ -41,15 +41,6 @@ def _business_today() -> date:
     return datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
 
-def _next_effective_date(
-    *,
-    starts_on: date,
-    ends_on: date | None,
-    today: date,
-) -> date:
-    return max(today, starts_on + timedelta(days=1), ends_on or today)
-
-
 def _db_unavailable(db: Session, exc: SQLAlchemyError) -> ServiceUnavailableError:
     try:
         db.rollback()
@@ -91,6 +82,50 @@ def _event(
             detalhes=details,
         )
     )
+
+
+def _audit_changes(
+    before: dict[str, object | None],
+    after: dict[str, object | None],
+) -> list[dict[str, str | None]]:
+    changes: list[dict[str, str | None]] = []
+    for field, new_value in after.items():
+        old_value = before.get(field)
+        if old_value == new_value:
+            continue
+        changes.append(
+            {
+                "campo": field,
+                "anterior": None if old_value is None else str(old_value),
+                "novo": None if new_value is None else str(new_value),
+            }
+        )
+    return changes
+
+
+def _person_audit_values(person: Pessoa | None) -> dict[str, object | None]:
+    if person is None:
+        return {
+            "nome_exibicao": None,
+            "tipo_funcao": None,
+            "tipo_transporte_entrega": None,
+        }
+    return {
+        "nome_exibicao": person.nome_exibicao,
+        "tipo_funcao": person.tipo_funcao,
+        "tipo_transporte_entrega": person.tipo_transporte_entrega,
+    }
+
+
+def _reason_audit_values(
+    reason: MotivoNaoEntrega | None,
+) -> dict[str, object | None]:
+    if reason is None:
+        return {"descricao_motivo": None, "grupo_motivo": None}
+    return {
+        "descricao_motivo": reason.descricao_motivo,
+        "grupo_motivo": reason.grupo_motivo,
+    }
 
 
 def list_localities(db: Session) -> list[LocalityAdminItem]:
@@ -159,8 +194,24 @@ def create_locality(
             kind="LOCALIDADE_CRIADA",
             actor_id=actor_id,
             details={
-                "id_localidade": item.id_localidade,
-                "codigo_localidade": item.codigo_localidade,
+                "alvo_tipo": "LOCALIDADE",
+                "alvo_id": item.id_localidade,
+                "alvo_codigo": item.codigo_localidade,
+                "alvo_nome": item.nome_localidade,
+                "alteracoes": _audit_changes(
+                    {
+                        "nome_localidade": None,
+                        "tipo_localidade": None,
+                        "cidade": None,
+                        "uf": None,
+                    },
+                    {
+                        "nome_localidade": item.nome_localidade,
+                        "tipo_localidade": item.tipo_localidade,
+                        "cidade": item.cidade,
+                        "uf": item.uf,
+                    },
+                ),
             },
         )
         db.commit()
@@ -196,17 +247,20 @@ def update_locality(
             uf=payload.uf,
             exclude_id=item.id_localidade,
         )
-        changed_fields = [
-            field
-            for field, value in (
-                ("nome_localidade", payload.nome_localidade),
-                ("tipo_localidade", payload.tipo_localidade),
-                ("cidade", payload.cidade),
-                ("uf", payload.uf),
-            )
-            if getattr(item, field) != value
-        ]
-        if not changed_fields:
+        before = {
+            "nome_localidade": item.nome_localidade,
+            "tipo_localidade": item.tipo_localidade,
+            "cidade": item.cidade,
+            "uf": item.uf,
+        }
+        after = {
+            "nome_localidade": payload.nome_localidade,
+            "tipo_localidade": payload.tipo_localidade,
+            "cidade": payload.cidade,
+            "uf": payload.uf,
+        }
+        changes = _audit_changes(before, after)
+        if not changes:
             return LocalityAdminItem.model_validate(item)
         item.nome_localidade = payload.nome_localidade
         item.tipo_localidade = payload.tipo_localidade
@@ -218,9 +272,12 @@ def update_locality(
             kind="LOCALIDADE_ATUALIZADA",
             actor_id=actor_id,
             details={
-                "id_localidade": item.id_localidade,
-                "codigo_localidade": item.codigo_localidade,
-                "campos_alterados": changed_fields,
+                "alvo_tipo": "LOCALIDADE",
+                "alvo_id": item.id_localidade,
+                "alvo_codigo": item.codigo_localidade,
+                "alvo_nome": item.nome_localidade,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
             },
         )
         db.commit()
@@ -257,13 +314,18 @@ def set_locality_active(
                 "Informe cidade e UF antes de ativar a localidade."
             )
         item.ativo = payload.ativo
+        changes = _audit_changes({"ativo": not payload.ativo}, {"ativo": payload.ativo})
         _event(
             db,
             kind="LOCALIDADE_ATIVADA" if item.ativo else "LOCALIDADE_DESATIVADA",
             actor_id=actor_id,
             details={
-                "id_localidade": item.id_localidade,
-                "codigo_localidade": item.codigo_localidade,
+                "alvo_tipo": "LOCALIDADE",
+                "alvo_id": item.id_localidade,
+                "alvo_codigo": item.codigo_localidade,
+                "alvo_nome": item.nome_localidade,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
             },
         )
         db.commit()
@@ -285,48 +347,33 @@ def list_people(db: Session) -> list[PersonAdminItem]:
         raise _db_unavailable(db, exc) from exc
 
 
-def create_person_version(
+def create_person(
     db: Session,
     *,
     payload: PersonCreateRequest,
     actor_id: int,
 ) -> PersonAdminItem:
     now = _now()
-    today = _business_today()
     stable_code = str(payload.codigo_pessoa or uuid4())
     try:
-        previous = repository.get_latest_person_for_update(db, codigo_pessoa=stable_code)
-        effective_date = (
-            _next_effective_date(
-                starts_on=previous.vigente_desde,
-                ends_on=previous.vigente_ate,
-                today=today,
-            )
-            if previous is not None
-            else today
-        )
-        if previous is not None:
-            if previous.ativo:
-                previous.vigente_ate = effective_date
-                previous.ativo = effective_date > today
-                previous.atualizado_em = now
-            event_kind = "PESSOA_VERSIONADA"
-            origin_system = payload.sistema_origem or previous.sistema_origem
-            origin_code = payload.codigo_pessoa_origem or previous.codigo_pessoa_origem
-        else:
-            event_kind = "PESSOA_CRIADA"
-            origin_system = payload.sistema_origem
-            origin_code = payload.codigo_pessoa_origem
+        if repository.get_latest_person_for_update(db, codigo_pessoa=stable_code):
+            raise ConflictError("Já existe uma pessoa com esse código. Edite o cadastro existente.")
+        values = {
+            "nome_exibicao": payload.nome_exibicao,
+            "tipo_funcao": payload.tipo_funcao,
+            "tipo_transporte_entrega": payload.tipo_transporte_entrega,
+        }
+        changes = _audit_changes(_person_audit_values(None), values)
 
         item = Pessoa(
             codigo_pessoa=stable_code,
-            sistema_origem=origin_system,
-            codigo_pessoa_origem=origin_code,
+            sistema_origem=payload.sistema_origem,
+            codigo_pessoa_origem=payload.codigo_pessoa_origem,
             nome_exibicao=payload.nome_exibicao,
             tipo_funcao=payload.tipo_funcao,
             tipo_transporte_entrega=payload.tipo_transporte_entrega,
             ativo=True,
-            vigente_desde=effective_date,
+            vigente_desde=_business_today(),
             vigente_ate=None,
             criado_por=actor_id,
             criado_em=now,
@@ -336,9 +383,16 @@ def create_person_version(
         db.flush()
         _event(
             db,
-            kind=event_kind,
+            kind="PESSOA_CRIADA",
             actor_id=actor_id,
-            details={"id_pessoa": item.id_pessoa, "codigo_pessoa": item.codigo_pessoa},
+            details={
+                "alvo_tipo": "PESSOA",
+                "alvo_id": item.id_pessoa,
+                "alvo_codigo": item.codigo_pessoa,
+                "alvo_nome": item.nome_exibicao,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
+            },
         )
         db.commit()
         return PersonAdminItem.model_validate(item)
@@ -347,7 +401,63 @@ def create_person_version(
         raise
     except IntegrityError as exc:
         db.rollback()
-        raise ConflictError("A pessoa já possui uma versão nesse período.") from exc
+        raise ConflictError("Já existe uma pessoa com esse código.") from exc
+    except SQLAlchemyError as exc:
+        raise _db_unavailable(db, exc) from exc
+
+
+def update_person(
+    db: Session,
+    *,
+    id_pessoa: int,
+    payload: PersonCreateRequest,
+    actor_id: int,
+) -> PersonAdminItem:
+    try:
+        item = repository.get_person_for_update(db, id_pessoa=id_pessoa)
+        if item is None:
+            raise NotFoundError("Pessoa não encontrada.")
+        latest = repository.get_latest_person_for_update(
+            db,
+            codigo_pessoa=item.codigo_pessoa,
+        )
+        if latest is None or latest.id_pessoa != item.id_pessoa:
+            raise ConflictError("O cadastro mudou. Atualize a lista antes de editar.")
+        if payload.codigo_pessoa is not None and str(payload.codigo_pessoa) != item.codigo_pessoa:
+            raise ConflictError("O código estável da pessoa não pode ser alterado.")
+        before = _person_audit_values(item)
+        after = {
+            "nome_exibicao": payload.nome_exibicao,
+            "tipo_funcao": payload.tipo_funcao,
+            "tipo_transporte_entrega": payload.tipo_transporte_entrega,
+        }
+        changes = _audit_changes(before, after)
+        if not changes:
+            db.commit()
+            return PersonAdminItem.model_validate(item)
+
+        item.nome_exibicao = payload.nome_exibicao
+        item.tipo_funcao = payload.tipo_funcao
+        item.tipo_transporte_entrega = payload.tipo_transporte_entrega
+        item.atualizado_em = _now()
+        _event(
+            db,
+            kind="PESSOA_ATUALIZADA",
+            actor_id=actor_id,
+            details={
+                "alvo_tipo": "PESSOA",
+                "alvo_id": item.id_pessoa,
+                "alvo_codigo": item.codigo_pessoa,
+                "alvo_nome": item.nome_exibicao,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
+            },
+        )
+        db.commit()
+        return PersonAdminItem.model_validate(item)
+    except APIError:
+        db.rollback()
+        raise
     except SQLAlchemyError as exc:
         raise _db_unavailable(db, exc) from exc
 
@@ -365,17 +475,28 @@ def deactivate_person(
             raise NotFoundError("Pessoa não encontrada.")
         latest = repository.get_latest_person_for_update(db, codigo_pessoa=item.codigo_pessoa)
         if latest is None or latest.id_pessoa != item.id_pessoa:
-            raise ConflictError("Só é possível desativar a versão atual do cadastro.")
+            raise ConflictError("Só é possível desativar o cadastro atual.")
         if not item.ativo:
             raise ConflictError("Essa pessoa já está inativa.")
         item.ativo = False
         item.vigente_ate = max(_business_today(), item.vigente_desde + timedelta(days=1))
         item.atualizado_em = _now()
+        changes = _audit_changes(
+            {"ativo": True},
+            {"ativo": False},
+        )
         _event(
             db,
             kind="PESSOA_DESATIVADA",
             actor_id=actor_id,
-            details={"id_pessoa": item.id_pessoa, "codigo_pessoa": item.codigo_pessoa},
+            details={
+                "alvo_tipo": "PESSOA",
+                "alvo_id": item.id_pessoa,
+                "alvo_codigo": item.codigo_pessoa,
+                "alvo_nome": item.nome_exibicao,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
+            },
         )
         db.commit()
         return PersonAdminItem.model_validate(item)
@@ -396,45 +517,31 @@ def list_reasons(db: Session) -> list[ReasonAdminItem]:
         raise _db_unavailable(db, exc) from exc
 
 
-def create_reason_version(
+def create_reason(
     db: Session,
     *,
     payload: ReasonCreateRequest,
     actor_id: int,
 ) -> ReasonAdminItem:
     now = _now()
-    today = _business_today()
     try:
         stable_code = payload.codigo_motivo or _unique_reason_code(
             db, description=payload.descricao_motivo
         )
-        previous = (
-            repository.get_latest_reason_for_update(db, codigo_motivo=stable_code)
-        )
-        effective_date = (
-            _next_effective_date(
-                starts_on=previous.vigente_desde,
-                ends_on=previous.vigente_ate,
-                today=today,
-            )
-            if previous is not None
-            else today
-        )
-        if previous is not None:
-            if previous.ativo:
-                previous.vigente_ate = effective_date
-                previous.ativo = effective_date > today
-                previous.atualizado_em = now
-            event_kind = "MOTIVO_VERSIONADO"
-        else:
-            event_kind = "MOTIVO_CRIADO"
+        if repository.get_latest_reason_for_update(db, codigo_motivo=stable_code):
+            raise ConflictError("Já existe um motivo com esse código. Edite o cadastro existente.")
+        values = {
+            "descricao_motivo": payload.descricao_motivo,
+            "grupo_motivo": payload.grupo_motivo,
+        }
+        changes = _audit_changes(_reason_audit_values(None), values)
 
         item = MotivoNaoEntrega(
             codigo_motivo=stable_code,
             descricao_motivo=payload.descricao_motivo,
             grupo_motivo=payload.grupo_motivo,
             ativo=True,
-            vigente_desde=effective_date,
+            vigente_desde=_business_today(),
             vigente_ate=None,
             criado_por=actor_id,
             criado_em=now,
@@ -444,9 +551,16 @@ def create_reason_version(
         db.flush()
         _event(
             db,
-            kind=event_kind,
+            kind="MOTIVO_CRIADO",
             actor_id=actor_id,
-            details={"id_motivo_nao_entrega": item.id_motivo_nao_entrega, "codigo": item.codigo_motivo},
+            details={
+                "alvo_tipo": "MOTIVO",
+                "alvo_id": item.id_motivo_nao_entrega,
+                "alvo_codigo": item.codigo_motivo,
+                "alvo_nome": item.descricao_motivo,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
+            },
         )
         db.commit()
         return ReasonAdminItem.model_validate(item)
@@ -455,7 +569,64 @@ def create_reason_version(
         raise
     except IntegrityError as exc:
         db.rollback()
-        raise ConflictError("O motivo já possui uma versão nesse período.") from exc
+        raise ConflictError("Já existe um motivo com esse código.") from exc
+    except SQLAlchemyError as exc:
+        raise _db_unavailable(db, exc) from exc
+
+
+def update_reason(
+    db: Session,
+    *,
+    id_motivo_nao_entrega: int,
+    payload: ReasonCreateRequest,
+    actor_id: int,
+) -> ReasonAdminItem:
+    try:
+        previous = repository.get_reason_for_update(
+            db,
+            id_motivo_nao_entrega=id_motivo_nao_entrega,
+        )
+        if previous is None:
+            raise NotFoundError("Motivo não encontrado.")
+        latest = repository.get_latest_reason_for_update(
+            db,
+            codigo_motivo=previous.codigo_motivo,
+        )
+        if latest is None or latest.id_motivo_nao_entrega != previous.id_motivo_nao_entrega:
+            raise ConflictError("O cadastro mudou. Atualize a lista antes de editar.")
+        if payload.codigo_motivo is not None and payload.codigo_motivo != previous.codigo_motivo:
+            raise ConflictError("O código estável do motivo não pode ser alterado.")
+        before = _reason_audit_values(previous)
+        after = {
+            "descricao_motivo": payload.descricao_motivo,
+            "grupo_motivo": payload.grupo_motivo,
+        }
+        changes = _audit_changes(before, after)
+        if not changes:
+            db.commit()
+            return ReasonAdminItem.model_validate(previous)
+
+        previous.descricao_motivo = payload.descricao_motivo
+        previous.grupo_motivo = payload.grupo_motivo
+        previous.atualizado_em = _now()
+        _event(
+            db,
+            kind="MOTIVO_ATUALIZADO",
+            actor_id=actor_id,
+            details={
+                "alvo_tipo": "MOTIVO",
+                "alvo_id": previous.id_motivo_nao_entrega,
+                "alvo_codigo": previous.codigo_motivo,
+                "alvo_nome": previous.descricao_motivo,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
+            },
+        )
+        db.commit()
+        return ReasonAdminItem.model_validate(previous)
+    except APIError:
+        db.rollback()
+        raise
     except SQLAlchemyError as exc:
         raise _db_unavailable(db, exc) from exc
 
@@ -476,17 +647,28 @@ def deactivate_reason(
             raise NotFoundError("Motivo não encontrado.")
         latest = repository.get_latest_reason_for_update(db, codigo_motivo=item.codigo_motivo)
         if latest is None or latest.id_motivo_nao_entrega != item.id_motivo_nao_entrega:
-            raise ConflictError("Só é possível desativar a versão atual do motivo.")
+            raise ConflictError("Só é possível desativar o cadastro atual do motivo.")
         if not item.ativo:
             raise ConflictError("Esse motivo já está inativo.")
         item.ativo = False
         item.vigente_ate = max(_business_today(), item.vigente_desde + timedelta(days=1))
         item.atualizado_em = _now()
+        changes = _audit_changes(
+            {"ativo": True},
+            {"ativo": False},
+        )
         _event(
             db,
             kind="MOTIVO_DESATIVADO",
             actor_id=actor_id,
-            details={"id_motivo_nao_entrega": item.id_motivo_nao_entrega, "codigo": item.codigo_motivo},
+            details={
+                "alvo_tipo": "MOTIVO",
+                "alvo_id": item.id_motivo_nao_entrega,
+                "alvo_codigo": item.codigo_motivo,
+                "alvo_nome": item.descricao_motivo,
+                "campos_alterados": [change["campo"] for change in changes],
+                "alteracoes": changes,
+            },
         )
         db.commit()
         return ReasonAdminItem.model_validate(item)

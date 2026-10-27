@@ -116,8 +116,8 @@ function DeliveryComposition({ completed, notCompleted }: { completed: number; n
         <span className={cx(styles, commonStyles, "composition-not-completed")} style={{ width: `${failedWidth}%` }} />
       </div>
       <div className={cx(styles, commonStyles, "composition-legend")}>
-        <span><i className={cx(styles, commonStyles, "legend-completed")} />Realizadas <strong>{countFormat.format(completed)}</strong></span>
-        <span><i className={cx(styles, commonStyles, "legend-not-completed")} />Não realizadas <strong>{countFormat.format(notCompleted)}</strong></span>
+        <span><i className={cx(styles, commonStyles, "legend-completed")} />Realizadas <strong>{countFormat.format(completed)} · {rateLabel(doneWidth)}</strong></span>
+        <span><i className={cx(styles, commonStyles, "legend-not-completed")} />Não realizadas <strong>{countFormat.format(notCompleted)} · {rateLabel(failedWidth)}</strong></span>
       </div>
     </div>
   );
@@ -132,6 +132,61 @@ function PerformanceRate({ value, label = "Taxa de realização", neutral = fals
       <strong className={cx(styles, commonStyles, "rate-value")}>{rateLabel(value)}</strong>
     </div>
   );
+}
+
+type HorizontalBarItem = {
+  key: string;
+  label: string;
+  value: number | null;
+  valueLabel: string;
+  detail: string;
+};
+
+function HorizontalBarChart({
+  items,
+  scaleMax,
+  valueName,
+  tone = "warning",
+}: {
+  items: HorizontalBarItem[];
+  scaleMax: number;
+  valueName: string;
+  tone?: "warning" | "success";
+}) {
+  if (!items.length) return null;
+  return <div className={cx(styles, commonStyles, "insight-chart")} role="group" aria-label={valueName}>
+    <ol className={cx(styles, commonStyles, "insight-chart-list")}>
+      {items.map((item) => {
+        const width = item.value === null ? 0 : Math.min(100, Math.max(0, (item.value / scaleMax) * 100));
+        return <li className={cx(styles, commonStyles, "insight-chart-row")} key={item.key}>
+          <div className={cx(styles, commonStyles, "insight-chart-row-label")}><span>{item.label}</span><strong>{item.valueLabel}</strong></div>
+          <div className={cx(styles, commonStyles, "insight-chart-track")} role="meter" aria-valuemin={0} aria-valuemax={scaleMax} aria-valuenow={item.value ?? 0} aria-label={`${item.label}: ${item.valueLabel}`}>
+            <i className={cx(styles, commonStyles, tone === "success" ? "insight-chart-bar-success" : "insight-chart-bar-warning")} style={{ width: `${width}%` }} />
+          </div>
+          {item.detail && <small>{item.detail}</small>}
+        </li>;
+      })}
+    </ol>
+  </div>;
+}
+
+function DeliveryTypeChart({ items }: { items: DashboardResponse["por_tipo_entrega"] }) {
+  if (!items.length) return null;
+  return <div className={cx(styles, commonStyles, "delivery-type-chart")} role="group" aria-label="Entregas realizadas e não realizadas por tipo de transporte">
+    {items.map((item) => {
+      const total = item.realizadas + item.nao_realizadas;
+      const completedWidth = total ? (item.realizadas / total) * 100 : 0;
+      const failedWidth = total ? (item.nao_realizadas / total) * 100 : 0;
+      return <div className={cx(styles, commonStyles, "delivery-type-chart-row")} key={item.tipo_transporte_entrega ?? "unclassified"}>
+        <div className={cx(styles, commonStyles, "delivery-type-chart-heading")}><strong>{deliveryTypeLabel(item.tipo_transporte_entrega)}</strong><span>{rateLabel(item.taxa_realizacao)} realizadas</span></div>
+        <div className={cx(styles, commonStyles, "delivery-type-chart-track")} role="img" aria-label={`${deliveryTypeLabel(item.tipo_transporte_entrega)}: ${countFormat.format(item.realizadas)} realizadas e ${countFormat.format(item.nao_realizadas)} não realizadas`}>
+          <i className={cx(styles, commonStyles, "delivery-type-chart-completed")} style={{ width: `${completedWidth}%` }} />
+          <i className={cx(styles, commonStyles, "delivery-type-chart-failed")} style={{ width: `${failedWidth}%` }} />
+        </div>
+        <div className={cx(styles, commonStyles, "delivery-type-chart-legend")}><span><i className={cx(styles, commonStyles, "legend-completed")} />Realizadas {countFormat.format(item.realizadas)}</span><span><i className={cx(styles, commonStyles, "legend-not-completed")} />Não realizadas {countFormat.format(item.nao_realizadas)}</span><small>{countFormat.format(item.registros_entrega)} registros · {countFormat.format(item.itens_planejados)} entregas</small></div>
+      </div>;
+    })}
+  </div>;
 }
 
 export function ManagementDashboardPage() {
@@ -257,29 +312,46 @@ export function ManagementDashboardPage() {
 
       <section className={cx(styles, commonStyles, "manager-panel")}>
         <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Performance por loja</h2><p>Volume, resultado e relacionamento com clientes no mesmo período</p></div><span>{loading ? "—" : `${data?.por_localidade.length ?? 0} lojas`}</span></div>
-        {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lojas...</div> : !data?.por_localidade.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há lançamentos registrados para os filtros selecionados.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table")}><thead><tr><th>Loja</th><th>Lançamentos</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{data.por_localidade.map((item) => <tr key={item.id_localidade}><th scope="row">{item.nome}</th><td>{countFormat.format(item.lancamentos)}</td><td>{countFormat.format(item.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(item.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(item.nao_realizadas)}</td><td><PerformanceRate value={item.taxa_realizacao} /></td><td><PerformanceRate value={item.otif_percentual} label="OTIF" neutral /></td><td>{item.elogios === null ? "—" : countFormat.format(item.elogios)}</td><td>{item.reclamacoes === null ? "—" : countFormat.format(item.reclamacoes)}</td></tr>)}</tbody></table></div>}
+        {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lojas...</div> : !data?.por_localidade.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há lançamentos registrados para os filtros selecionados.</div> : <>
+          <p className={cx(styles, commonStyles, "insight-chart-caption")}>Taxa de realização por loja; as menores taxas aparecem primeiro. O volume ao lado ajuda a contextualizar a comparação.</p>
+          <HorizontalBarChart items={[...data.por_localidade].sort((a, b) => (a.taxa_realizacao ?? -1) - (b.taxa_realizacao ?? -1) || b.itens_planejados - a.itens_planejados).map((item) => ({ key: String(item.id_localidade), label: item.nome, value: item.taxa_realizacao, valueLabel: rateLabel(item.taxa_realizacao), detail: `${countFormat.format(item.itens_planejados)} entregas · ${countFormat.format(item.lancamentos)} lançamentos · ${rateLabel(item.otif_percentual)} OTIF` }))} scaleMax={100} valueName="Taxa de realização por loja" tone="success" />
+          <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table")}><thead><tr><th>Loja</th><th>Lançamentos</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{data.por_localidade.map((item) => <tr key={item.id_localidade}><th scope="row">{item.nome}</th><td>{countFormat.format(item.lancamentos)}</td><td>{countFormat.format(item.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(item.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(item.nao_realizadas)}</td><td><PerformanceRate value={item.taxa_realizacao} /></td><td><PerformanceRate value={item.otif_percentual} label="OTIF" neutral /></td><td>{item.elogios === null ? "—" : countFormat.format(item.elogios)}</td><td>{item.reclamacoes === null ? "—" : countFormat.format(item.reclamacoes)}</td></tr>)}</tbody></table></div>
+        </>}
       </section>
 
       <div className={cx(styles, commonStyles, "manager-analysis-grid")}>
         <section className={cx(styles, commonStyles, "manager-panel")}>
           <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Não realizadas por grupo de motivo</h2><p>Percentual das não realizadas e incidência no total</p></div><span>{loading ? "—" : `${data?.por_grupo_motivo.length ?? 0} grupos`}</span></div>
-          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando grupos...</div> : !data?.por_grupo_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Grupo do motivo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_grupo_motivo.map((group) => <tr key={group.grupo_motivo ?? "unclassified"}><th scope="row">{reasonGroupLabel(group.grupo_motivo)}</th><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(group.quantidade)}</td><td>{rateLabel(group.percentual_das_nao_realizadas)}</td><td>{rateLabel(group.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>}
+          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando grupos...</div> : !data?.por_grupo_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <>
+            <HorizontalBarChart items={[...data.por_grupo_motivo].sort((a, b) => b.quantidade - a.quantidade).map((group) => ({ key: group.grupo_motivo ?? "unclassified", label: reasonGroupLabel(group.grupo_motivo), value: group.quantidade, valueLabel: countFormat.format(group.quantidade), detail: `${rateLabel(group.percentual_das_nao_realizadas)} das não realizadas · ${rateLabel(group.incidencia_sobre_total)} do total` }))} scaleMax={Math.max(1, ...data.por_grupo_motivo.map((group) => group.quantidade))} valueName="Quantidade de não realizadas por grupo de motivo" />
+            <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Grupo do motivo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_grupo_motivo.map((group) => <tr key={group.grupo_motivo ?? "unclassified"}><th scope="row">{reasonGroupLabel(group.grupo_motivo)}</th><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(group.quantidade)}</td><td>{rateLabel(group.percentual_das_nao_realizadas)}</td><td>{rateLabel(group.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>
+          </>}
         </section>
         <section className={cx(styles, commonStyles, "manager-panel")}>
           <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Entregas próprias e terceirizadas</h2><p>Resultado por tipo informado no cadastro da equipe</p></div><span>{loading ? "—" : `${data?.por_tipo_entrega.length ?? 0} tipos`}</span></div>
-          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando tipos...</div> : !data?.por_tipo_entrega.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há entregas no período.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Tipo</th><th>Registros</th><th>Total</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{data.por_tipo_entrega.map((type) => <tr key={type.tipo_transporte_entrega ?? "unclassified"}><th scope="row">{deliveryTypeLabel(type.tipo_transporte_entrega)}</th><td>{countFormat.format(type.registros_entrega)}</td><td>{countFormat.format(type.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(type.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(type.nao_realizadas)}</td><td><PerformanceRate value={type.taxa_realizacao} /></td><td><PerformanceRate value={type.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table></div>}
+          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando tipos...</div> : !data?.por_tipo_entrega.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há entregas no período.</div> : <>
+            <DeliveryTypeChart items={data.por_tipo_entrega} />
+            <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Tipo</th><th>Registros</th><th>Total</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{data.por_tipo_entrega.map((type) => <tr key={type.tipo_transporte_entrega ?? "unclassified"}><th scope="row">{deliveryTypeLabel(type.tipo_transporte_entrega)}</th><td>{countFormat.format(type.registros_entrega)}</td><td>{countFormat.format(type.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(type.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(type.nao_realizadas)}</td><td><PerformanceRate value={type.taxa_realizacao} /></td><td><PerformanceRate value={type.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table></div>
+          </>}
         </section>
       </div>
 
       <section className={cx(styles, commonStyles, "manager-panel")}>
         <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Não realizadas por motivo</h2><p>Quantidade, grupo associado e participação nas entregas do período</p></div><span>{loading ? "—" : `${data?.por_motivo.length ?? 0} motivos`}</span></div>
-        {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando motivos...</div> : !data?.por_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Motivo</th><th>Grupo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_motivo.map((reason) => <tr key={reason.id_motivo}><th scope="row">{reason.motivo}</th><td>{reasonGroupLabel(reason.grupo_motivo)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(reason.quantidade)}</td><td>{rateLabel(reason.percentual_das_nao_realizadas)}</td><td>{rateLabel(reason.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>}
+        {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando motivos...</div> : !data?.por_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <>
+          <HorizontalBarChart items={[...data.por_motivo].sort((a, b) => b.quantidade - a.quantidade || a.motivo.localeCompare(b.motivo, "pt-BR")).map((reason) => ({ key: String(reason.id_motivo), label: reason.motivo, value: reason.quantidade, valueLabel: countFormat.format(reason.quantidade), detail: `${reasonGroupLabel(reason.grupo_motivo)} · ${rateLabel(reason.percentual_das_nao_realizadas)} das não realizadas · ${rateLabel(reason.incidencia_sobre_total)} do total` }))} scaleMax={Math.max(1, ...data.por_motivo.map((reason) => reason.quantidade))} valueName="Quantidade de não realizadas por motivo" />
+          <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Motivo</th><th>Grupo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_motivo.map((reason) => <tr key={reason.id_motivo}><th scope="row">{reason.motivo}</th><td>{reasonGroupLabel(reason.grupo_motivo)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(reason.quantidade)}</td><td>{rateLabel(reason.percentual_das_nao_realizadas)}</td><td>{rateLabel(reason.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>
+        </>}
       </section>
 
       <div className={cx(styles, commonStyles, "manager-analysis-grid")}>
         <section className={cx(styles, commonStyles, "manager-panel")}>
           <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Taxa de realização por equipe</h2><p>Resultado coletivo das equipes no recorte</p></div><span>{loading ? "—" : `${data?.por_equipe.length ?? 0} equipes`}</span></div>
-          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando equipes...</div> : !data?.por_equipe.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há equipes com lançamentos registrados.</div> : <><div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Equipe</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{shownTeams.map((team) => <tr key={team.chave}><th scope="row">{team.equipe}</th><td>{countFormat.format(team.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(team.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(team.nao_realizadas)}</td><td><PerformanceRate value={team.taxa_realizacao} /></td><td><PerformanceRate value={team.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table></div>{data.por_equipe.length > 8 && <button className={cx(styles, commonStyles, "table-more-button")} type="button" onClick={() => setShowAllTeams((value) => !value)}>{showAllTeams ? "Mostrar menos" : `Ver todas as ${data.por_equipe.length} equipes`}</button>}</>}
+          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando equipes...</div> : !data?.por_equipe.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há equipes com lançamentos registrados.</div> : <>
+            <p className={cx(styles, commonStyles, "insight-chart-caption")}>Todas as equipes; as menores taxas aparecem primeiro. Volume e OTIF ajudam a comparar equipes de tamanhos diferentes.</p>
+            <HorizontalBarChart items={[...data.por_equipe].sort((a, b) => (a.taxa_realizacao ?? -1) - (b.taxa_realizacao ?? -1) || b.itens_planejados - a.itens_planejados || a.equipe.localeCompare(b.equipe, "pt-BR")).map((team) => ({ key: team.chave, label: team.equipe, value: team.taxa_realizacao, valueLabel: rateLabel(team.taxa_realizacao), detail: `${countFormat.format(team.realizadas)} realizadas de ${countFormat.format(team.itens_planejados)} · ${rateLabel(team.otif_percentual)} OTIF` }))} scaleMax={100} valueName="Taxa de realização por equipe" tone="success" />
+            <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Equipe</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{shownTeams.map((team) => <tr key={team.chave}><th scope="row">{team.equipe}</th><td>{countFormat.format(team.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(team.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(team.nao_realizadas)}</td><td><PerformanceRate value={team.taxa_realizacao} /></td><td><PerformanceRate value={team.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table></div>{data.por_equipe.length > 8 && <button className={cx(styles, commonStyles, "table-more-button")} type="button" onClick={() => setShowAllTeams((value) => !value)}>{showAllTeams ? "Mostrar menos" : `Ver todas as ${data.por_equipe.length} equipes`}</button>}
+          </>}
         </section>
 
         <section className={cx(styles, commonStyles, "manager-panel")}>

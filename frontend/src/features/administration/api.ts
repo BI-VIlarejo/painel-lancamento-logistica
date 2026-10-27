@@ -32,6 +32,9 @@ export const administrationApi = {
   createPerson: (payload: { codigo_pessoa?: string; nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; tipo_transporte_entrega: DeliveryTransportType; sistema_origem?: string; codigo_pessoa_origem?: string }) => isDemoMode
     ? demoAdministrationApi.createPerson({ ...payload, codigo_pessoa: payload.codigo_pessoa ?? crypto.randomUUID(), sistema_origem: payload.sistema_origem ?? null, codigo_pessoa_origem: payload.codigo_pessoa_origem ?? null })
     : apiRequest<PersonAdminItem>("/cadastros/pessoas", { method: "POST", body: payload }),
+  updatePerson: (id: number, payload: { nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; tipo_transporte_entrega: DeliveryTransportType }) => isDemoMode
+    ? demoAdministrationApi.updatePerson(id, payload)
+    : apiRequest<PersonAdminItem>(`/cadastros/pessoas/${id}`, { method: "PUT", body: payload }),
   deactivatePerson: (id: number) => isDemoMode
     ? demoAdministrationApi.deactivatePerson(id)
     : apiRequest<PersonAdminItem>(`/cadastros/pessoas/${id}`, { method: "PATCH", body: { ativo: false } }),
@@ -39,6 +42,9 @@ export const administrationApi = {
   createReason: (payload: { codigo_motivo?: string; descricao_motivo: string; grupo_motivo: NonDeliveryReasonGroup }) => isDemoMode
     ? demoAdministrationApi.createReason(payload)
     : apiRequest<ReasonAdminItem>("/cadastros/motivos", { method: "POST", body: payload }),
+  updateReason: (id: number, payload: { descricao_motivo: string; grupo_motivo: NonDeliveryReasonGroup }) => isDemoMode
+    ? demoAdministrationApi.updateReason(id, payload)
+    : apiRequest<ReasonAdminItem>(`/cadastros/motivos/${id}`, { method: "PUT", body: payload }),
   deactivateReason: (id: number) => isDemoMode
     ? demoAdministrationApi.deactivateReason(id)
     : apiRequest<ReasonAdminItem>(`/cadastros/motivos/${id}`, { method: "PATCH", body: { ativo: false } }),

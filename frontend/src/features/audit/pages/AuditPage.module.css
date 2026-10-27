@@ -11,6 +11,11 @@
 .audit-table th { padding: 11px 14px; color: #63748a; background: #f8fafc; font-size: 12px; text-align: left; }
 .audit-table td { padding: 12px 14px; border-top: 1px solid #eef1ee; color: #56666f; font-size: 13px; }
 .audit-table td strong { color: #344b66; font-weight: 600; text-transform: capitalize; }
+.audit-actor { display: block; color: #344b66; font-weight: 600; }
+.audit-actor-username, .audit-actor-id { display: block; margin-top: 3px; color: #7b8992; font-size: 11px; }
+.audit-changes { display: grid; gap: 4px; min-width: 210px; margin: 0; padding-left: 16px; color: #56666f; }
+.audit-changes li { line-height: 1.4; }
+.audit-changes li strong { text-transform: none; }
 .audit-origin { display: inline-flex; padding: 4px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; }
 .audit-origin-entregas { color: #34536f; background: #edf3f8; }
 .audit-origin-acessos { color: #536f57; background: #edf4ee; }

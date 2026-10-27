@@ -454,7 +454,7 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
                           <button type="button" className={cx(styles, commonStyles, "icon-button remove-reason")} aria-label={`Remover motivo ${reasonIndex + 1} da entrega ${index + 1}`} disabled={saving} onClick={() => removeReason(line, reason.key)}>×</button>
                         </div>
                         <label className={cx(styles, commonStyles, "form-field reason-observation")}>
-                          <span>Observação deste motivo <small className={cx(styles, commonStyles, "field-hint")}>opcional</small></span>
+                          <span>Observação</span>
                           <textarea value={reason.observation} onChange={(event) => updateReason(line.key, reason.key, { observation: event.target.value })} placeholder="Detalhe o que aconteceu com este motivo..." maxLength={5000} rows={2} />
                         </label>
                       </div>

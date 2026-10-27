@@ -5,8 +5,12 @@ export type AuditEvent = {
   id_evento: number;
   tipo_evento: string;
   ator_usuario_id: number | null;
+  ator_nome: string | null;
+  ator_username: string | null;
   ocorrido_em: string;
   referencia_id: number | null;
+  alvo: string | null;
+  alteracoes: { campo: string; anterior: string | null; novo: string | null }[];
 };
 
 export type AuditFilters = {

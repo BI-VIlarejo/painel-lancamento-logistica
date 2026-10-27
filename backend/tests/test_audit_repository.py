@@ -12,6 +12,7 @@ from app.modules.access_control.models import AutorizacaoEvento
 from app.modules.audit.repository import list_events
 from app.modules.deliveries.models import LancamentoEvento
 from app.modules.feedback.models import Feedback
+from app.modules.auth.models import Usuario
 
 
 class AuditRepositoryTests(TestCase):
@@ -23,9 +24,38 @@ class AuditRepositoryTests(TestCase):
                 AutorizacaoEvento.__table__,
                 LancamentoEvento.__table__,
                 Feedback.__table__,
+                Usuario.__table__,
             ],
         )
         with Session(engine) as db:
+            db.add_all(
+                [
+                    Usuario(
+                        id_usuario=7,
+                        username="operador",
+                        nome_completo="Ana Operadora",
+                        ativo=True,
+                        criado_em=datetime(2026, 10, 1),
+                        atualizado_em=datetime(2026, 10, 1),
+                    ),
+                    Usuario(
+                        id_usuario=8,
+                        username="admin",
+                        nome_completo="Carlos Admin",
+                        ativo=True,
+                        criado_em=datetime(2026, 10, 1),
+                        atualizado_em=datetime(2026, 10, 1),
+                    ),
+                    Usuario(
+                        id_usuario=9,
+                        username="suporte",
+                        nome_completo="Beatriz Suporte",
+                        ativo=True,
+                        criado_em=datetime(2026, 10, 1),
+                        atualizado_em=datetime(2026, 10, 1),
+                    ),
+                ]
+            )
             db.add_all(
                 [
                     LancamentoEvento(
@@ -47,7 +77,12 @@ class AuditRepositoryTests(TestCase):
                         id_usuario_ator=8,
                         ocorrido_em=datetime(2026, 10, 21, 11, 0),
                         motivo="Motivo privado",
-                        detalhes={"username": "exemplo"},
+                        detalhes={
+                            "alvo_tipo": "USUARIO",
+                            "id_usuario": 8,
+                            "nome_completo": "Carlos Admin",
+                            "username": "admin",
+                        },
                     ),
                     Feedback(
                         id_feedback=1,
@@ -84,6 +119,11 @@ class AuditRepositoryTests(TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(rows[0]["origem"], "FEEDBACK")
         self.assertEqual(rows[0]["tipo_evento"], "FEEDBACK_CRIADO")
+        self.assertEqual(rows[0]["ator_nome"], "Beatriz Suporte")
+        self.assertEqual(rows[0]["ator_username"], "suporte")
+        self.assertEqual(rows[1]["ator_nome"], "Carlos Admin")
+        self.assertEqual(rows[1]["ator_username"], "admin")
+        self.assertEqual(rows[1]["alvo"], "Usuário · Carlos Admin (@admin)")
         self.assertNotIn("relato", rows[0])
         self.assertNotIn("nome_cliente", rows[0])
         self.assertNotIn("comentario", rows[1])

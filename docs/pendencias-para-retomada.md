@@ -3,6 +3,17 @@
 **Atualizado:** 27/10/2026
 **Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
 
+## Atualização de edição direta e auditoria — 27/10/2026
+
+- A edição de pessoas e motivos usa `PUT` e atualiza o mesmo registro; o sistema não insere outra versão para essas alterações. ID, código e vínculo existente permanecem iguais.
+- Alterar nome/tipo da pessoa ou descrição/grupo do motivo também muda a forma como os lançamentos antigos ligados àquela linha aparecem. A trilha grava os valores anteriores e novos para rastrear a mudança.
+- A auditoria exibe nome e username do ator, ação, alvo e resumo de alterações para eventos de usuários, perfis/recursos/permissões, concessões de escopo, localidades, pessoas, motivos, lançamentos e feedback. Motivos privados de revogação, comentários, relatos de clientes e credenciais não são expostos.
+- A migration `e31f9a7c2b64` libera `PESSOA_ATUALIZADA` e `MOTIVO_ATUALIZADO` nos CHECKs da trilha. `d2a8f6c1b904` continua aplicada em staging; `e31f9a7c2b64` ainda não foi aplicada.
+- As alterações estão no checkout local; CI remoto, push, workflow da API e publicação da nova prévia ainda não foram confirmados. Não executar os `PUT` novos em staging antes de aplicar `e31f9a7c2b64`.
+- A migration não adiciona colunas às tabelas de pessoa/motivo. A API existente já grava as diferenças no JSON `op_logistica_autorizacao_evento.detalhes`.
+
+Detalhamento do escopo e dos arquivos alterados: [relatório de edição direta e auditoria](./relatorio-edicao-direta-auditoria.md).
+
 ## Escopo confirmado
 
 - O primeiro módulo operacional é **Entregas** e o setor responsável por registrar esses lançamentos é **Suporte**. Feedback, painel e ranking continuam no escopo do lançamento já aprovado.
@@ -31,24 +42,25 @@
 ## Novas alterações solicitadas — 27/10/2026
 
 - [x] Atualizar a API real e os modelos para classificar cada versão de pessoa como `PROPRIA`/`TERCEIRIZADA` e cada motivo em um dos grupos `TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`. Novos cadastros exigem classificação; os campos permanecem nullable para preservar versões antigas.
-- [x] Exibir a classificação de transporte junto às pessoas e bloquear equipes novas que misturem tipos. Pessoas históricas sem classificação devem ser versionadas e revisadas antes do próximo lançamento.
+- [x] Exibir a classificação de transporte junto às pessoas e bloquear equipes novas que misturem tipos. Valores históricos sem classificação ficam nulos até revisão; a edição atualizada usa o mesmo ID, sem gerar versão nova.
 - [x] Implementar observação por motivo na API real, formulário, histórico e CSV. Novos lançamentos não aceitam observação geral; `op_logistica_entrega_diaria.observacao` continua preservada como legado.
 - [x] Atualizar indicadores da API e do painel com contagem e percentuais por grupo/motivo, taxa e OTIF por tipo de entrega, e motivos coletivos das equipes no ranking. Os percentuais apresentam participação nas não realizadas e incidência no total registrado.
 - [x] Preservar o score atual (`+1` elogio e `−1` reclamação) e mostrar motivos por pessoa como ocorrências das equipes em que participou. Atribuição individual e peso de motivos continuam sem aprovação.
 - [x] Revisar/aplicar `d2a8f6c1b904` após `c9b61a2f4d80`; confirmou `d2a8f6c1b904 (head)` em staging. A revisão adiciona `Pessoa.tipo_transporte_entrega`, `MotivoNaoEntrega.grupo_motivo` e `EntregaMotivo.observacao` como nullable.
-- [ ] Confirmar que o CI disparado pelo commit `2abb4ea` passou; depois executar o workflow manual `Deploy Portal API to Staging` e publicar a Preview Vercel com API real. Fazer aceite funcional com Suporte, cadastros oficiais e permissões reais.
+- [ ] Para a edição direta/auditoria, confirmar o CI da nova alteração; aplicar `e31f9a7c2b64` em staging antes do workflow manual `Deploy Portal API to Staging` e publicar a nova Preview Vercel. Fazer aceite funcional com Suporte, cadastros oficiais e permissões reais.
 - [ ] Confirmar com o responsável as premissas de quatro grupos controlados e equipe homogênea; não preencher classificações históricas por inferência.
 - [ ] Prever integração do Portal com o ERP SEAC antes do lançamento oficial. Confirmar fonte e acesso autorizados, campos, frequência, idempotência e se os dados serão importados como rascunho ou confirmados automaticamente.
 
 ### Ordem de publicação acordada para esta alteração
 
 1. Confirmar o CI da branch `staging`; corrigir e enviar qualquer falha.
-2. A migration `d2a8f6c1b904` já está aplicada em staging; conferir que a API publicada é compatível com esse schema.
-3. Atualizar os cadastros atuais com as classificações validadas por Suporte.
-4. Executar o workflow manual da API e publicar a Preview da Vercel com `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false`; aceitar login, cadastro, lançamento, observação por motivo, histórico/CSV e indicadores.
-5. Iniciar o piloto; acompanhar feedback e corrigir problemas antes de liberar a versão para todos.
-6. Projetar e implementar a entrada SEAC no backend antes do lançamento oficial.
-7. Preparar deploy de produção depois do aceite do piloto, com banco, secrets e migration próprios.
+2. Aplicar a migration `e31f9a7c2b64` na cadeia `logistica`, após confirmar que `d2a8f6c1b904` continua como revisão anterior.
+3. Executar o workflow manual da API e publicar a nova Preview da Vercel com `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false`.
+4. Aceitar login, cadastro e edição no mesmo ID, auditoria de autoria/alvo/alterações, lançamento, observação por motivo, histórico/CSV e indicadores.
+5. Atualizar os cadastros atuais com as classificações validadas por Suporte.
+6. Iniciar o piloto; acompanhar feedback e corrigir problemas antes de liberar a versão para todos.
+7. Projetar e implementar a entrada SEAC no backend antes do lançamento oficial.
+8. Preparar deploy de produção depois do aceite do piloto, com banco, secrets e migration próprios.
 
 Esta atualização substitui, para o staging atual, as instruções antigas abaixo que sugeriam criar um ALB e um DNS novos para a API. O caminho HTTPS validado usa o domínio do BI e o prefixo `/logistica-staging/`.
 
