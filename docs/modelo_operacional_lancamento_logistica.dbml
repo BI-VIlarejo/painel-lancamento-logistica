@@ -459,6 +459,7 @@ Table op_logistica_entrega_motivo {
 
   indexes {
     (id_motivo_nao_entrega) [name: 'ix_op_logistica_entrega_motivo_motivo']
+    (id_entrega_diaria) [name: 'ix_op_logistica_entrega_motivo_entrega']
   }
 
   checks {

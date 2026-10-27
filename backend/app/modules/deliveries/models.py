@@ -466,6 +466,10 @@ class EntregaMotivo(Base):
             "ix_op_logistica_entrega_motivo_motivo",
             "id_motivo_nao_entrega",
         ),
+        Index(
+            "ix_op_logistica_entrega_motivo_entrega",
+            "id_entrega_diaria",
+        ),
         CheckConstraint(
             "quantidade > 0",
             name="ck_op_logistica_entrega_motivo_quantidade",
