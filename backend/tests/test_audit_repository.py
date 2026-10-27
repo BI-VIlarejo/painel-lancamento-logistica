@@ -114,6 +114,16 @@ class AuditRepositoryTests(TestCase):
                 limit=2,
                 offset=0,
             )
+            next_page, next_total = list_events(
+                db,
+                origem=None,
+                tipo_evento=None,
+                ator_usuario_id=None,
+                ocorrido_de=None,
+                ocorrido_ate=None,
+                limit=2,
+                offset=2,
+            )
 
         self.assertEqual(total, 3)
         self.assertEqual(len(rows), 2)
@@ -121,12 +131,21 @@ class AuditRepositoryTests(TestCase):
         self.assertEqual(rows[0]["tipo_evento"], "FEEDBACK_CRIADO")
         self.assertEqual(rows[0]["ator_nome"], "Beatriz Suporte")
         self.assertEqual(rows[0]["ator_username"], "suporte")
-        self.assertEqual(rows[1]["ator_nome"], "Carlos Admin")
-        self.assertEqual(rows[1]["ator_username"], "admin")
-        self.assertEqual(rows[1]["alvo"], "Usuário · Carlos Admin (@admin)")
+        self.assertEqual(rows[1]["origem"], "ENTREGAS")
+        self.assertEqual(rows[1]["ator_nome"], "Ana Operadora")
+        self.assertEqual(rows[1]["ator_username"], "operador")
         self.assertNotIn("relato", rows[0])
         self.assertNotIn("nome_cliente", rows[0])
         self.assertNotIn("comentario", rows[1])
-        self.assertNotIn("motivo", rows[1])
-        self.assertNotIn("detalhes", rows[1])
+
+        self.assertEqual(next_total, 3)
+        self.assertEqual(len(next_page), 1)
+        self.assertEqual(next_page[0]["origem"], "ACESSOS")
+        self.assertEqual(next_page[0]["ator_nome"], "Carlos Admin")
+        self.assertEqual(next_page[0]["ator_username"], "admin")
+        self.assertEqual(
+            next_page[0]["alvo"], "Usuário · Carlos Admin (@admin)"
+        )
+        self.assertNotIn("motivo", next_page[0])
+        self.assertNotIn("detalhes", next_page[0])
         engine.dispose()
