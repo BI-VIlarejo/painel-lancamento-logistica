@@ -94,8 +94,8 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, can
     <div className={cx(styles, commonStyles, "page-stack")}>
       <div className={cx(styles, commonStyles, "page-heading-row")}>
         <div>
-          <h1>{isEdit ? "Editar rascunho" : "Lançamento de Entregas"}</h1>
-          <p className={cx(styles, commonStyles, "page-lead")}>{isEdit ? "Atualize os dados do rascunho antes de confirmar o lançamento." : "Informe as entregas da rota, confira os dados e confirme o lançamento."}</p>
+          <h1>{isEdit ? "Editar lançamento" : "Lançamento de entregas e coletas"}</h1>
+          <p className={cx(styles, commonStyles, "page-lead")}>{isEdit ? "Atualize os dados e registre a nova revisão do lançamento." : "Informe as entregas e coletas da rota para registrar o lançamento diretamente."}</p>
         </div>
       </div>
 

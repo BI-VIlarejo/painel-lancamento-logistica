@@ -11,6 +11,7 @@ const LoginPage = lazy(() => import("../features/auth/pages/LoginPage").then((mo
 const DeliveryHistoryPage = lazy(() => import("../features/deliveries/pages/DeliveryHistoryPage").then((module) => ({ default: module.DeliveryHistoryPage })));
 const DeliveryLaunchPage = lazy(() => import("../features/deliveries/pages/DeliveryLaunchPage").then((module) => ({ default: module.DeliveryLaunchPage })));
 const ManagementDashboardPage = lazy(() => import("../features/analytics/pages/ManagementDashboardPage").then((module) => ({ default: module.ManagementDashboardPage })));
+const PeopleRankingPage = lazy(() => import("../features/analytics/pages/PeopleRankingPage").then((module) => ({ default: module.PeopleRankingPage })));
 const RegistriesPage = lazy(() => import("../features/administration/pages/RegistriesPage").then((module) => ({ default: module.RegistriesPage })));
 const ChangePasswordPage = lazy(() => import("../features/auth/pages/ChangePasswordPage").then((module) => ({ default: module.ChangePasswordPage })));
 const ResetPasswordPage = lazy(() => import("../features/auth/pages/ResetPasswordPage").then((module) => ({ default: module.ResetPasswordPage })));
@@ -31,7 +32,7 @@ function PortalApp() {
   const canManageAccess = permissions.includes("CONTROLE_ACESSO:ADMINISTRAR");
   const canViewAudit = permissions.includes("AUDITORIA:VER");
   const editMatch = path.match(/^\/entregas\/([0-9a-f-]{36})$/i);
-  const knownPath = ["/", "/login", "/entregas", "/historico", "/feedback", "/painel", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch);
+  const knownPath = ["/", "/login", "/entregas", "/historico", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch);
   const defaultPath = canCreate ? "/entregas" : canView ? "/historico" : canAccessFeedback ? "/feedback" : canViewDashboard ? "/painel" : canManageAccess || canManageCatalogs ? "/cadastros" : canViewAudit ? "/auditoria" : "/entregas";
 
   useEffect(() => {
@@ -63,7 +64,7 @@ function PortalApp() {
     </Suspense>;
   }
 
-  const currentPath = ["/historico", "/feedback", "/painel", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
+  const currentPath = ["/historico", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
   return (
     <AppShell
       user={user}
@@ -76,7 +77,9 @@ function PortalApp() {
         {path === "/trocar-senha"
           ? <ChangePasswordPage onChangePassword={changePassword} onCancel={() => navigate(defaultPath)} />
           : path === "/painel" && canViewDashboard
-          ? <ManagementDashboardPage />
+          ? <ManagementDashboardPage onNavigate={navigate} />
+          : path === "/indicadores/pessoas" && canViewDashboard
+          ? <PeopleRankingPage />
           : path === "/auditoria" && canViewAudit
           ? <AuditPage />
           : path === "/feedback" && canAccessFeedback

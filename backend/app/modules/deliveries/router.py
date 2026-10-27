@@ -17,6 +17,7 @@ from app.modules.deliveries import service
 from app.modules.deliveries.schemas import (
     DeliveryDraftCreateRequest,
     DeliveryDraftUpdateRequest,
+    DeliveryCorrectionRequest,
     DeliveryEventResponse,
     DeliveryLaunchDetail,
     DeliveryLaunchPage,
@@ -192,7 +193,7 @@ def confirm_delivery_draft(
 )
 def start_delivery_correction(
     codigo_lancamento: UUID,
-    payload: DeliveryLifecycleReasonRequest,
+    payload: DeliveryCorrectionRequest,
     db: DatabaseSession,
     response: Response,
     auth: CsrfProtectedAuth,

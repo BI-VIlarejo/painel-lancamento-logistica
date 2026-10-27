@@ -13,10 +13,11 @@ from app.core.exceptions import ConflictError
 from app.core.orm import Base
 from app.modules.access_control.service import AuthorizationContext, EffectiveGrant
 from app.modules.auth.models import Usuario
-from app.modules.catalogs.models import Localidade, Pessoa, Setor
+from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa, Setor
 from app.modules.analytics.service import get_dashboard
 from app.modules.deliveries.models import (
     EntregaDiaria,
+    EntregaMotivo,
     EntregaParticipante,
     FormularioVersao,
     Lancamento,
@@ -362,6 +363,93 @@ class FeedbackServiceTests(unittest.TestCase):
             id_localidade=3,
         )
         self.assertEqual(dashboard.resumo.otif_percentual, 0.0)
+
+    def test_dashboard_separates_collection_totals_and_repeated_reason_occurrences(self) -> None:
+        for person_id in (4, 5):
+            person = self.db.get(Pessoa, person_id)
+            assert person is not None
+            person.tipo_transporte_entrega = "PROPRIA"
+        self.db.add_all(
+            [
+                MotivoNaoEntrega(
+                    id_motivo_nao_entrega=11,
+                    codigo_motivo="AVARIA",
+                    descricao_motivo="Avaria",
+                    grupo_motivo="LOJA",
+                    ativo=True,
+                    vigente_desde=date(2020, 1, 1),
+                    vigente_ate=None,
+                    criado_por=1,
+                    criado_em=self.now,
+                    atualizado_em=self.now,
+                ),
+                EntregaDiaria(
+                    id_entrega_diaria=10,
+                    id_lancamento_revisao=8,
+                    codigo_item_lancamento=str(uuid4()),
+                    tipo_operacao="COLETA",
+                    data_entrega=self.delivery_date,
+                    id_localidade=3,
+                    quantidade_realizada=5,
+                    quantidade_nao_realizada=2,
+                    quantidade_entregas_no_prazo=None,
+                    quantidade_entregas_completas=None,
+                    observacao=None,
+                    criado_em=self.now,
+                    atualizado_em=self.now,
+                ),
+                EntregaParticipante(
+                    id_entrega_diaria=10,
+                    id_pessoa=4,
+                    papel_participante="MOTORISTA",
+                    ordem=1,
+                ),
+                EntregaParticipante(
+                    id_entrega_diaria=10,
+                    id_pessoa=5,
+                    papel_participante="AJUDANTE",
+                    ordem=1,
+                ),
+                EntregaMotivo(
+                    id_entrega_motivo=21,
+                    id_entrega_diaria=10,
+                    id_motivo_nao_entrega=11,
+                    quantidade=1,
+                    observacao="Primeiro item",
+                ),
+                EntregaMotivo(
+                    id_entrega_motivo=22,
+                    id_entrega_diaria=10,
+                    id_motivo_nao_entrega=11,
+                    quantidade=1,
+                    observacao="Segundo item",
+                ),
+            ]
+        )
+        self.db.commit()
+
+        dashboard = get_dashboard(
+            self.db,
+            access=self._access(permission="PAINEL_GERENCIAL:ACESSAR"),
+            data_de=self.delivery_date,
+            data_ate=self.delivery_date,
+            id_localidade=3,
+            tipo_transporte_entrega="PROPRIA",
+        )
+
+        self.assertEqual(dashboard.resumo.entregas_realizadas, 12)
+        self.assertEqual(dashboard.resumo.entregas_nao_realizadas, 0)
+        self.assertEqual(dashboard.resumo.coletas_realizadas, 5)
+        self.assertEqual(dashboard.resumo.coletas_nao_realizadas, 2)
+        self.assertEqual(dashboard.resumo.itens_planejados, 19)
+        self.assertEqual(dashboard.resumo.otif_percentual, 10.53)
+        self.assertEqual(dashboard.tipo_transporte_entrega, "PROPRIA")
+        self.assertEqual(len(dashboard.por_motivo), 1)
+        self.assertEqual(dashboard.por_motivo[0].tipo_operacao, "COLETA")
+        self.assertEqual(dashboard.por_motivo[0].quantidade, 2)
+        self.assertEqual(dashboard.por_grupo_motivo[0].grupo_motivo, "LOJA")
+        self.assertEqual(dashboard.por_tipo_entrega[0].registros_entrega, 1)
+        self.assertEqual(dashboard.por_tipo_entrega[0].registros_coleta, 1)
 
     def test_api_requires_and_normalizes_customer_name(self) -> None:
         payload = self._payload().model_dump()

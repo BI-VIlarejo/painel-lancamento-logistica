@@ -3,6 +3,15 @@
 **Atualizado:** 27/10/2026
 **Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
 
+## Atualização de escopo: coletas e motivos por unidade — 27/10/2026
+
+- Requisitos e critérios técnicos registrados em [alteracoes-coletas-edicao-indicadores.md](./alteracoes-coletas-edicao-indicadores.md).
+- A implementação local adiciona a operação `COLETA`, grava um motivo/observação para cada item não realizado, inclui coletas no OTIF combinado e mantém os totais identificados por operação.
+- O lançamento normal confirma diretamente, sem a página de conferência. A edição pelo histórico não pede justificativa; o cancelamento auditado mantém justificativa obrigatória.
+- O painel recebe filtro própria/terceirizada e o ranking passa à página separada `/indicadores/pessoas`, com filtros adicionais.
+- A migration `a640c9e2f7b1` depende da `e31f9a7c2b64`, já aplicada em staging. `a640c9e2f7b1` ainda não foi aplicada; o branch local ainda precisa de CI, publicação da API, atualização da preview e aceite funcional.
+- Não publicar em produção nesta etapa. Depois do aceite do piloto, preparar migration e deploy de produção em fluxo separado.
+
 ## Atualização de edição direta e auditoria — 27/10/2026
 
 - A edição de pessoas e motivos usa `PUT` e atualiza o mesmo registro; o sistema não insere outra versão para essas alterações. ID, código e vínculo existente permanecem iguais.
@@ -34,7 +43,7 @@ Detalhamento do escopo e dos arquivos alterados: [relatório de edição direta 
 - [x] O usuário confirmou o parse sanitizado da `OP_LOGISTICA_DATABASE_URL` e a conexão da API ao banco `vilarejo_bi_logistica_staging`; o script informou que nenhum dado foi alterado.
 - [x] O usuário confirmou `HTTP 200` em `https://api-bi.vilarejosolucoes.com.br/logistica-staging/health`, usando a regra `/logistica-staging/` no Nginx já existente do BI para encaminhar à Logística na porta `8081`.
 - [x] Depois de configurar a origem Vercel em `CORS_ALLOWED_ORIGINS`, o usuário confirmou que conseguiu entrar no portal e que a sessão persistiu.
-- [x] A correção de JSX de acesso negado foi commitada em `1fa4432`; o CI e a prévia foram confirmados pelo usuário. O deploy manual da API foi executado, e a revisão Alembic `c9b61a2f4d80 (head)` foi confirmada em staging.
+- [x] A correção de JSX de acesso negado foi commitada em `1fa4432`; o CI e a prévia foram confirmados pelo usuário. O deploy manual da API foi executado; `c9b61a2f4d80` e depois `e31f9a7c2b64` foram aplicadas à cadeia de staging.
 - [ ] Depois de publicar as alterações de otimização e edição de identidade, repetir as medições de desempenho com a mesma navegação e correlacionar chamadas pelo `X-Request-ID`.
 - [ ] Vyctor e a gerente do setor de Suporte estão preenchendo os cadastros oficiais em staging; validar os registros e confirmar conta/perfil/escopos do gestor antes do aceite do piloto.
 - [ ] A base de produção ainda não foi provisionada; produção continua bloqueada até haver banco, infraestrutura, secrets e validações próprios.
@@ -85,7 +94,7 @@ Esta atualização substitui, para o staging atual, as instruções antigas abai
    A checagem do endpoint `/health` confirma que a API inicia; o comando acima também confirmou a conexão ao catálogo de staging sem alterar dados. A credencial real não deve ser adicionada a este arquivo nem enviada em chat.
 
 5. [x] O endpoint externo usa o Nginx/proxy existente do BI no caminho `/logistica-staging/`, encaminhando à EC2 na porta `8081`; não é necessário criar outro ALB/DNS para o staging atual. A API respondeu `200`.
-6. [x] A revisão `c9b61a2f4d80 (head)` foi confirmada antes desta alteração; depois foi aplicada `d2a8f6c1b904`, e o estado atual é `d2a8f6c1b904 (head)`. Não executar bootstrap local nem migrations automaticamente pelo container.
+6. [x] A revisão `c9b61a2f4d80` foi confirmada antes desta alteração; depois foram aplicadas `d2a8f6c1b904` e `e31f9a7c2b64`, que é o estado atual de staging. Não executar bootstrap local nem migrations automaticamente pelo container.
 7. [x] A prévia Vercel foi configurada para alcançar a API de staging; o login e a persistência da sessão foram confirmados.
 8. [x] O frontend atual passou pela CI e a prévia do commit `1fa4432` foi confirmada pelo usuário.
 9. [x] `CORS_ALLOWED_ORIGINS` foi configurado para a origem da prévia; a sessão funcionou no navegador.

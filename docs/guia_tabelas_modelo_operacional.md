@@ -1,6 +1,6 @@
 # Guia das tabelas do modelo operacional de Logística
 
-**Status em 27/10/2026:** staging está na revisão `d2a8f6c1b904 (head)`; os cadastros oficiais estão sendo preenchidos por Vyctor e pela gerente de Suporte. A migration `e31f9a7c2b64`, necessária para permitir eventos de edição direta, está em preparação e ainda não foi aplicada. A edição atualiza a pessoa/motivo existente; a tela de auditoria mostra quem fez ações e quais campos mudaram. Falta CI, aplicação da migration, publicação da API/frontend e aceite.
+**Status em 27/10/2026:** staging está na revisão `e31f9a7c2b64 (head)`. A migration `a640c9e2f7b1`, necessária para coletas e ocorrências individuais de motivo, ainda não foi aplicada. O código local separa entregas e coletas, inclui ambas no OTIF e registra um motivo/observação por item não realizado. Faltam revisão/CI, aplicação da migration, publicação da API/frontend e aceite em staging.
 
 Este guia explica o papel de cada tabela `op_logistica_*` definida no [DBML operacional](./modelo_operacional_lancamento_logistica.dbml). O modelo dá suporte à autenticação e às sessões, aos cadastros, às permissões, ao preenchimento de formulários e aos eventos auditáveis. Algumas colunas de vigência/versionamento permanecem por compatibilidade com dados anteriores; a edição corrente de pessoas e motivos atualiza o registro existente.
 
@@ -12,10 +12,10 @@ As tabelas operacionais guardam o processo e seu histórico. As tabelas `dim_*` 
 2. Em cada solicitação protegida, o backend valida a sessão, a conta, as permissões e os escopos concedidos.
 3. O usuário inicia um lançamento usando uma versão publicada do formulário.
 4. O sistema grava uma ou mais revisões e os dados tipados do formulário.
-5. Quem preenche confere e confirma o lançamento. Eventos registram essa confirmação; correções futuras criam uma nova versão e preservam o histórico.
+5. Quem preenche envia o lançamento diretamente, sem tela de conferência final. A confirmação é auditada; o histórico permite editar ou cancelar, e as correções preservam a versão anterior.
 6. O Portal mantém os dados neste catálogo operacional e não os publica no modelo analítico.
 
-O painel apresenta séries temporais em linha, proporções em barra empilhada, motivos/grupos em barras horizontais ordenadas por quantidade e taxas por equipe/loja em barras horizontais ordenadas da menor para a maior. As tabelas detalhadas, incluindo Ranking por pessoa, permanecem preservadas.
+O painel apresenta séries temporais em linha, proporções em barra empilhada, motivos/grupos em barras horizontais ordenadas por quantidade e taxas por equipe/loja em barras horizontais ordenadas da menor para a maior. O ranking por pessoa fica em página própria com filtros de período, localidade, tipo de transporte, nome, função e situação.
 
 ```mermaid
 flowchart LR
@@ -96,9 +96,9 @@ Os IDs e as colunas de vigência/versionamento permanecem no schema por compatib
 
 | Tabela | O que guarda | Por que é importante |
 |---|---|---|
-| `op_logistica_entrega_diaria` | Resumo de entregas realizadas e não realizadas por data, localidade e equipe, dentro de uma revisão. Mantém colunas legadas de prazo/completude e observação geral durante a transição. | É a linha principal do formulário de Entregas. O grão é por equipe; por isso, podem existir vários registros para a mesma data e localidade. O total registrado é a soma de realizadas e não realizadas. OTIF é `não realizadas / total registrado` e pode ser agregado por motorista, equipe, loja e tipo de entrega. A nova interface deixa de gravar observação geral; preserva-se o campo para histórico existente. |
+| `op_logistica_entrega_diaria` | Resumo de entregas ou coletas realizadas e não realizadas por data, localidade e equipe, dentro de uma revisão. Mantém colunas legadas de prazo/completude e observação geral durante a transição. | `tipo_operacao` identifica `ENTREGA` ou `COLETA`; linhas antigas recebem `ENTREGA`. O grão é por equipe; por isso, podem existir vários registros para a mesma data e localidade. OTIF é `não realizadas / total registrado`, incluindo entregas e coletas, enquanto os painéis mantêm totais separados por operação. A nova interface deixa de gravar observação geral; preserva-se o campo para histórico existente. |
 | `op_logistica_entrega_participante` | Associação de cada resumo de entrega às pessoas participantes e seus papéis, como motorista ou ajudante. | Permite atribuir a entrega à equipe sem repetir as quantidades para cada pessoa. O serviço deve validar as regras da equipe, incluindo limite de motorista e ajudantes. |
-| `op_logistica_entrega_motivo` | Quantidade e observação de cada motivo associado a uma linha de entrega. | Explica a composição das não realizadas. O grupo é obtido do cadastro versionado do motivo. Na mesma transação, o serviço deve validar que a soma das quantidades por motivo coincide com `quantidade_nao_realizada`. A observação é específica da linha e não deve ser replicada das observações históricas gerais sem regra aprovada. |
+| `op_logistica_entrega_motivo` | Uma ocorrência de motivo e sua observação individual em uma entrega ou coleta. | `id_entrega_motivo` permite repetir o mesmo motivo no mesmo item sem compartilhar observação. Cada unidade não realizada exige uma linha; registros antigos com `quantidade` agrupada são expandidos pela API para manter compatibilidade. O grupo é obtido do cadastro do motivo. |
 | `op_logistica_feedback` | Feedback com tipo, data, nome do cliente e relato, ligado a uma entrega confirmada. O formulário permite escolher motorista e até dois ajudantes e valida essa equipe contra a entrega; loja e data vêm do registro relacionado. | Registra elogios e reclamações ligados à equipe da entrega; vários feedbacks podem apontar para a mesma entrega. O tipo usa um dos dois códigos fixos `ELOGIO` ou `RECLAMACAO`, validado no contrato e por `CHECK`. Nome e relato são protegidos pelas permissões de consulta/exportação e não são copiados para fatos nem logs técnicos. Não se coletam telefone, documento ou outros identificadores. Todos os perfis do piloto consultam/exportam dentro dos escopos; OPERADOR também registra/importa. |
 
 `op_logistica_entrega_participante` e `op_logistica_entrega_motivo` são tabelas de ligação: cada uma representa relações que podem envolver várias pessoas ou motivos sem guardar listas dentro de uma única coluna.
@@ -137,4 +137,14 @@ Mudanças futuras devem seguir a cadeia existente, sem criar uma tabela `alembic
 
 As tabelas de autorização e cadastros de referência poderão receber dados iniciais controlados em uma etapa de seed. Não criar usuários reais nem senhas padrão dentro da migration de schema. Contas são criadas por uma pessoa administradora autenticada, com senha aleatória numérica de seis dígitos exibida uma vez; não existe auto cadastro público nem troca obrigatória no primeiro acesso. A pessoa pode trocar a senha autenticada ou redefini-la com nome completo e username. A página registra concessões e revogações com evento de auditoria.
 
-**Migrations aplicadas em staging:** a revisão atual é `d2a8f6c1b904 (head)`, confirmada em 27/10/2026. `d7c9a4f2b610` adicionou as contagens de OTIF, a autoria/idempotência dos feedbacks e alinhou os CHECKs de auditoria; `f3c8a1d6b907` simplificou o modelo de feedback; `b817e6c2a904` acrescentou cidade/UF e auditoria de alterações de localidades; `c9b61a2f4d80` habilitou auditoria de alteração de identidade do usuário; `d2a8f6c1b904` acrescentou `op_logistica_pessoa.tipo_transporte_entrega`, `op_logistica_motivo_nao_entrega.grupo_motivo` e `op_logistica_entrega_motivo.observacao`, todos nullable para preservar linhas antigas. `e31f9a7c2b64` ainda está pendente: somente amplia os CHECKs existentes para aceitar `PESSOA_ATUALIZADA` e `MOTIVO_ATUALIZADO`; não cria tabela/coluna nem transforma os cadastros.
+**Estado confirmado em staging em 27/10/2026:** a revisão `e31f9a7c2b64` foi aplicada após `d2a8f6c1b904`; ela amplia os CHECKs de auditoria para aceitar atualizações de pessoa e motivo. A migration `a640c9e2f7b1` ainda está pendente e acrescenta `tipo_operacao` para coletas e uma chave substituta em `op_logistica_entrega_motivo`, permitindo motivos repetidos por ocorrência. Ela depende de `e31f9a7c2b64`; não aplique `upgrade` até revisar/publicar a migration e confirmar o alvo de staging.
+
+## Atualização de requisitos — coletas e ocorrências individuais (27/10/2026)
+
+- O formulário registra entregas e coletas em seções separadas; ambas têm quantidades realizadas e não realizadas e entram no OTIF combinado.
+- Cada unidade não realizada exige seu próprio motivo e sua própria observação. A chave `id_entrega_motivo` permite repetir o mesmo motivo no mesmo item.
+- O histórico continua sendo o caminho para editar ou cancelar. O formulário envia diretamente sem etapa de conferência; iniciar uma correção não exige justificativa, mas permanece auditado. Cancelar continua exigindo justificativa.
+- O painel filtra por tipo de transporte, apresenta coletas separadas das entregas nos resumos e motivos e usa uma página própria para o ranking por pessoa.
+- A migration `a640c9e2f7b1` ainda não foi aplicada em staging; código, migration, CI e publicação precisam ser coordenados antes do aceite funcional.
+
+Detalhes de contrato, interface e passos de release: [alterações de coletas e indicadores](./alteracoes-coletas-edicao-indicadores.md).

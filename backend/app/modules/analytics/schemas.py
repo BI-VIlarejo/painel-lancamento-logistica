@@ -1,6 +1,7 @@
 """Contratos do painel gerencial, sem expor detalhes pessoais de feedback."""
 
 from datetime import date
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -10,6 +11,8 @@ class DashboardSummary(BaseModel):
     itens_planejados: int
     entregas_realizadas: int
     entregas_nao_realizadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
     taxa_realizacao: float | None
     otif_percentual: float | None
 
@@ -37,6 +40,7 @@ class LocalityPerformance(BaseModel):
 
 
 class ReasonPerformance(BaseModel):
+    tipo_operacao: Literal["ENTREGA", "COLETA"]
     id_motivo: int
     motivo: str
     grupo_motivo: str | None
@@ -46,6 +50,7 @@ class ReasonPerformance(BaseModel):
 
 
 class ReasonGroupPerformance(BaseModel):
+    tipo_operacao: Literal["ENTREGA", "COLETA"]
     grupo_motivo: str | None
     quantidade: int
     percentual_das_nao_realizadas: float | None
@@ -55,14 +60,22 @@ class ReasonGroupPerformance(BaseModel):
 class DeliveryTypePerformance(BaseModel):
     tipo_transporte_entrega: str | None
     registros_entrega: int
+    registros_coleta: int
     itens_planejados: int
     realizadas: int
     nao_realizadas: int
+    entregas_planejadas: int
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    coletas_planejadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
     taxa_realizacao: float | None
     otif_percentual: float | None
 
 
 class PersonReasonCount(BaseModel):
+    tipo_operacao: Literal["ENTREGA", "COLETA"]
     id_motivo: int
     motivo: str
     grupo_motivo: str | None
@@ -109,6 +122,7 @@ class DashboardResponse(BaseModel):
     data_de: date | None
     data_ate: date | None
     id_localidade: int | None
+    tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"] | None
     resumo: DashboardSummary
     feedback: FeedbackSummary
     evolucao: list[TrendPoint]

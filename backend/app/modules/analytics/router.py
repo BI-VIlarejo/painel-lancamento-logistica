@@ -1,6 +1,7 @@
 """Leitura dos indicadores agregados do painel gerencial."""
 
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 
@@ -23,6 +24,7 @@ def get_dashboard(
     data_de: date | None = None,
     data_ate: date | None = None,
     id_localidade: int | None = Query(default=None, ge=1),
+    tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"] | None = None,
 ) -> DashboardResponse:
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
@@ -32,5 +34,6 @@ def get_dashboard(
         data_de=data_de,
         data_ate=data_ate,
         id_localidade=id_localidade,
+        tipo_transporte_entrega=tipo_transporte_entrega,
         request_id=request_id,
     )

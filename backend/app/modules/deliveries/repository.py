@@ -385,7 +385,7 @@ def list_reason_rows(
         .where(EntregaMotivo.id_entrega_diaria.in_(id_entregas))
         .order_by(
             EntregaMotivo.id_entrega_diaria,
-            MotivoNaoEntrega.descricao_motivo,
+            EntregaMotivo.id_entrega_motivo,
         )
     )
     return list(db.execute(statement).all())

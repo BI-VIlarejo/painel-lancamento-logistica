@@ -363,6 +363,10 @@ class EntregaDiaria(Base):
             name="ck_op_logistica_entrega_quantidades",
         ),
         CheckConstraint(
+            "tipo_operacao in ('ENTREGA', 'COLETA')",
+            name="ck_op_logistica_entrega_tipo_operacao",
+        ),
+        CheckConstraint(
             "(quantidade_entregas_no_prazo is null and "
             "quantidade_entregas_completas is null) or "
             "(quantidade_entregas_no_prazo is not null and "
@@ -389,6 +393,9 @@ class EntregaDiaria(Base):
         nullable=False,
     )
     codigo_item_lancamento: Mapped[str] = mapped_column(CHAR(36), nullable=False)
+    tipo_operacao: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ENTREGA", server_default="ENTREGA"
+    )
     data_entrega: Mapped[date] = mapped_column(Date, nullable=False)
     id_localidade: Mapped[int] = mapped_column(
         BigInteger,
@@ -465,13 +472,18 @@ class EntregaMotivo(Base):
         ),
     )
 
+    id_entrega_motivo: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
     id_entrega_diaria: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey(
             "op_logistica_entrega_diaria.id_entrega_diaria",
             name="fk_op_logistica_entrega_motivo_entrega",
         ),
-        primary_key=True,
+        nullable=False,
     )
     id_motivo_nao_entrega: Mapped[int] = mapped_column(
         BigInteger,
@@ -479,7 +491,7 @@ class EntregaMotivo(Base):
             "op_logistica_motivo_nao_entrega.id_motivo_nao_entrega",
             name="fk_op_logistica_entrega_motivo_motivo",
         ),
-        primary_key=True,
+        nullable=False,
     )
     quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)

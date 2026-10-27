@@ -2,6 +2,7 @@ export type DashboardFilters = {
   data_de?: string;
   data_ate?: string;
   id_localidade?: number;
+  tipo_transporte_entrega?: "PROPRIA" | "TERCEIRIZADA";
 };
 
 export type DashboardTrendPoint = {
@@ -27,6 +28,7 @@ export type DashboardLocality = {
 };
 
 export type DashboardReason = {
+  tipo_operacao: "ENTREGA" | "COLETA";
   id_motivo: number;
   motivo: string;
   grupo_motivo: string | null;
@@ -35,6 +37,7 @@ export type DashboardReason = {
   incidencia_sobre_total: number | null;
 };
 export type DashboardReasonGroup = {
+  tipo_operacao: "ENTREGA" | "COLETA";
   grupo_motivo: string | null;
   quantidade: number;
   percentual_das_nao_realizadas: number | null;
@@ -46,10 +49,18 @@ export type DashboardDeliveryType = {
   itens_planejados: number;
   realizadas: number;
   nao_realizadas: number;
+  registros_coleta: number;
+  entregas_planejadas: number;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  coletas_planejadas: number;
+  coletas_realizadas: number;
+  coletas_nao_realizadas: number;
   taxa_realizacao: number | null;
   otif_percentual: number | null;
 };
 export type DashboardPersonReason = {
+  tipo_operacao: "ENTREGA" | "COLETA";
   id_motivo: number;
   motivo: string;
   grupo_motivo: string | null;
@@ -90,11 +101,14 @@ export type DashboardResponse = {
   data_de: string | null;
   data_ate: string | null;
   id_localidade: number | null;
+  tipo_transporte_entrega: "PROPRIA" | "TERCEIRIZADA" | null;
   resumo: {
     lancamentos_registrados: number;
     itens_planejados: number;
     entregas_realizadas: number;
     entregas_nao_realizadas: number;
+    coletas_realizadas: number;
+    coletas_nao_realizadas: number;
     taxa_realizacao: number | null;
     otif_percentual: number | null;
   };

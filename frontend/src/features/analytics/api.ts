@@ -7,6 +7,7 @@ function queryFrom(filters: DashboardFilters): string {
   if (filters.data_de) params.set("data_de", filters.data_de);
   if (filters.data_ate) params.set("data_ate", filters.data_ate);
   if (filters.id_localidade) params.set("id_localidade", String(filters.id_localidade));
+  if (filters.tipo_transporte_entrega) params.set("tipo_transporte_entrega", filters.tipo_transporte_entrega);
   return params.toString();
 }
 

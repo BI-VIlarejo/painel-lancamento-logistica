@@ -185,22 +185,24 @@ def _build_details(
         db,
         id_entregas=delivery_ids,
     ):
-        reasons_by_item[reason_link.id_entrega_diaria].append(
-            DeliveryReasonResponse(
-                id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
-                codigo_motivo=reason.codigo_motivo,
-                descricao_motivo=reason.descricao_motivo,
-                grupo_motivo=reason.grupo_motivo,
-                quantidade=reason_link.quantidade,
-                observacao=reason_link.observacao,
+        for _ in range(reason_link.quantidade):
+            reasons_by_item[reason_link.id_entrega_diaria].append(
+                DeliveryReasonResponse(
+                    id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
+                    codigo_motivo=reason.codigo_motivo,
+                    descricao_motivo=reason.descricao_motivo,
+                    grupo_motivo=reason.grupo_motivo,
+                    quantidade=1,
+                    observacao=reason_link.observacao,
+                )
             )
-        )
 
     items_by_revision: dict[int, list[DeliveryItemResponse]] = defaultdict(list)
     for delivery, locality in item_rows:
         items_by_revision[delivery.id_lancamento_revisao].append(
             DeliveryItemResponse(
                 codigo_item_lancamento=UUID(delivery.codigo_item_lancamento),
+                tipo_operacao=delivery.tipo_operacao,
                 data_entrega=delivery.data_entrega,
                 id_localidade=locality.id_localidade,
                 codigo_localidade=locality.codigo_localidade,
@@ -238,6 +240,7 @@ def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
     for item in detail.itens:
         copied = DeliveryItemInput(
             codigo_item_lancamento=item.codigo_item_lancamento,
+            tipo_operacao=item.tipo_operacao,
             data_entrega=item.data_entrega,
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
@@ -252,7 +255,6 @@ def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
             motivos=[
                 DeliveryReasonInput(
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
-                    quantidade=reason.quantidade,
                     observacao=reason.observacao,
                 )
                 for reason in item.motivos
@@ -297,6 +299,7 @@ def _create_item_rows(
         delivery = EntregaDiaria(
             id_lancamento_revisao=revision.id_lancamento_revisao,
             codigo_item_lancamento=item_code,
+            tipo_operacao=item.tipo_operacao,
             data_entrega=item.data_entrega,
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
@@ -321,7 +324,7 @@ def _create_item_rows(
                 EntregaMotivo(
                     id_entrega_diaria=delivery.id_entrega_diaria,
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
-                    quantidade=reason.quantidade,
+                    quantidade=1,
                     observacao=reason.observacao,
                 )
             )
@@ -470,6 +473,12 @@ def list_drafts(
         summaries = []
         for detail in details:
             dates = [item.data_entrega for item in detail.itens]
+            delivery_items = [
+                item for item in detail.itens if item.tipo_operacao == "ENTREGA"
+            ]
+            collection_items = [
+                item for item in detail.itens if item.tipo_operacao == "COLETA"
+            ]
             summaries.append(
                 DeliveryLaunchSummary(
                     codigo_lancamento=detail.codigo_lancamento,
@@ -490,6 +499,18 @@ def list_drafts(
                     ),
                     quantidade_nao_realizada=sum(
                         item.quantidade_nao_realizada for item in detail.itens
+                    ),
+                    entregas_realizadas=sum(
+                        item.quantidade_realizada for item in delivery_items
+                    ),
+                    entregas_nao_realizadas=sum(
+                        item.quantidade_nao_realizada for item in delivery_items
+                    ),
+                    coletas_realizadas=sum(
+                        item.quantidade_realizada for item in collection_items
+                    ),
+                    coletas_nao_realizadas=sum(
+                        item.quantidade_nao_realizada for item in collection_items
                     ),
                     itens=detail.itens,
                 )
@@ -621,7 +642,7 @@ def start_correction_draft(
     db: Session,
     *,
     codigo_lancamento: UUID,
-    justificativa: str,
+    justificativa: str | None,
     idempotency_key: UUID,
     access: AuthorizationContext,
 ) -> DeliveryLaunchDetail:

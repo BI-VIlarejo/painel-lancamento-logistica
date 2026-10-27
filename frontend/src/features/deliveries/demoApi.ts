@@ -80,6 +80,7 @@ function makeItem(
   const reason = reasons.find((item) => item.id_motivo_nao_entrega === reasonId) ?? reasons[0];
   return {
     codigo_item_lancamento: uuid(),
+    tipo_operacao: "ENTREGA",
     data_entrega: dateOffset(daysAgo),
     id_localidade: idLocalidade,
     codigo_localidade: locality.codigo_localidade,
@@ -91,9 +92,14 @@ function makeItem(
       { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1, tipo_transporte_entrega: people.find((person) => person.id_pessoa === driverId)?.tipo_transporte_entrega ?? null },
       { id_pessoa: helperId, codigo_pessoa: uuid(), nome_exibicao: personName(helperId), papel_participante: "AJUDANTE", ordem: 2, tipo_transporte_entrega: people.find((person) => person.id_pessoa === helperId)?.tipo_transporte_entrega ?? null },
     ],
-    motivos: notCompleted > 0
-      ? [{ id_motivo_nao_entrega: reasonId, quantidade: notCompleted, observacao: null, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo, grupo_motivo: reason.grupo_motivo }]
-      : [],
+    motivos: Array.from({ length: notCompleted }, () => ({
+      id_motivo_nao_entrega: reasonId,
+      quantidade: 1,
+      observacao: null,
+      codigo_motivo: reason.codigo_motivo,
+      descricao_motivo: reason.descricao_motivo,
+      grupo_motivo: reason.grupo_motivo,
+    })),
   };
 }
 
@@ -192,6 +198,10 @@ function summarize(launch: DeliveryLaunchDetail): DeliveryLaunchSummary {
     quantidade_itens: launch.itens.length,
     quantidade_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_realizada, 0),
     quantidade_nao_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_nao_realizada, 0),
+    entregas_realizadas: launch.itens.filter((item) => (item.tipo_operacao ?? "ENTREGA") === "ENTREGA").reduce((sum, item) => sum + item.quantidade_realizada, 0),
+    entregas_nao_realizadas: launch.itens.filter((item) => (item.tipo_operacao ?? "ENTREGA") === "ENTREGA").reduce((sum, item) => sum + item.quantidade_nao_realizada, 0),
+    coletas_realizadas: launch.itens.filter((item) => item.tipo_operacao === "COLETA").reduce((sum, item) => sum + item.quantidade_realizada, 0),
+    coletas_nao_realizadas: launch.itens.filter((item) => item.tipo_operacao === "COLETA").reduce((sum, item) => sum + item.quantidade_nao_realizada, 0),
     itens: launch.itens,
   };
 }
@@ -201,6 +211,7 @@ function toResponseItem(item: DeliveryDraftRequest["itens"][number]): DeliveryIt
   return {
     ...item,
     codigo_item_lancamento: item.codigo_item_lancamento ?? uuid(),
+    tipo_operacao: item.tipo_operacao ?? "ENTREGA",
     codigo_localidade: locality.codigo_localidade,
     nome_localidade: locality.nome_localidade,
     observacao: null,
@@ -213,7 +224,7 @@ function toResponseItem(item: DeliveryDraftRequest["itens"][number]): DeliveryIt
     })),
     motivos: item.motivos.map((entry) => {
       const reason = reasons.find((candidate) => candidate.id_motivo_nao_entrega === entry.id_motivo_nao_entrega) ?? reasons[0];
-      return { ...entry, observacao: entry.observacao ?? null, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo, grupo_motivo: reason.grupo_motivo };
+      return { ...entry, quantidade: 1, observacao: entry.observacao ?? null, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo, grupo_motivo: reason.grupo_motivo };
     }),
   };
 }
@@ -334,7 +345,7 @@ export const demoApi = {
     addEvent(confirmed, "RASCUNHO_CONFIRMADO", "RASCUNHO", "ENVIADA");
     return confirmed;
   },
-  async startCorrection(id: string, justification: string): Promise<DeliveryLaunchDetail> {
+  async startCorrection(id: string, justification = ""): Promise<DeliveryLaunchDetail> {
     await pause();
     const history = getHistory();
     const index = history.findIndex((item) => item.codigo_lancamento === id);

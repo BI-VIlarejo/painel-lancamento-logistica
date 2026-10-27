@@ -83,7 +83,7 @@ O indicador é calculado com as quantidades registradas e agregado pelas somas d
 
 Metas e faixas de cor ficam para depois do primeiro piloto. O ranking misto de motoristas e ajudantes está incluído no release. Como o formulário registra contagens e motivos por equipe, cada participante recebe resultados coletivos das equipes em que trabalhou; os volumes e motivos não devem ser somados entre pessoas nem tratados como prova de responsabilidade individual. O ranking mostra os motivos das equipes como contexto, sem alterar o score atual (`+1` por elogio e `−1` por reclamação). Até que haja regra aprovada para atribuição e pesos, a ordem segue taxa de realização, score de atendimento, volume realizado e nome.
 
-**Apresentação visual dos indicadores:** a evolução diária/mensal do OTIF usa linha, pois compara uma série temporal; a proporção geral de realizadas/não realizadas usa barra horizontal empilhada a 100%, com contagem e percentual. Não realizadas por grupo e por motivo usam barras horizontais ordenadas pela quantidade, adequadas a nomes longos e ao destaque dos maiores volumes; ao lado de cada barra permanecem o percentual entre as não realizadas e a incidência sobre o total. A comparação Próprias/Terceirizadas usa uma barra empilhada por tipo, separando realizadas e não realizadas e exibindo taxa e volume. Taxa por equipe e por loja usa barras horizontais de 0 a 100%, com as menores taxas primeiro e o tamanho do volume visível para evitar interpretar uma taxa sem contexto. As tabelas de detalhamento, incluindo Ranking por pessoa e Performance por loja, permanecem no painel sem alteração; os gráficos são resumos visuais adicionais e não mudam dados, fórmulas, ordenação das tabelas nem contratos da API.
+**Apresentação visual dos indicadores:** a evolução diária/mensal do OTIF usa linha, pois compara uma série temporal; a proporção geral de realizadas/não realizadas usa barra horizontal empilhada a 100%, com contagem e percentual. Não realizadas por grupo e por motivo usam barras horizontais ordenadas pela quantidade, adequadas a nomes longos e ao destaque dos maiores volumes; ao lado de cada barra permanecem o percentual entre as não realizadas e a incidência sobre o total. A comparação Próprias/Terceirizadas usa uma barra empilhada por tipo, separando realizadas e não realizadas e exibindo taxa e volume. Taxa por equipe e por loja usa barras horizontais de 0 a 100%, com as menores taxas primeiro e o tamanho do volume visível para evitar interpretar uma taxa sem contexto. A tabela de Performance por loja permanece no painel; a tabela de Ranking por pessoa mantém suas colunas atuais em uma página própria com filtros adicionais.
 
 ### 2.7 Integração futura com o ERP SEAC
 
@@ -235,8 +235,8 @@ Essas regras protegem a base contra requests inválidos mesmo quando o formulár
 
 ### 6.1 Fluxo dos dados do portal
 
-1. A pessoa salva um lançamento como rascunho.
-2. A pessoa confere os dados e confirma o lançamento; a API valida sessão, setor, localidade, datas, pessoas, campos obrigatórios e regras aritméticas.
+1. A pessoa preenche o formulário de lançamento.
+2. Ao enviar, a API valida sessão, setor, localidade, datas, pessoas, campos obrigatórios e regras aritméticas e registra diretamente o lançamento, sem uma tela de conferência final.
 3. A confirmação registra o lançamento imediatamente, torna a versão imutável e cria um evento de auditoria. Não há aprovação obrigatória por outra pessoa.
 4. Uma correção posterior deve criar nova versão vinculada à anterior e preservar o histórico.
 5. Os painéis do Portal usam diretamente os registros operacionais confirmados, respeitando as permissões e o escopo da conta.
@@ -360,7 +360,7 @@ Este contrato é uma proposta de divisão por responsabilidade; nomes e formatos
 | `GET /api/v1/entregas` | Histórico paginado por data, localidade, equipe, situação e autor. | Aplicar o escopo no servidor antes de filtros/paginação. |
 | `POST /api/v1/entregas` | Cria um rascunho com cabeçalho, participantes e motivos. | Exigir setor/localidade permitidos; aceitar `Idempotency-Key` para proteger retries. |
 | `PATCH /api/v1/entregas/{id}` | Atualiza o próprio rascunho ou rascunho autorizado. | Revalidar escopo e estado; não aceitar autor, perfil ou localidade alterados pelo cliente sem permissão. |
-| `POST /api/v1/deliveries/{codigo_lancamento}/confirm` | Valida e registra definitivamente o lançamento conferido pelo autor. | Exigir permissão de criação e escopo compatível; confirmação idempotente. |
+| `POST /api/v1/deliveries/{codigo_lancamento}/confirm` | Valida e registra definitivamente o lançamento enviado pelo autor. | Exigir permissão de criação e escopo compatível; confirmação idempotente, sem etapa/tela intermediária de conferência. |
 | `POST /api/v1/feedbacks` e `GET /api/v1/feedbacks` | Registra ou consulta reclamações/elogios. | Aplicar permissões e escopos para nome e relato; exigir nome do cliente, sem coletar outros identificadores. POST exige `Idempotency-Key`, permite vários feedbacks por entrega e valida o motorista/ajudantes selecionados contra a equipe da entrega confirmada. |
 | `GET /api/v1/indicadores/entregas` | Painel gerencial com filtros. | Indicadores e exportações usam os mesmos escopos e filtros que a listagem. |
 | `POST /api/v1/access/users` | Provisiona funcionários autorizados a entrar no portal com perfil e escopo iniciais. | Exigir `CONTROLE_ACESSO:ADMINISTRAR` global; criar conta e concessão na mesma transação e emitir senha numérica de seis dígitos exibida uma vez. |
@@ -499,7 +499,7 @@ Antes de iniciar o piloto, ainda falta validar os CSVs com amostras anonimizadas
 ### Etapa 6.2 — Integração de entrada com SEAC antes do lançamento oficial
 
 1. Confirmar com a equipe SEAC a fonte autorizada (API, consulta read-only ou exportação estruturada), conta técnica, campos, códigos e frequência.
-2. Definir se o Portal importa rascunhos para conferência ou confirma automaticamente, como idempotência será calculada e como divergências com lançamentos manuais serão tratadas.
+2. Definir se dados importados do SEAC entram como rascunho ou são confirmados automaticamente, como idempotência será calculada e como divergências com lançamentos manuais serão tratadas. O lançamento manual não tem tela de conferência final.
 3. Implementar adaptador no backend, trilha de origem, validação e reconciliação em staging com amostras aprovadas; nunca conectar o navegador diretamente ao ERP.
 4. Habilitar a carga automática oficial após aceite do gestor e autorização da Infra.
 
@@ -633,3 +633,14 @@ Processo de coordenação:
 - [FastAPI: scopes OAuth2](https://fastapi.tiangolo.com/advanced/security/oauth2-scopes/)
 - [Vercel: deploy com Git](https://vercel.com/docs/git)
 - [Vercel: variáveis de ambiente](https://vercel.com/docs/environment-variables)
+
+## Atualização de requisitos — entregas, coletas e indicadores (27/10/2026)
+
+- O formulário contém seções próprias para entregas e coletas. Cada linha usa equipe, data e localidade e registra quantidades realizadas/não realizadas.
+- Para cada unidade não realizada existe uma associação de motivo individual com sua própria observação. O mesmo código de motivo pode repetir na mesma linha.
+- O OTIF agrega entregas e coletas não realizadas sobre o total registrado das duas operações. Resumos e gráficos também mantêm os valores separados por operação.
+- O fluxo normal registra diretamente, sem tela de conferência final. O histórico permite editar/abrir correção ou cancelar; editar não exige justificativa e cancelar lançamento confirmado continua auditado e exige justificativa.
+- O painel global aceita filtro de transporte próprio/terceirizado. O ranking por pessoa tem página própria em `/indicadores/pessoas`, preservando a classificação conjunta de motoristas e ajudantes e acrescentando filtros por pessoa, função, situação, período, localidade e tipo de transporte.
+- CSV aceita `tipo_operacao` (padrão `ENTREGA` para arquivos antigos) e expande quantidades de motivo em ocorrências separadas.
+
+O plano de banco, a migration pendente, as etapas para staging e o aceite estão em [alteracoes-coletas-edicao-indicadores.md](./alteracoes-coletas-edicao-indicadores.md). A integração automática com o ERP SEAC permanece necessária antes do lançamento oficial.

@@ -1,7 +1,9 @@
 # Plano de implementação do portal de lançamento de dados
 
 **Atualizado em:** 27/10/2026
-**Status em 27/10/2026:** a API e a interface em trabalho incluem edição direta de pessoas/motivos e auditoria com ator, alvo e alterações seguras. A migration `d2a8f6c1b904` está aplicada em staging; a nova migration `e31f9a7c2b64` (permitir eventos de edição nos CHECKs) ainda precisa de CI, publicação e aplicação em staging antes de liberar os `PUT`. Produção fica para depois do piloto.
+**Status em 27/10/2026:** a API e a interface em trabalho incluem edição direta de pessoas/motivos e auditoria com ator, alvo e alterações seguras. As migrations `d2a8f6c1b904` e `e31f9a7c2b64` estão aplicadas em staging; a migration `a640c9e2f7b1` para coletas e motivos por ocorrência ainda precisa de CI, publicação e aplicação em staging. Produção fica para depois do piloto.
+
+**Atualização de escopo em 27/10/2026:** a migration `e31f9a7c2b64` foi confirmada como `head` em staging. Para incluir coletas e motivos por ocorrência, foi criada a migration dependente `a640c9e2f7b1`; ela e as alterações do Portal ainda precisam de revisão, CI, publicação e aplicação em staging. Detalhes e critérios de aceite: [entregas, coletas e indicadores](./alteracoes-coletas-edicao-indicadores.md).
 
 Este documento organiza o trabalho do `LancamentoLogistica` em ordem de implementação. A [especificação do portal](./especificacao_portal_lancamento_logistica.md) continua sendo a referência para campos, regras, arquitetura, segurança e modelo de dados. O [DBML operacional](./modelo_operacional_lancamento_logistica.dbml) é uma proposta, ainda não é uma migration aplicada.
 
@@ -9,7 +11,7 @@ Escopo detalhado da edição no mesmo registro, autoria das ações, gráficos d
 
 ### Atualização de escopo solicitada — 27/10/2026
 
-- O staging operacional está publicado e a cadeia Alembic `logistica` está em `d2a8f6c1b904 (head)` após aplicar a migration desta alteração. Vyctor e a gerente do setor de Suporte estão preenchendo os cadastros; a carga e validação final permanecem em andamento.
+- O staging operacional está publicado e a cadeia Alembic `logistica` está em `e31f9a7c2b64 (head)`. As migrations `d2a8f6c1b904` e `e31f9a7c2b64` já estão aplicadas; Vyctor e a gerente do setor de Suporte estão preenchendo os cadastros. A migration `a640c9e2f7b1` para coletas e motivos por ocorrência permanece pendente.
 - Cada motivo exige um grupo controlado: `TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`. Cada pessoa exige tipo `PROPRIA` ou `TERCEIRIZADA`; novas equipes precisam ser homogêneas. Valores históricos sem classificação ficam nulos até revisão.
 - A observação é gravada por motivo; novos lançamentos não aceitam observação geral. A coluna geral continua preservada para histórico. A migration `d2a8f6c1b904` inclui observação, grupo e tipo como nullable, após `c9b61a2f4d80`.
 - O painel por motivo/grupo exibe participação entre não realizadas e incidência sobre o total. O painel também compara Entregas Próprias e Terceirizadas. O ranking mostra motivos associados às equipes como contexto; não aplica peso/penalidade por motivo sem regra aprovada.
@@ -17,7 +19,7 @@ Escopo detalhado da edição no mesmo registro, autoria das ações, gráficos d
 
 ### Ordem de publicação desta alteração
 
-1. A migration `d2a8f6c1b904` já foi aplicada em staging; conferir a revisão `head` antes de publicar código que consulta as colunas novas.
+1. As migrations `d2a8f6c1b904` e `e31f9a7c2b64` já foram aplicadas em staging. Antes de publicar o novo código de entregas/coletas, revisar e aplicar `a640c9e2f7b1`, que acrescenta a operação `COLETA` e motivos por ocorrência.
 2. Executar CI no GitHub e corrigir falhas. As verificações locais já passaram; a CI ainda precisa rodar após a publicação do commit.
 3. Reclassificar os cadastros oficiais de pessoas e motivos; a API não permitirá novos lançamentos com itens sem classificação nem equipe mista.
 4. Publicar a API real e o frontend no staging conectado ao banco operacional. Fazer aceite com contas/escopos e cadastros do piloto.
@@ -33,7 +35,7 @@ Os grupos fixos, a equipe homogênea e os dois percentuais foram adotados como p
 - Os CSVs de referência são: feedback com data, tipo, cliente, loja, motorista, até dois ajudantes e descrição; histórico de Entregas com data, loja, motorista, até dois ajudantes, quantidades realizadas/não realizadas, motivos e observações.
 - A regra inicial do protótipo atribuía quantidades apenas ao motorista; essa regra foi substituída pela decisão de 22/10: ranking misto de motoristas e ajudantes, com o resultado coletivo das equipes em que cada pessoa trabalhou.
 - A regra de OTIF foi atualizada em 22/10/2026: entregas não realizadas ÷ total registrado (realizadas + não realizadas). O indicador será exibido no geral e por motorista, equipe e loja; as antigas contagens de prazo/completude deixam de ser coletadas e usadas.
-- Correções abrem revisão nova com justificativa e preservam a revisão confirmada; cancelamentos também exigem justificativa, têm permissão separada e geram evento. O painel ignora lançamentos cancelados e mantém os números confirmados enquanto a correção está em rascunho.
+- Correções abrem revisão nova e preservam a revisão confirmada; iniciar a edição não pede justificativa, mas gera evento de auditoria. Cancelamentos continuam exigindo justificativa, têm permissão separada e geram evento. O painel ignora lançamentos cancelados e mantém os números confirmados enquanto a correção está em rascunho.
 - A API de feedback consulta, cria e exporta por páginas; aceita vários registros por entrega e exige chave idempotente por submissão. Cada registro fica ligado a uma entrega confirmada, armazena nome do cliente e não grava relato/nome em logs técnicos.
 - A consulta administrativa de auditoria reúne metadados de Entregas, acessos e feedback, sem devolver comentário, relato ou detalhes livres.
 - Permanecem pendentes: definir retenção e tratamento de reclamações; validar a importação dos dois CSVs de referência; concluir validação do grão; carregar os cadastros reais no catálogo local a partir de fontes aprovadas; e configurar o deploy na EC2/Vercel. O catálogo de staging é `vilarejo_bi_logistica_staging`, e a migration `b817e6c2a904` já está aplicada. A integração com o BI não faz parte deste release; a conexão ao RDS seguirá o padrão de infraestrutura do VilarejoBI.
@@ -55,7 +57,7 @@ Os grupos fixos, a equipe homogênea e os dois percentuais foram adotados como p
 
 ## 1. Objetivo e escopo
 
-Construir um portal independente do VilarejoBI para registrar dados operacionais de Logística, começando pelo módulo de Entregas inspirado no protótipo da ADAPTA. O portal deve autenticar cada pessoa, limitar o acesso por perfil, setor e localidade, persistir lançamentos no banco central e manter histórico auditável. Quem preenche confere e confirma o próprio lançamento; a confirmação o registra imediatamente, sem fila de aprovação por outra pessoa.
+Construir um portal independente do VilarejoBI para registrar dados operacionais de Logística, começando pelo módulo de Entregas inspirado no protótipo da ADAPTA. O portal deve autenticar cada pessoa, limitar o acesso por perfil, setor e localidade, persistir lançamentos no banco central e manter histórico auditável. Quem preenche envia o lançamento diretamente, sem uma tela de conferência final nem fila de aprovação; o histórico permite consultar, corrigir e cancelar.
 
 O navegador conversa somente com a aplicação HTTPS. A API é responsável por autorizar e validar cada ação e por acessar o banco. Rascunhos e formulários ficam em tabelas operacionais `op_logistica_*`; não devem ser gravados diretamente nas tabelas fato mensais do BI.
 
@@ -256,7 +258,7 @@ O catálogo de pessoas não possui vínculo de setor/localidade no modelo atual;
 
 **Critério para avançar:** o lançamento persiste entre dispositivos, as regras são validadas no servidor, retries não duplicam registros e o histórico respeita o escopo.
 
-**Gráficos do painel:** evolução temporal em linha; composição em barra empilhada; grupos/motivos em barras horizontais ordenadas por quantidade; tipo de entrega em barras empilhadas por realizadas/não realizadas; equipe e loja em barras horizontais de taxa ordenadas da menor para a maior. Os gráficos mostram volume junto à taxa. As tabelas atuais, inclusive Ranking por pessoa e Performance por loja, continuam preservadas.
+**Gráficos do painel:** evolução temporal em linha; composição em barra empilhada; grupos/motivos em barras horizontais ordenadas por quantidade; tipo de transporte em barras empilhadas por realizadas/não realizadas; equipe e loja em barras horizontais de taxa ordenadas da menor para a maior. Os gráficos mostram volume junto à taxa e distinguem entregas de coletas. A tabela de Performance por loja continua no painel; a tabela de Ranking por pessoa mantém as colunas atuais em página própria com filtros.
 
 ### Etapa 6 — Completar correções, cadastros e feedback quando autorizado
 

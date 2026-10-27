@@ -69,11 +69,11 @@ export const deliveriesApi = {
       idempotencyKey,
     });
   },
-  startCorrection(id: string, justificativa: string, idempotencyKey: string): Promise<DeliveryLaunchDetail> {
-    if (isDemoMode) return demoApi.startCorrection(id, justificativa);
+  startCorrection(id: string, idempotencyKey: string): Promise<DeliveryLaunchDetail> {
+    if (isDemoMode) return demoApi.startCorrection(id);
     return apiRequest<DeliveryLaunchDetail>(`/deliveries/${encodeURIComponent(id)}/corrections`, {
       method: "POST",
-      body: { justificativa },
+      body: {},
       idempotencyKey,
     });
   },

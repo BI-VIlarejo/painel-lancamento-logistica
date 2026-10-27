@@ -18,7 +18,6 @@ class DeliveryReasonInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id_motivo_nao_entrega: int = Field(ge=1)
-    quantidade: int = Field(gt=0, le=2_147_483_647)
     observacao: str | None = Field(default=None, max_length=5000)
 
     @field_validator("observacao")
@@ -38,6 +37,7 @@ class DeliveryItemInput(BaseModel):
     _legacy_observation: str | None = PrivateAttr(default=None)
 
     codigo_item_lancamento: UUID | None = None
+    tipo_operacao: Literal["ENTREGA", "COLETA"] = "ENTREGA"
     data_entrega: date
     id_localidade: int = Field(ge=1)
     quantidade_realizada: int = Field(ge=0, le=2_147_483_647)
@@ -50,7 +50,7 @@ class DeliveryItemInput(BaseModel):
         json_schema_extra={"deprecated": True},
     )
     participantes: list[DeliveryParticipantInput] = Field(min_length=1, max_length=3)
-    motivos: list[DeliveryReasonInput] = Field(default_factory=list, max_length=30)
+    motivos: list[DeliveryReasonInput] = Field(default_factory=list)
 
     @field_validator("observacao")
     @classmethod
@@ -65,7 +65,8 @@ class DeliveryItemInput(BaseModel):
         if self.observacao is not None:
             raise ValueError("Informe cada observação na linha do motivo correspondente.")
         if self.quantidade_realizada + self.quantidade_nao_realizada == 0:
-            raise ValueError("Informe ao menos uma entrega realizada ou não realizada.")
+            operation = "coleta" if self.tipo_operacao == "COLETA" else "entrega"
+            raise ValueError(f"Informe ao menos uma {operation} realizada ou não realizada.")
         drivers = [
             item for item in self.participantes
             if item.papel_participante == "MOTORISTA"
@@ -82,14 +83,12 @@ class DeliveryItemInput(BaseModel):
         if len(person_ids) != len(set(person_ids)):
             raise ValueError("Uma pessoa não pode ocupar dois papéis no mesmo item.")
 
-        reason_ids = [item.id_motivo_nao_entrega for item in self.motivos]
-        if len(reason_ids) != len(set(reason_ids)):
-            raise ValueError("Cada motivo pode aparecer somente uma vez por item.")
-        reason_total = sum(item.quantidade for item in self.motivos)
         if self.quantidade_nao_realizada == 0 and self.motivos:
-            raise ValueError("Não informe motivos quando não houver entregas não realizadas.")
-        if self.quantidade_nao_realizada > 0 and reason_total != self.quantidade_nao_realizada:
-            raise ValueError("A soma dos motivos deve ser igual à quantidade não realizada.")
+            raise ValueError("Não informe motivos quando não houver itens não realizados.")
+        if len(self.motivos) != self.quantidade_nao_realizada:
+            raise ValueError(
+                "Informe exatamente um motivo para cada item não realizado."
+            )
         return self
 
 
@@ -119,6 +118,20 @@ class DeliveryLifecycleReasonRequest(BaseModel):
         return normalized
 
 
+class DeliveryCorrectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    justificativa: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("justificativa")
+    @classmethod
+    def normalize_optional_justification(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
 class DeliveryParticipantResponse(BaseModel):
     id_pessoa: int
     codigo_pessoa: UUID
@@ -139,6 +152,7 @@ class DeliveryReasonResponse(BaseModel):
 
 class DeliveryItemResponse(BaseModel):
     codigo_item_lancamento: UUID
+    tipo_operacao: Literal["ENTREGA", "COLETA"]
     data_entrega: date
     id_localidade: int
     codigo_localidade: str
@@ -187,6 +201,10 @@ class DeliveryLaunchSummary(BaseModel):
     quantidade_itens: int
     quantidade_realizada: int
     quantidade_nao_realizada: int
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
     itens: list[DeliveryItemResponse]
 
 

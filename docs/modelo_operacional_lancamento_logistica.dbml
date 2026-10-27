@@ -403,6 +403,7 @@ Table op_logistica_entrega_diaria {
   id_entrega_diaria bigint [pk, increment]
   id_lancamento_revisao bigint [not null]
   codigo_item_lancamento char(36) [not null, note: 'UUID estável preservado entre revisões; identifica esta linha lógica.']
+  tipo_operacao varchar(16) [not null, default: 'ENTREGA', note: 'ENTREGA ou COLETA; linhas legadas recebem ENTREGA na migration.']
   data_entrega date [not null]
   id_localidade bigint [not null]
   quantidade_realizada int [not null]
@@ -422,6 +423,7 @@ Table op_logistica_entrega_diaria {
 
   checks {
     `quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 and (quantidade_realizada > 0 or quantidade_nao_realizada > 0)` [name: 'ck_op_logistica_entrega_quantidades']
+    `tipo_operacao in ('ENTREGA', 'COLETA')` [name: 'ck_op_logistica_entrega_tipo_operacao']
     `((quantidade_entregas_no_prazo is null and quantidade_entregas_completas is null) or (quantidade_entregas_no_prazo is not null and quantidade_entregas_completas is not null and quantidade_entregas_no_prazo >= 0 and quantidade_entregas_completas >= 0 and quantidade_entregas_no_prazo <= quantidade_realizada and quantidade_entregas_completas <= quantidade_realizada))` [name: 'ck_op_logistica_entrega_otif_quantidades']
   }
 
@@ -449,13 +451,13 @@ Table op_logistica_entrega_participante {
 }
 
 Table op_logistica_entrega_motivo {
+  id_entrega_motivo bigint [pk, increment]
   id_entrega_diaria bigint [not null]
   id_motivo_nao_entrega bigint [not null]
   quantidade int [not null]
   observacao text [note: 'Observação registrada nesta linha de motivo.']
 
   indexes {
-    (id_entrega_diaria, id_motivo_nao_entrega) [pk]
     (id_motivo_nao_entrega) [name: 'ix_op_logistica_entrega_motivo_motivo']
   }
 
@@ -463,7 +465,7 @@ Table op_logistica_entrega_motivo {
     `quantidade > 0` [name: 'ck_op_logistica_entrega_motivo_quantidade']
   }
 
-  Note: 'Uma linha por motivo por registro; armazena sua observação. Grupo de ocorrência vem do motivo referenciado. O serviço verifica na mesma transação que a soma das quantidades dos motivos coincide com quantidade_nao_realizada. Não replicar automaticamente observações gerais legadas em todas as linhas.'
+  Note: 'Cada ocorrência de não realização tem uma linha própria e uma observação independente; o mesmo motivo pode repetir no mesmo item. Registros legados podem manter quantidade maior que um e são expandidos na resposta da API. O grupo vem do motivo referenciado; novas linhas usam quantidade igual a um.'
 }
 
 Table op_logistica_feedback {

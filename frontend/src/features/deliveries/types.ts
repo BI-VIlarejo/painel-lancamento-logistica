@@ -41,11 +41,11 @@ export type DeliveryParticipantInput = {
 };
 export type DeliveryReasonInput = {
   id_motivo_nao_entrega: number;
-  quantidade: number;
   observacao?: string | null;
 };
 export type DeliveryItemInput = {
   codigo_item_lancamento?: string;
+  tipo_operacao: "ENTREGA" | "COLETA";
   data_entrega: string;
   id_localidade: number;
   quantidade_realizada: number;
@@ -63,6 +63,7 @@ export type DeliveryParticipantResponse = DeliveryParticipantInput & {
   tipo_transporte_entrega: DeliveryTransportType | null;
 };
 export type DeliveryReasonResponse = DeliveryReasonInput & {
+  quantidade: number;
   codigo_motivo: string;
   descricao_motivo: string;
   grupo_motivo: NonDeliveryReasonGroup | null;
@@ -105,6 +106,10 @@ export type DeliveryLaunchSummary = {
   quantidade_itens: number;
   quantidade_realizada: number;
   quantidade_nao_realizada: number;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  coletas_realizadas: number;
+  coletas_nao_realizadas: number;
   itens: DeliveryItemResponse[];
 };
 export type DeliveryLaunchPage = {

@@ -101,6 +101,7 @@ def get_dashboard(
     data_de: date | None,
     data_ate: date | None,
     id_localidade: int | None,
+    tipo_transporte_entrega: str | None = None,
     request_id: str | None = None,
 ) -> DashboardResponse:
     if data_de is not None and data_ate is not None and data_de > data_ate:
@@ -142,6 +143,7 @@ def get_dashboard(
             EntregaDiaria.codigo_item_lancamento.label("codigo_item_lancamento"),
             Lancamento.id_lancamento.label("id_lancamento"),
             EntregaDiaria.data_entrega.label("data_entrega"),
+            EntregaDiaria.tipo_operacao.label("tipo_operacao"),
             EntregaDiaria.id_localidade.label("id_localidade"),
             Localidade.nome_localidade.label("nome_localidade"),
             EntregaDiaria.quantidade_realizada.label("realizadas"),
@@ -166,6 +168,54 @@ def get_dashboard(
         .subquery("entregas_registradas_no_escopo")
     )
 
+    team_transport_types = (
+        select(
+            registered_items.c.id_entrega_diaria.label("id_entrega_diaria"),
+            func.count(func.distinct(Pessoa.tipo_transporte_entrega)).label("type_count"),
+            func.sum(case((Pessoa.tipo_transporte_entrega.is_(None), 1), else_=0)).label("unclassified_count"),
+            func.min(Pessoa.tipo_transporte_entrega).label("single_type"),
+        )
+        .select_from(registered_items)
+        .outerjoin(
+            EntregaParticipante,
+            EntregaParticipante.id_entrega_diaria == registered_items.c.id_entrega_diaria,
+        )
+        .outerjoin(Pessoa, Pessoa.id_pessoa == EntregaParticipante.id_pessoa)
+        .group_by(registered_items.c.id_entrega_diaria)
+        .subquery("tipo_transporte_por_entrega")
+    )
+    registered_items = (
+        select(
+            registered_items.c.id_entrega_diaria,
+            registered_items.c.id_lancamento_revisao,
+            registered_items.c.codigo_item_lancamento,
+            registered_items.c.id_lancamento,
+            registered_items.c.data_entrega,
+            registered_items.c.tipo_operacao,
+            registered_items.c.id_localidade,
+            registered_items.c.nome_localidade,
+            registered_items.c.realizadas,
+            registered_items.c.nao_realizadas,
+            case(
+                (team_transport_types.c.type_count > 1, "MISTO"),
+                (team_transport_types.c.unclassified_count > 0, None),
+                else_=team_transport_types.c.single_type,
+            ).label("tipo_transporte_entrega"),
+        )
+        .select_from(registered_items)
+        .join(
+            team_transport_types,
+            team_transport_types.c.id_entrega_diaria == registered_items.c.id_entrega_diaria,
+        )
+        .subquery("entregas_classificadas_por_transporte")
+    )
+    if tipo_transporte_entrega is not None:
+        registered_items = (
+            select(registered_items)
+            .where(registered_items.c.tipo_transporte_entrega == tipo_transporte_entrega)
+            .subquery("entregas_filtradas_por_transporte")
+        )
+
     try:
         query_started_at = perf_counter()
         summary_row = db.execute(
@@ -179,6 +229,10 @@ def get_dashboard(
                 func.coalesce(func.sum(registered_items.c.nao_realizadas), 0).label(
                     "not_completed_total"
                 ),
+                func.coalesce(func.sum(case((registered_items.c.tipo_operacao == "ENTREGA", registered_items.c.realizadas), else_=0)), 0).label("delivery_completed"),
+                func.coalesce(func.sum(case((registered_items.c.tipo_operacao == "ENTREGA", registered_items.c.nao_realizadas), else_=0)), 0).label("delivery_not_completed"),
+                func.coalesce(func.sum(case((registered_items.c.tipo_operacao == "COLETA", registered_items.c.realizadas), else_=0)), 0).label("collection_completed"),
+                func.coalesce(func.sum(case((registered_items.c.tipo_operacao == "COLETA", registered_items.c.nao_realizadas), else_=0)), 0).label("collection_not_completed"),
             )
             .select_from(registered_items)
         ).one()
@@ -186,7 +240,19 @@ def get_dashboard(
         launch_count = int(summary_row.launch_count)
         completed_total = int(summary_row.completed_total)
         not_completed_total = int(summary_row.not_completed_total)
+        delivery_completed_total = int(summary_row.delivery_completed)
+        delivery_not_completed_total = int(summary_row.delivery_not_completed)
+        collection_completed_total = int(summary_row.collection_completed)
+        collection_not_completed_total = int(summary_row.collection_not_completed)
         planned_total = completed_total + not_completed_total
+        operation_not_completed = {
+            "ENTREGA": delivery_not_completed_total,
+            "COLETA": collection_not_completed_total,
+        }
+        operation_planned = {
+            "ENTREGA": delivery_completed_total + delivery_not_completed_total,
+            "COLETA": collection_completed_total + collection_not_completed_total,
+        }
 
         otif_percentual = _percentage(not_completed_total, planned_total)
 
@@ -238,6 +304,7 @@ def get_dashboard(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
+                registered_items.c.tipo_operacao,
                 func.sum(EntregaMotivo.quantidade).label("quantity"),
             )
             .join(
@@ -253,56 +320,18 @@ def get_dashboard(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
+                registered_items.c.tipo_operacao,
             )
             .order_by(
                 func.sum(EntregaMotivo.quantidade).desc(),
+                registered_items.c.tipo_operacao,
                 MotivoNaoEntrega.grupo_motivo,
                 MotivoNaoEntrega.descricao_motivo,
             )
         ).all()
         _log_dashboard_step("reasons", request_id, query_started_at)
 
-        team_transport_types = (
-            select(
-                registered_items.c.id_entrega_diaria.label("id_entrega_diaria"),
-                func.count(func.distinct(Pessoa.tipo_transporte_entrega)).label(
-                    "type_count"
-                ),
-                func.sum(
-                    case((Pessoa.tipo_transporte_entrega.is_(None), 1), else_=0)
-                ).label("unclassified_count"),
-                func.min(Pessoa.tipo_transporte_entrega).label("single_type"),
-            )
-            .select_from(registered_items)
-            .outerjoin(
-                EntregaParticipante,
-                EntregaParticipante.id_entrega_diaria
-                == registered_items.c.id_entrega_diaria,
-            )
-            .outerjoin(Pessoa, Pessoa.id_pessoa == EntregaParticipante.id_pessoa)
-            .group_by(registered_items.c.id_entrega_diaria)
-            .subquery("tipo_transporte_por_entrega")
-        )
-        classified_items = (
-            select(
-                registered_items.c.id_entrega_diaria,
-                registered_items.c.id_lancamento,
-                registered_items.c.realizadas,
-                registered_items.c.nao_realizadas,
-                case(
-                    (team_transport_types.c.type_count > 1, "MISTO"),
-                    (team_transport_types.c.unclassified_count > 0, None),
-                    else_=team_transport_types.c.single_type,
-                ).label("tipo_transporte_entrega"),
-            )
-            .select_from(registered_items)
-            .join(
-                team_transport_types,
-                team_transport_types.c.id_entrega_diaria
-                == registered_items.c.id_entrega_diaria,
-            )
-            .subquery("entregas_com_tipo_transporte")
-        )
+        classified_items = registered_items
         query_started_at = perf_counter()
         delivery_type_rows = db.execute(
             select(
@@ -312,6 +341,13 @@ def get_dashboard(
                 ).label("delivery_count"),
                 func.sum(classified_items.c.realizadas).label("completed"),
                 func.sum(classified_items.c.nao_realizadas).label("not_completed"),
+                func.sum(case((classified_items.c.tipo_operacao == "ENTREGA", classified_items.c.realizadas), else_=0)).label("delivery_completed"),
+                func.sum(case((classified_items.c.tipo_operacao == "ENTREGA", classified_items.c.nao_realizadas), else_=0)).label("delivery_not_completed"),
+                func.sum(case((classified_items.c.tipo_operacao == "COLETA", classified_items.c.realizadas), else_=0)).label("collection_completed"),
+                func.sum(case((classified_items.c.tipo_operacao == "COLETA", classified_items.c.nao_realizadas), else_=0)).label("collection_not_completed"),
+                func.sum(case((classified_items.c.tipo_operacao == "ENTREGA", classified_items.c.realizadas + classified_items.c.nao_realizadas), else_=0)).label("delivery_planned"),
+                func.sum(case((classified_items.c.tipo_operacao == "COLETA", classified_items.c.realizadas + classified_items.c.nao_realizadas), else_=0)).label("collection_planned"),
+                func.count(func.distinct(case((classified_items.c.tipo_operacao == "COLETA", classified_items.c.id_entrega_diaria), else_=None))).label("collection_count"),
             )
             .select_from(classified_items)
             .group_by(classified_items.c.tipo_transporte_entrega)
@@ -414,7 +450,9 @@ def get_dashboard(
         else:
             people_by_id = {}
 
-        person_reason_totals: dict[int, dict[int, dict[str, object]]] = {}
+        person_reason_totals: dict[
+            int, dict[tuple[str, int], dict[str, object]]
+        ] = {}
         query_started_at = perf_counter()
         person_reason_rows = db.execute(
             select(
@@ -422,6 +460,7 @@ def get_dashboard(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
+                registered_items.c.tipo_operacao,
                 func.sum(EntregaMotivo.quantidade).label("quantity"),
             )
             .select_from(EntregaParticipante)
@@ -442,6 +481,7 @@ def get_dashboard(
             )
             .group_by(
                 EntregaParticipante.id_pessoa,
+                registered_items.c.tipo_operacao,
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
@@ -451,10 +491,12 @@ def get_dashboard(
         for row in person_reason_rows:
             person_id = int(row.id_pessoa)
             reason_id = int(row.id_motivo_nao_entrega)
-            person_reason_totals.setdefault(person_id, {})[reason_id] = {
+            operation = row.tipo_operacao
+            person_reason_totals.setdefault(person_id, {})[(operation, reason_id)] = {
                 "name": row.descricao_motivo,
                 "group": row.grupo_motivo,
                 "quantity": int(row.quantity or 0),
+                "operation": operation,
             }
 
         person_totals: dict[int, dict[str, object]] = {
@@ -603,6 +645,14 @@ def get_dashboard(
                     feedback_delivery.id_localidade == id_localidade
                     if id_localidade is not None
                     else True,
+                    exists(
+                        select(registered_items.c.id_entrega_diaria).where(
+                            registered_items.c.id_entrega_diaria
+                            == feedback_delivery.id_entrega_diaria
+                        )
+                    )
+                    if tipo_transporte_entrega is not None
+                    else True,
                     Feedback.data_feedback >= data_de if data_de is not None else True,
                     Feedback.data_feedback <= data_ate if data_ate is not None else True,
                 )
@@ -737,15 +787,17 @@ def get_dashboard(
                 score_atendimento=int(values["praise"]) - int(values["complaint"]),
                 motivos_da_equipe=[
                     PersonReasonCount(
+                        tipo_operacao=str(reason["operation"]),
                         id_motivo=reason_id,
                         motivo=str(reason["name"]),
                         grupo_motivo=reason["group"],
                         quantidade=int(reason["quantity"]),
                     )
-                    for reason_id, reason in sorted(
+                    for (_operation, reason_id), reason in sorted(
                         person_reason_totals.get(person_id, {}).items(),
                         key=lambda entry: (
                             -int(entry[1]["quantity"]),
+                            str(entry[1]["operation"]),
                             str(entry[1]["name"]).casefold(),
                         ),
                     )
@@ -800,46 +852,58 @@ def get_dashboard(
             )
             for row in daily_rows
         ]
-        reason_group_totals: dict[str | None, int] = {}
+        reason_group_totals: dict[tuple[str, str | None], int] = {}
         reasons = []
         for row in reason_rows:
             quantity = int(row.quantity or 0)
-            reason_group_totals[row.grupo_motivo] = (
-                reason_group_totals.get(row.grupo_motivo, 0) + quantity
+            group_key = (row.tipo_operacao, row.grupo_motivo)
+            reason_group_totals[group_key] = (
+                reason_group_totals.get(group_key, 0) + quantity
             )
             reasons.append(
                 ReasonPerformance(
+                    tipo_operacao=row.tipo_operacao,
                     id_motivo=row.id_motivo_nao_entrega,
                     motivo=row.descricao_motivo,
                     grupo_motivo=row.grupo_motivo,
                     quantidade=quantity,
                     percentual_das_nao_realizadas=_percentage(
-                        quantity, not_completed_total
+                        quantity, operation_not_completed[row.tipo_operacao]
                     ),
-                    incidencia_sobre_total=_percentage(quantity, planned_total),
+                    incidencia_sobre_total=_percentage(
+                        quantity, operation_planned[row.tipo_operacao]
+                    ),
                 )
             )
         reason_groups = [
             ReasonGroupPerformance(
+                tipo_operacao=operation,
                 grupo_motivo=group,
                 quantidade=quantity,
                 percentual_das_nao_realizadas=_percentage(
-                    quantity, not_completed_total
+                    quantity, operation_not_completed[operation]
                 ),
-                incidencia_sobre_total=_percentage(quantity, planned_total),
+                incidencia_sobre_total=_percentage(quantity, operation_planned[operation]),
             )
-            for group, quantity in sorted(
+            for (operation, group), quantity in sorted(
                 reason_group_totals.items(),
-                key=lambda entry: (entry[0] is None, entry[0] or ""),
+                key=lambda entry: (entry[0][0], entry[0][1] is None, entry[0][1] or ""),
             )
         ]
         by_delivery_type = [
             DeliveryTypePerformance(
                 tipo_transporte_entrega=row.tipo_transporte_entrega,
-                registros_entrega=int(row.delivery_count),
+                registros_entrega=int(row.delivery_count) - int(row.collection_count),
+                registros_coleta=int(row.collection_count),
                 itens_planejados=int(row.completed) + int(row.not_completed),
                 realizadas=int(row.completed),
                 nao_realizadas=int(row.not_completed),
+                entregas_planejadas=int(row.delivery_planned),
+                entregas_realizadas=int(row.delivery_completed),
+                entregas_nao_realizadas=int(row.delivery_not_completed),
+                coletas_planejadas=int(row.collection_planned),
+                coletas_realizadas=int(row.collection_completed),
+                coletas_nao_realizadas=int(row.collection_not_completed),
                 taxa_realizacao=_rate(int(row.completed), int(row.not_completed)),
                 otif_percentual=_percentage(
                     int(row.not_completed), int(row.completed) + int(row.not_completed)
@@ -851,11 +915,14 @@ def get_dashboard(
             data_de=data_de,
             data_ate=data_ate,
             id_localidade=id_localidade,
+            tipo_transporte_entrega=tipo_transporte_entrega,
             resumo=DashboardSummary(
                 lancamentos_registrados=launch_count,
                 itens_planejados=planned_total,
-                entregas_realizadas=completed_total,
-                entregas_nao_realizadas=not_completed_total,
+                entregas_realizadas=delivery_completed_total,
+                entregas_nao_realizadas=delivery_not_completed_total,
+                coletas_realizadas=collection_completed_total,
+                coletas_nao_realizadas=collection_not_completed_total,
                 taxa_realizacao=_rate(completed_total, not_completed_total),
                 otif_percentual=otif_percentual,
             ),

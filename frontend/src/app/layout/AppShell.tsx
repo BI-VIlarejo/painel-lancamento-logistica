@@ -22,11 +22,11 @@ function initials(name: string): string {
 
 export function AppShell({ user, permissions, path, onNavigate, onSignOut, children }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const activeSection = path === "/painel" ? "indicators" : path === "/cadastros" || path === "/auditoria" ? "administration" : path === "/feedback" ? "relationships" : path === "/trocar-senha" ? "account" : "operation";
+  const activeSection = path === "/painel" || path === "/indicadores/pessoas" ? "indicators" : path === "/cadastros" || path === "/auditoria" ? "administration" : path === "/feedback" ? "relationships" : path === "/trocar-senha" ? "account" : "operation";
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => ({
     operation: path !== "/painel",
     relationships: path === "/feedback",
-    indicators: path === "/painel",
+    indicators: path === "/painel" || path === "/indicadores/pessoas",
     administration: path === "/cadastros" || path === "/auditoria",
     account: path === "/trocar-senha",
   }));
@@ -87,6 +87,12 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
           visible: canViewDashboard,
           icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
         },
+        {
+          path: "/indicadores/pessoas",
+          label: "Indicadores por pessoa",
+          visible: canViewDashboard,
+          icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
+        },
       ],
     },
     {
@@ -132,7 +138,9 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
     setMenuOpen(false);
     onNavigate(target);
   };
-  const pageTitle = path === "/painel"
+  const pageTitle = path === "/indicadores/pessoas"
+    ? "Indicadores por pessoa"
+    : path === "/painel"
     ? "Painel gerencial"
     : path === "/cadastros"
       ? administrationTitle
@@ -145,7 +153,7 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
     : path === "/historico"
       ? "Histórico de entregas"
       : "Lançar entrega";
-  const pageSection = path === "/painel" ? "Indicadores" : path === "/cadastros" || path === "/auditoria" ? "Administração" : path === "/feedback" ? "Relacionamento" : path === "/trocar-senha" ? "Conta" : "Entregas";
+  const pageSection = path === "/painel" || path === "/indicadores/pessoas" ? "Indicadores" : path === "/cadastros" || path === "/auditoria" ? "Administração" : path === "/feedback" ? "Relacionamento" : path === "/trocar-senha" ? "Conta" : "Entregas";
 
   return (
     <div className={cx(styles, commonStyles, "app-layout")}>

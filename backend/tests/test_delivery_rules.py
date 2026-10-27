@@ -33,8 +33,29 @@ class DeliveryRequestTests(TestCase):
                 participantes=[
                     DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
                 ],
-                motivos=[DeliveryReasonInput(id_motivo_nao_entrega=5, quantidade=1)],
+                motivos=[DeliveryReasonInput(id_motivo_nao_entrega=5)],
             )
+
+    def test_collection_accepts_individual_repeated_reason_occurrences(self) -> None:
+        item = DeliveryItemInput(
+            tipo_operacao="COLETA",
+            data_entrega=date(2026, 10, 20),
+            id_localidade=1,
+            quantidade_realizada=1,
+            quantidade_nao_realizada=2,
+            participantes=[
+                DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
+            ],
+            motivos=[
+                DeliveryReasonInput(id_motivo_nao_entrega=5, observacao="Item 1"),
+                DeliveryReasonInput(id_motivo_nao_entrega=5, observacao="Item 2"),
+            ],
+        )
+
+        self.assertEqual(item.tipo_operacao, "COLETA")
+        self.assertEqual(len(item.motivos), 2)
+        self.assertEqual(item.motivos[0].id_motivo_nao_entrega, item.motivos[1].id_motivo_nao_entrega)
+        self.assertEqual([reason.observacao for reason in item.motivos], ["Item 1", "Item 2"])
 
     def test_item_code_is_preserved_for_revision_lineage(self) -> None:
         item_code = uuid4()
