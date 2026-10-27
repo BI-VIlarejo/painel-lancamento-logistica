@@ -19,7 +19,7 @@
 - `PUT /api/v1/cadastros/motivos/{id_motivo_nao_entrega}` atualiza descrição e grupo no registro identificado.
 - Os eventos `PESSOA_ATUALIZADA` e `MOTIVO_ATUALIZADO` são gravados na mesma transação da edição, com alvo, código e diffs permitidos.
 - Não foi criada coluna nem tabela operacional nova. A migration `e31f9a7c2b64`, na cadeia Alembic `logistica` do repositório VilarejoBI, apenas amplia os CHECKs de tipo/alvo da tabela `op_logistica_autorizacao_evento` para aceitar esses dois eventos.
-- Staging estava em `d2a8f6c1b904 (head)` na confirmação anterior. A migration `e31f9a7c2b64` foi commitada e enviada à branch `logistica` do VilarejoBI (`78e0b59`), mas ainda não foi aplicada no banco.
+- Staging estava em `d2a8f6c1b904 (head)` antes da alteração. A migration `e31f9a7c2b64` foi commitada e enviada à branch `logistica` do VilarejoBI (`78e0b59`), aplicada no banco e confirmada como `head` em 27/10/2026.
 
 ### Quem fez e o que foi alterado
 
@@ -63,8 +63,8 @@ Os gráficos de grupo, tipo, motivo, equipe e loja foram acrescentados mantendo 
 - Frontend: `npm run typecheck` e `npm run build` concluíram com sucesso após os gráficos, a edição direta, a auditoria e o rótulo **Observação**.
 - Backend: compilação Python (`compileall`/`py_compile`) e `git diff --check` concluíram sem erros.
 - Os testes backend e Ruff não puderam ser executados neste checkout: não há `pytest`/`ruff` ou ambiente virtual do Portal disponível. O CI configurado para `staging` deve confirmar esses checks; o resultado remoto não foi consultado porque `gh` não está instalado neste ambiente.
-- O commit do Portal `f73245c` foi enviado à branch `staging`. O workflow **Deploy Portal API to Staging** é manual e ainda precisa ser executado para esse commit. A nova prévia Vercel também precisa ser confirmada; a prévia `Ready` anterior é de uma publicação anterior.
-- Ordem: confirmar CI → aplicar `e31f9a7c2b64` em staging → executar **Deploy Portal API to Staging** no commit `f73245c` → publicar/confirmar a nova prévia Vercel → validar edição direta, autoria/alvo/diffs e gráficos com Suporte.
+- O commit do Portal `f73245c` foi enviado à branch `staging`. O workflow **Deploy Portal API to Staging** é manual e ainda precisa ser executado na branch `staging`. A nova prévia Vercel também precisa ser confirmada; a prévia `Ready` anterior é de uma publicação anterior.
+- Ordem: confirmar CI → executar **Deploy Portal API to Staging** na branch `staging` → publicar/confirmar a nova prévia Vercel → validar edição direta, autoria/alvo/diffs e gráficos com Suporte. A migration `e31f9a7c2b64` já está aplicada em staging.
 - Não promover para produção nesta etapa.
 
 ## Próximo trabalho
