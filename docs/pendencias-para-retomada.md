@@ -8,8 +8,8 @@
 - A edição de pessoas e motivos usa `PUT` e atualiza o mesmo registro; o sistema não insere outra versão para essas alterações. ID, código e vínculo existente permanecem iguais.
 - Alterar nome/tipo da pessoa ou descrição/grupo do motivo também muda a forma como os lançamentos antigos ligados àquela linha aparecem. A trilha grava os valores anteriores e novos para rastrear a mudança.
 - A auditoria exibe nome e username do ator, ação, alvo e resumo de alterações para eventos de usuários, perfis/recursos/permissões, concessões de escopo, localidades, pessoas, motivos, lançamentos e feedback. Motivos privados de revogação, comentários, relatos de clientes e credenciais não são expostos.
-- A migration `e31f9a7c2b64` libera `PESSOA_ATUALIZADA` e `MOTIVO_ATUALIZADO` nos CHECKs da trilha. `d2a8f6c1b904` continua aplicada em staging; `e31f9a7c2b64` ainda não foi aplicada.
-- As alterações estão no checkout local; CI remoto, push, workflow da API e publicação da nova prévia ainda não foram confirmados. Não executar os `PUT` novos em staging antes de aplicar `e31f9a7c2b64`.
+- A migration `e31f9a7c2b64` libera `PESSOA_ATUALIZADA` e `MOTIVO_ATUALIZADO` nos CHECKs da trilha. O commit `78e0b59` foi enviado à branch `logistica` do VilarejoBI; `d2a8f6c1b904` continua aplicada em staging e `e31f9a7c2b64` ainda não foi aplicada.
+- O commit do Portal `f73245c` foi enviado à branch `staging`. O CI remoto e a nova prévia ainda precisam ser confirmados; o deploy da API usa workflow manual. Não executar os `PUT` novos em staging antes de aplicar `e31f9a7c2b64`.
 - A migration não adiciona colunas às tabelas de pessoa/motivo. A API existente já grava as diferenças no JSON `op_logistica_autorizacao_evento.detalhes`.
 
 Detalhamento do escopo e dos arquivos alterados: [relatório de edição direta e auditoria](./relatorio-edicao-direta-auditoria.md).
@@ -47,15 +47,15 @@ Detalhamento do escopo e dos arquivos alterados: [relatório de edição direta 
 - [x] Atualizar indicadores da API e do painel com contagem e percentuais por grupo/motivo, taxa e OTIF por tipo de entrega, e motivos coletivos das equipes no ranking. Os percentuais apresentam participação nas não realizadas e incidência no total registrado.
 - [x] Preservar o score atual (`+1` elogio e `−1` reclamação) e mostrar motivos por pessoa como ocorrências das equipes em que participou. Atribuição individual e peso de motivos continuam sem aprovação.
 - [x] Revisar/aplicar `d2a8f6c1b904` após `c9b61a2f4d80`; confirmou `d2a8f6c1b904 (head)` em staging. A revisão adiciona `Pessoa.tipo_transporte_entrega`, `MotivoNaoEntrega.grupo_motivo` e `EntregaMotivo.observacao` como nullable.
-- [ ] Para a edição direta/auditoria, confirmar o CI da nova alteração; aplicar `e31f9a7c2b64` em staging antes do workflow manual `Deploy Portal API to Staging` e publicar a nova Preview Vercel. Fazer aceite funcional com Suporte, cadastros oficiais e permissões reais.
+- [ ] Para a edição direta/auditoria, confirmar o CI do commit `f73245c`; aplicar `e31f9a7c2b64` em staging antes do workflow manual `Deploy Portal API to Staging` e publicar a nova Preview Vercel. Fazer aceite funcional com Suporte, cadastros oficiais e permissões reais.
 - [ ] Confirmar com o responsável as premissas de quatro grupos controlados e equipe homogênea; não preencher classificações históricas por inferência.
 - [ ] Prever integração do Portal com o ERP SEAC antes do lançamento oficial. Confirmar fonte e acesso autorizados, campos, frequência, idempotência e se os dados serão importados como rascunho ou confirmados automaticamente.
 
 ### Ordem de publicação acordada para esta alteração
 
-1. Confirmar o CI da branch `staging`; corrigir e enviar qualquer falha.
+1. Confirmar o CI do commit `f73245c` na branch `staging`; corrigir e enviar qualquer falha.
 2. Aplicar a migration `e31f9a7c2b64` na cadeia `logistica`, após confirmar que `d2a8f6c1b904` continua como revisão anterior.
-3. Executar o workflow manual da API e publicar a nova Preview da Vercel com `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false`.
+3. Executar **Deploy Portal API to Staging** selecionando a branch `staging` no commit `f73245c` e publicar/confirmar a nova Preview da Vercel com `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false`.
 4. Aceitar login, cadastro e edição no mesmo ID, auditoria de autoria/alvo/alterações, lançamento, observação por motivo, histórico/CSV e indicadores.
 5. Atualizar os cadastros atuais com as classificações validadas por Suporte.
 6. Iniciar o piloto; acompanhar feedback e corrigir problemas antes de liberar a versão para todos.
