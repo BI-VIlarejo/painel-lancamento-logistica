@@ -1,3 +1,5 @@
+import type { DeliveryTransportType, NonDeliveryReasonGroup } from "./classifications";
+
 export type DeliveryStatus =
   | "RASCUNHO"
   | "ENVIADA"
@@ -17,11 +19,13 @@ export type PersonCatalogItem = {
   id_pessoa: number;
   nome_exibicao: string;
   tipo_funcao: string;
+  tipo_transporte_entrega: DeliveryTransportType | null;
 };
 export type NonDeliveryReasonCatalogItem = {
   id_motivo_nao_entrega: number;
   codigo_motivo: string;
   descricao_motivo: string;
+  grupo_motivo: NonDeliveryReasonGroup | null;
 };
 
 export type CatalogPage<T> = {
@@ -38,6 +42,7 @@ export type DeliveryParticipantInput = {
 export type DeliveryReasonInput = {
   id_motivo_nao_entrega: number;
   quantidade: number;
+  observacao?: string | null;
 };
 export type DeliveryItemInput = {
   codigo_item_lancamento?: string;
@@ -45,7 +50,6 @@ export type DeliveryItemInput = {
   id_localidade: number;
   quantidade_realizada: number;
   quantidade_nao_realizada: number;
-  observacao?: string | null;
   participantes: DeliveryParticipantInput[];
   motivos: DeliveryReasonInput[];
 };
@@ -56,15 +60,19 @@ export type DeliveryParticipantResponse = DeliveryParticipantInput & {
   codigo_pessoa: string;
   nome_exibicao: string;
   ordem: number;
+  tipo_transporte_entrega: DeliveryTransportType | null;
 };
 export type DeliveryReasonResponse = DeliveryReasonInput & {
   codigo_motivo: string;
   descricao_motivo: string;
+  grupo_motivo: NonDeliveryReasonGroup | null;
+  observacao: string | null;
 };
 export type DeliveryItemResponse = Omit<DeliveryItemInput, "participantes" | "motivos"> & {
   codigo_item_lancamento: string;
   nome_localidade: string;
   codigo_localidade: string;
+  observacao: string | null;
   participantes: DeliveryParticipantResponse[];
   motivos: DeliveryReasonResponse[];
 };

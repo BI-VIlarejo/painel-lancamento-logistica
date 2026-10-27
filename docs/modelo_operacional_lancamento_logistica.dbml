@@ -343,6 +343,7 @@ Table op_logistica_pessoa {
   codigo_pessoa_origem varchar(120)
   nome_exibicao varchar(160) [not null]
   tipo_funcao varchar(24) [not null]
+  tipo_transporte_entrega varchar(20) [note: 'PROPRIA ou TERCEIRIZADA. Nullable somente para versões históricas ainda não classificadas; novos cadastros exigem valor.']
   ativo boolean [not null]
   vigente_desde date [not null]
   vigente_ate date
@@ -360,17 +361,19 @@ Table op_logistica_pessoa {
 
   checks {
     `tipo_funcao in ('MOTORISTA', 'AJUDANTE')` [name: 'ck_op_logistica_pessoa_funcao']
+    `tipo_transporte_entrega is null or tipo_transporte_entrega in ('PROPRIA', 'TERCEIRIZADA')` [name: 'ck_op_logistica_pessoa_tipo_transporte']
     `vigente_ate is null or vigente_ate > vigente_desde` [name: 'ck_op_logistica_pessoa_periodo']
     `(sistema_origem is null and codigo_pessoa_origem is null) or (sistema_origem is not null and codigo_pessoa_origem is not null)` [name: 'ck_op_logistica_pessoa_origem_par']
   }
 
-  Note: 'Não identificar pessoas pelo nome digitado. codigo_pessoa é gerado uma vez; quando houver código mestre confiável, guardar sua origem. vigente_desde é definida pelo servidor. Cada alteração histórica de nome/função cria nova versão com intervalo próprio; participantes apontam para a versão válida na data do lançamento. A aplicação impede vigências sobrepostas e desativa, sem apagar, versões já usadas.'
+  Note: 'Não identificar pessoas pelo nome digitado. codigo_pessoa é gerado uma vez; quando houver código mestre confiável, guardar sua origem. vigente_desde é definida pelo servidor. Cada alteração histórica de nome/função/tipo de transporte cria nova versão com intervalo próprio; participantes apontam para a versão válida na data do lançamento. A aplicação impede vigências sobrepostas e desativa, sem apagar, versões já usadas. Novos lançamentos exigem equipe homogênea entre PROPRIA e TERCEIRIZADA; versões históricas sem classificação continuam nulas até conferência do cadastro.'
 }
 
 Table op_logistica_motivo_nao_entrega {
   id_motivo_nao_entrega bigint [pk, increment]
   codigo_motivo varchar(40) [not null]
   descricao_motivo varchar(160) [not null]
+  grupo_motivo varchar(40) [note: 'Grupo controlado: TRANSPORTE_PROPRIO, TRANSPORTE_TERCEIRIZADO, LOJA ou LOGISTICA. Nullable somente para versões históricas ainda não classificadas; novos cadastros exigem valor.']
   ativo boolean [not null]
   vigente_desde date [not null]
   vigente_ate date
@@ -380,6 +383,7 @@ Table op_logistica_motivo_nao_entrega {
 
   checks {
     `vigente_ate is null or vigente_ate > vigente_desde` [name: 'ck_op_logistica_motivo_periodo']
+    `grupo_motivo is null or grupo_motivo in ('TRANSPORTE_PROPRIO', 'TRANSPORTE_TERCEIRIZADO', 'LOJA', 'LOGISTICA')` [name: 'ck_op_logistica_motivo_grupo']
   }
 
   indexes {
@@ -388,7 +392,7 @@ Table op_logistica_motivo_nao_entrega {
     (criado_por, criado_em) [name: 'ix_op_logistica_motivo_autor_data']
   }
 
-  Note: 'codigo_motivo e vigente_desde são definidos pelo servidor. A interface pede apenas a descrição e preserva versões anteriores.'
+  Note: 'codigo_motivo e vigente_desde são definidos pelo servidor. A interface pede descrição e um dos quatro grupos controlados; versões anteriores preservam o grupo histórico. Versões antigas sem grupo permanecem nulas até revisão, sem preenchimento inferido.'
 }
 
 // ==========================================
@@ -405,7 +409,7 @@ Table op_logistica_entrega_diaria {
   quantidade_nao_realizada int [not null]
   quantidade_entregas_no_prazo int [note: 'Coluna legada, mantida por compatibilidade; não é mais coletada nem usada no OTIF.']
   quantidade_entregas_completas int [note: 'Coluna legada, mantida por compatibilidade; não é mais coletada nem usada no OTIF.']
-  observacao text
+  observacao text [note: 'LEGADO: manter durante a transição para preservar lançamentos existentes. Novos registros guardam observação por motivo em op_logistica_entrega_motivo.']
   criado_em datetime [not null]
   atualizado_em datetime [not null]
 
@@ -421,7 +425,7 @@ Table op_logistica_entrega_diaria {
     `((quantidade_entregas_no_prazo is null and quantidade_entregas_completas is null) or (quantidade_entregas_no_prazo is not null and quantidade_entregas_completas is not null and quantidade_entregas_no_prazo >= 0 and quantidade_entregas_completas >= 0 and quantidade_entregas_no_prazo <= quantidade_realizada and quantidade_entregas_completas <= quantidade_realizada))` [name: 'ck_op_logistica_entrega_otif_quantidades']
   }
 
-  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. OTIF = não realizadas / (realizadas + não realizadas), calculado no total e por motorista, equipe e loja. As colunas de prazo/completude são legadas e não participam do cálculo. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia. Observação fica fora do modelo analítico.'
+  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. OTIF = não realizadas / (realizadas + não realizadas), calculado no total e por motorista, equipe, loja e tipo de entrega. Novos lançamentos exigem participantes com a mesma classificação própria/terceirizada; históricos sem classificação ou mistos são identificados separadamente. As colunas de prazo/completude e observacao geral são legadas. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia.'
 }
 
 Table op_logistica_entrega_participante {
@@ -448,6 +452,7 @@ Table op_logistica_entrega_motivo {
   id_entrega_diaria bigint [not null]
   id_motivo_nao_entrega bigint [not null]
   quantidade int [not null]
+  observacao text [note: 'Observação específica deste motivo nesta linha de entrega.']
 
   indexes {
     (id_entrega_diaria, id_motivo_nao_entrega) [pk]
@@ -458,7 +463,7 @@ Table op_logistica_entrega_motivo {
     `quantidade > 0` [name: 'ck_op_logistica_entrega_motivo_quantidade']
   }
 
-  Note: 'Uma linha por motivo por registro. O serviço verifica na mesma transação que a soma das quantidades dos motivos coincide com quantidade_nao_realizada.'
+  Note: 'Uma linha por motivo por registro; armazena sua observação. Grupo de ocorrência vem da versão referenciada do motivo. O serviço verifica na mesma transação que a soma das quantidades dos motivos coincide com quantidade_nao_realizada. Não replicar automaticamente observações gerais legadas em todas as linhas.'
 }
 
 Table op_logistica_feedback {

@@ -33,15 +33,15 @@ let localities: LocalityAdminItem[] = [
   { id_localidade: 14, codigo_localidade: "CD", nome_localidade: "Centro de Distribuição", tipo_localidade: "CD", cidade: "Macaé", uf: "RJ", ativo: true },
 ];
 let people: PersonAdminItem[] = [
-  { id_pessoa: 21, codigo_pessoa: "demo-driver-1", nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
-  { id_pessoa: 22, codigo_pessoa: "demo-driver-2", nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
-  { id_pessoa: 31, codigo_pessoa: "demo-helper-1", nome_exibicao: "Marina Alves", tipo_funcao: "AJUDANTE", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
-  { id_pessoa: 32, codigo_pessoa: "demo-helper-2", nome_exibicao: "Pedro Lima", tipo_funcao: "AJUDANTE", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 21, codigo_pessoa: "demo-driver-1", nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 22, codigo_pessoa: "demo-driver-2", nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "TERCEIRIZADA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 31, codigo_pessoa: "demo-helper-1", nome_exibicao: "Marina Alves", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "PROPRIA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 32, codigo_pessoa: "demo-helper-2", nome_exibicao: "Pedro Lima", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "TERCEIRIZADA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
 ];
 let reasons: ReasonAdminItem[] = [
-  { id_motivo_nao_entrega: 41, codigo_motivo: "CLIENTE_AUSENTE", descricao_motivo: "Cliente ausente", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null },
-  { id_motivo_nao_entrega: 42, codigo_motivo: "ENDERECO_INCORRETO", descricao_motivo: "Endereço incorreto", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null },
-  { id_motivo_nao_entrega: 43, codigo_motivo: "AVARIA", descricao_motivo: "Produto avariado", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null },
+  { id_motivo_nao_entrega: 41, codigo_motivo: "CLIENTE_AUSENTE", descricao_motivo: "Cliente ausente", grupo_motivo: "LOJA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null },
+  { id_motivo_nao_entrega: 42, codigo_motivo: "ENDERECO_INCORRETO", descricao_motivo: "Endereço incorreto", grupo_motivo: "LOJA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null },
+  { id_motivo_nao_entrega: 43, codigo_motivo: "AVARIA", descricao_motivo: "Produto avariado", grupo_motivo: "TRANSPORTE_PROPRIO", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null },
 ];
 let users: UserAccount[] = [
   { id_usuario: demoUser.id_usuario, username: demoUser.username, nome_completo: demoUser.nome_completo, ativo: true, troca_senha_obrigatoria: false, criado_em: now(), ultimo_login_em: now() },

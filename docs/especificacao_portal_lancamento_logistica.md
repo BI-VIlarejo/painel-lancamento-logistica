@@ -36,8 +36,14 @@ O formulário atual solicita:
 - até dois ajudantes opcionais;
 - quantidade de entregas realizadas;
 - quantidade de entregas não realizadas;
-- um ou mais motivos com quantidade para as entregas não realizadas;
-- observações.
+- um ou mais motivos com quantidade e observação própria para as entregas não realizadas;
+- equipe formada por motorista e até dois ajudantes, classificados no cadastro como Entregas Próprias ou Terceirizadas.
+
+O grupo de ocorrência pertence ao cadastro versionado do motivo, não é digitado no lançamento. O primeiro corte usa quatro grupos controlados: **Transporte próprio**, **Transporte terceirizado**, **Loja** e **Logística**. Ao selecionar uma pessoa, o formulário exibe o tipo da entrega (`PRÓPRIA` ou `TERCEIRIZADA`). Novos lançamentos exigem equipe homogênea; pessoas de tipos diferentes não podem ser combinadas na mesma linha.
+
+A observação passa a pertencer a cada linha de motivo. Novos lançamentos não terão observação geral. A coluna atual no resumo diário será preservada como legado durante a migration para não apagar histórico; a exibição/backfill de observações antigas será definida antes de qualquer remoção dessa coluna.
+
+No CSV novo de Entregas, `observacoes_motivos` recebe uma observação por motivo, na mesma ordem dos itens separados por `|` na coluna `motivos`. A antiga coluna `observacao` não é aceita em lançamentos novos; valores já armazenados permanecem visíveis como legado no histórico.
 
 O protótipo valida que a soma de realizadas e não realizadas seja maior que zero. Se houver entregas não realizadas, exige um motivo por linha e valida que a soma das quantidades dos motivos seja igual ao total não realizado. Esses controles devem ser repetidos no backend, não somente no navegador.
 
@@ -59,9 +65,9 @@ O protótipo atribui `+1` por elogio e `-1` por reclamação a cada pessoa infor
 
 ### 2.4 Cadastros e filtros
 
-Os cadastros editáveis da tela são lojas/filiais, entregadores e motivos de não entrega. O protótipo já traz como exemplos Macaé, Cabo Frio, Campos e motivos como cliente ausente, endereço incorreto, avaria e veículo quebrado. Esses valores são dados demonstrativos do site; confirmar códigos e nomes oficiais antes de carregá-los no banco.
+Os cadastros editáveis da tela são lojas/filiais, motoristas, ajudantes e motivos de não entrega. Cada versão da pessoa exige classificação de Entregas Próprias ou Terceirizadas. Cada versão do motivo exige um dos quatro grupos controlados: Transporte próprio, Transporte terceirizado, Loja e Logística. Versões já existentes sem grupo/tipo permanecem sem classificação até a gerente revisar e versionar o cadastro; a aplicação não infere dados históricos.
 
-O painel permite filtrar por mês ou período, loja, motivo, pessoa e equipe. A equipe aparece como a combinação exata de motorista e ajudantes do lançamento; ainda não há confirmação de que exista um cadastro empresarial de equipes fixas.
+O painel mantém os filtros de período e loja e apresenta volumes e percentuais por motivo/grupo, além de comparar Entregas Próprias e Terceirizadas. Para motivos e grupos, exibe duas taxas: participação entre as entregas não realizadas e incidência sobre o total registrado. Para tipo de entrega, apresenta quantidade, taxa de realização e OTIF. A equipe continua sendo a combinação de motorista e ajudantes do lançamento.
 
 ### 2.5 Indicadores exibidos e decisões de negócio necessárias
 
@@ -71,11 +77,15 @@ O painel permite filtrar por mês ou período, loja, motivo, pessoa e equipe. A 
 OTIF (%) = entregas não realizadas / (entregas realizadas + entregas não realizadas) × 100
 ```
 
-O indicador é calculado com as quantidades registradas e agregado pelas somas do recorte selecionado. O painel apresenta o resultado geral e por motorista, equipe e loja. A taxa de realização continua disponível como indicador separado.
+O indicador é calculado com as quantidades registradas e agregado pelas somas do recorte selecionado. O painel apresenta o resultado geral, por motorista, equipe, loja e tipo de entrega. A taxa de realização continua disponível como indicador separado.
 
 **Decisão do responsável pelo produto em 22/10/2026:** não coletar nem exibir as contagens de entregas no prazo e completas. As colunas já existentes no banco são mantidas por compatibilidade histórica, mas não participam do cálculo. Como o OTIF usa somente realizadas e não realizadas, registros antigos também podem ser calculados.
 
-Metas e faixas de cor ficam para depois do primeiro piloto. O ranking misto de motoristas e ajudantes está incluído no release. Como o formulário registra contagens por equipe, cada participante recebe os resultados das equipes em que trabalhou; os volumes são coletivos e não devem ser somados entre pessoas. O ranking ordena por taxa de realização, score de atendimento (`+1` por elogio e `−1` por reclamação), volume realizado e nome.
+Metas e faixas de cor ficam para depois do primeiro piloto. O ranking misto de motoristas e ajudantes está incluído no release. Como o formulário registra contagens e motivos por equipe, cada participante recebe resultados coletivos das equipes em que trabalhou; os volumes e motivos não devem ser somados entre pessoas nem tratados como prova de responsabilidade individual. O ranking mostra os motivos das equipes como contexto, sem alterar o score atual (`+1` por elogio e `−1` por reclamação). Até que haja regra aprovada para atribuição e pesos, a ordem segue taxa de realização, score de atendimento, volume realizado e nome.
+
+### 2.7 Integração futura com o ERP SEAC
+
+Antes do lançamento oficial do Portal, está prevista uma integração com o ERP SEAC para buscar automaticamente dados usados nos lançamentos de Entregas. O conector deverá executar no backend, usar conta técnica com acesso mínimo e aplicar mapeamentos por códigos estáveis; o navegador não acessará o ERP nem receberá credenciais. Ainda precisam ser confirmados os campos/origem disponíveis, frequência, tratamento de duplicatas/divergências e se os dados importados entram como rascunho para conferência ou são confirmados automaticamente. O piloto pode seguir com cadastros e lançamentos manuais enquanto a integração é especificada.
 
 ### 2.6 Limite técnico do protótipo
 
@@ -115,11 +125,13 @@ flowchart LR
     API -->|Acesso privado| OP[(Tabelas operacionais op_logistica_*)]
     API --> AUTH[Login local por username e senha]
     OP --> CONF[Confirmação do autor e validação]
+    SEAC[ERP SEAC] -->|Acesso técnico autorizado| SYNC[Conector de integração no backend]
+    SYNC -->|Importação idempotente e mapeada| API
     ETL[VilarejoAutomacaoLogistica: SEAC, Cobli, CTA e arquivos] --> F
     F --> BI[VilarejoBI: painéis]
 ```
 
-O navegador nunca acessa MySQL diretamente. O frontend React valida e envia dados pela API HTTPS; o backend valida sessão, autorização e regras de negócio em cada leitura e escrita e grava as tabelas operacionais. A pessoa que preenche confere e confirma o próprio lançamento; a confirmação o registra imediatamente. O Portal não consulta nem publica dados no VilarejoBI neste release.
+O navegador nunca acessa MySQL nem o ERP diretamente. O frontend envia dados pela API HTTPS; o backend valida sessão, autorização e regras de negócio e grava as tabelas operacionais. O conector futuro do SEAC também executará no backend, com leitura autorizada, mapeamento por código e idempotência. O fluxo de conferência/confirmação dos dados importados ainda será aprovado. O Portal não publica automaticamente seus lançamentos no VilarejoBI neste release.
 
 ### 4.2 Aplicação Python
 
@@ -185,11 +197,11 @@ Os nomes e relacionamentos completos estão no [DBML operacional do portal](./mo
 | `op_logistica_lancamento` | Cabeçalho estável de um processo de lançamento. | UUID público estável, setor, autor e chave de idempotência. |
 | `op_logistica_lancamento_revisao` | Uma versão editável ou confirmada do cabeçalho e respectivos detalhes. | Formulário/versão, número, UUID estável para linhagem analítica, estado e autor/horário de confirmação. Campos de aprovação/devolução permanecem apenas para dados legados; novas confirmações não aguardam outro usuário. |
 | `op_logistica_lancamento_evento` | Uma transição ou ação auditável de uma revisão. | Estado anterior/novo, ator, horário UTC, comentário e nomes dos campos alterados sem copiar valores sensíveis. Append-only. |
-| `op_logistica_pessoa` | Cadastro canônico versionado de motoristas/ajudantes que aparecem no formulário. | `id_pessoa` identifica uma versão; `codigo_pessoa` permanece estável entre versões. Nome/função e vigência ficam na versão apontada pelo participante. Usar código estável se disponível; não depender apenas de comparar nomes digitados. |
-| `op_logistica_motivo_nao_entrega` | Catálogo controlado e versionado de motivos. | `id_motivo` identifica a versão; `codigo_motivo` permanece estável entre versões. Desativar/encerrar motivos usados historicamente em vez de apagá-los ou reutilizar seu código com outro significado. |
-| `op_logistica_entrega_diaria` | Uma linha de resumo diário por localidade/equipe em uma revisão. | Data, código estável da linha, localidade, quantidades e observação. Não fixar unicidade por data/localidade. |
+| `op_logistica_pessoa` | Cadastro canônico versionado de motoristas/ajudantes que aparecem no formulário. | `id_pessoa` identifica uma versão; `codigo_pessoa` permanece estável entre versões. Nome/função, tipo de entrega (`PROPRIA`/`TERCEIRIZADA`) e vigência ficam na versão apontada pelo participante. O tipo é obrigatório em novos cadastros; linhas antigas podem permanecer nulas até revisão. |
+| `op_logistica_motivo_nao_entrega` | Catálogo controlado e versionado de motivos. | `id_motivo` identifica a versão; `codigo_motivo` permanece estável entre versões. Cada versão exige um grupo (`TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`); versões antigas sem grupo permanecem nulas até revisão. Desativar/encerrar motivos usados historicamente em vez de apagá-los ou reutilizar seu código com outro significado. |
+| `op_logistica_entrega_diaria` | Uma linha de resumo diário por localidade/equipe em uma revisão. | Data, código estável da linha, localidade e quantidades. O tipo de entrega é derivado da classificação dos participantes; novos lançamentos não aceitam equipe mista. A coluna atual `observacao` permanece somente como legado, e novos lançamentos não a preenchem. |
 | `op_logistica_entrega_participante` | Uma pessoa e um papel por registro de entrega. | `id_entrega`, `id_pessoa`, papel (`MOTORISTA`/`AJUDANTE`), ordem; restringir um motorista e a quantidade de ajudantes aprovada. |
-| `op_logistica_entrega_motivo` | Quantidade não realizada por motivo em um registro. | `id_entrega`, `id_motivo`, `quantidade`; chave única por entrega e motivo, se o formulário só permitir uma linha consolidada por motivo. |
+| `op_logistica_entrega_motivo` | Quantidade não realizada e observação específica por motivo em um registro. | `id_entrega`, `id_motivo`, `quantidade`, `observacao`; uma linha consolidada por motivo em cada item. O grupo é obtido da versão do motivo referenciada. Preservar o texto da observação geral histórica durante a migration. |
 | `op_logistica_feedback` | Uma manifestação de cliente ligada a uma entrega confirmada. | Vários feedbacks podem apontar para o mesmo item. `Idempotency-Key` única por submissão evita duplicatas em retries; cada novo feedback usa uma chave nova. |
 
 ### Regras de integridade que devem virar constraints e validações
@@ -200,6 +212,9 @@ Os nomes e relacionamentos completos estão no [DBML operacional do portal](./mo
 - Quantidades de entregas e motivos não podem ser negativas; motivo informado precisa ter quantidade positiva. Aplicar `CHECK` nas colunas suportadas pelo MySQL e repetir as regras no serviço da API.
 - A soma das quantidades de motivos precisa ser igual à quantidade não realizada. Como depende de várias linhas, validar todas as linhas dentro da transação da API antes de enviar o formulário; repetir a validação na publicação.
 - Uma entrega tem no máximo um motorista, até dois ajudantes e não pode repetir a mesma pessoa como participante, salvo regra de negócio aprovada. Validar no serviço e, quando possível, reforçar com chaves/índices.
+- O tipo de entrega (`PROPRIA`/`TERCEIRIZADA`) vem dos cadastros versionados dos participantes e aparece como identificação visual junto às pessoas no formulário. Definir e validar a regra para participantes de tipos divergentes antes de habilitar a seleção.
+- Cada versão de motivo possui grupo de ocorrência obrigatório; a FK à versão preserva o grupo utilizado historicamente. Mudanças de grupo em motivos usados criam nova versão.
+- A observação de novas ocorrências fica em `op_logistica_entrega_motivo`, uma por linha de motivo. Não copiar uma observação antiga geral para vários motivos sem regra de migração aprovada.
 - Para cada tabela de histórico, definir índices começando pelos filtros mais comuns: status/data, setor/localidade/data, autor/data e lançamento/revisão. Confirmar o plano de consultas antes de criar índices redundantes.
 - Usar `ativo` e vigência para retirar cadastros de uso corrente sem apagar dados históricos. Exclusão física fica restrita a correção administrativa auditada e aprovada.
 
@@ -212,6 +227,7 @@ Essas regras protegem a base contra requests inválidos mesmo quando o formulár
 - **Equipe fixa:** o protótipo monta equipe a partir das pessoas no lançamento. Só criar `op_logistica_equipe` e `op_logistica_equipe_membro` se o negócio confirmar grupos permanentes e precisar administrá-los.
 - **Anexos:** não são requeridos pelo protótipo. Adicionar tabela/armazenamento separado só se gestores aprovarem evidências anexadas.
 - **Auditoria de catálogos:** os campos `criado_por`, `criado_em` e `atualizado_em` são preenchidos pelo servidor e registram a manutenção dos catálogos. A interface não deve aceitar essas datas como entrada. Se houver edição administrativa com impacto histórico, adicionar eventos específicos antes de habilitar a alteração pela interface.
+- **Integração com SEAC:** antes do lançamento oficial, confirmar a fonte autorizada (API, consulta read-only ou exportação estruturada), conta técnica, códigos e frequência. Implementar adaptador no backend, sincronização idempotente, registro da origem e reconciliação de conflitos; confirmar se entradas importadas chegam como rascunho ou confirmadas.
 
 ## 6. Fronteira com o modelo analítico e com a automação
 
@@ -259,6 +275,8 @@ O portal e o projeto de automação podem avançar em paralelo, mas podem produz
 - qual processo é dono da publicação final.
 
 No exemplo atual, o formulário da ADAPTA registra totais diários por equipe, enquanto `fato_entregas_mensais` recebe agregados mensais por localidade e tipo de transporte e pode receber dados do SEAC. Essas granularidades e semânticas não devem ser somadas automaticamente. Feedbacks também não devem ser convertidos em devoluções do SEAC sem uma regra aprovada.
+
+A integração SEAC solicitada para o Portal é entrada de dados operacionais; não é publicação do Portal no VilarejoBI nem substitui o ETL das planilhas. Reusar adaptadores/contratos somente depois de validar a fonte e os identificadores com a equipe do ERP. Toda importação deve ser idempotente, rastreável e reconciliável, sem duplicar lançamentos manuais.
 
 Manter os projetos separados em código:
 
@@ -395,6 +413,7 @@ As decisões abaixo já orientam a primeira versão funcional:
 5. OPERADOR pode lançar Entregas, manter catálogos e registrar/importar/consultar/exportar feedback dentro dos escopos; não acessa indicadores, auditoria nem usuários e acessos. Os perfis GESTOR, DIRETORIA e DEV mantêm as permissões já previstas.
 6. O feedback exige nome do cliente. Todos os perfis do piloto podem consultar/exportar dentro dos escopos; OPERADOR também pode registrar/importar. Definir retenção de nome/relato antes de usar dados reais.
 7. O staging usa `vilarejo_bi_logistica_staging`; EC2 hospedará a API, Vercel o frontend e migrations seguem a cadeia `logistica` mantida pelo VilarejoBI.
+8. Atualização solicitada em 27/10/2026: motivos terão grupo de ocorrência; pessoas terão tipo de entrega própria/terceirizada; cada motivo terá observação; indicadores separarão grupos de motivo e tipo de entrega; a integração automática de entrada do SEAC está prevista antes do lançamento oficial.
 
 Antes de iniciar o piloto, ainda falta validar os CSVs com amostras anonimizadas, carregar os catálogos oficiais, provisionar os acessos identificados e concluir DNS/TLS/rede/segredos da infraestrutura.
 
@@ -456,13 +475,30 @@ Antes de iniciar o piloto, ainda falta validar os CSVs com amostras anonimizadas
 ### Etapa 6 — Indicadores, filtros, CSV e impressão
 
 1. Usar a fórmula aprovada: entregas não realizadas ÷ total registrado, no geral e por motorista/equipe/loja.
-2. Implementar filtros de competência/período/localidade/motivo/pessoa/equipe com consultas paginadas e escopo de acesso.
+2. Manter os filtros implementados de período e localidade com consultas paginadas e escopo de acesso. Os indicadores de grupo/motivo e tipo de entrega são exibidos como dimensões do painel.
 3. Implementar dados por equipe/pessoa conforme a regra aprovada: cada integrante recebe as quantidades coletivas das equipes de que participou, sem somar resultados entre pessoas.
 4. Usar o score aprovado no ranking misto: +1 por elogio e −1 por reclamação para cada participante da equipe relacionada.
 5. Importação CSV faz parte da primeira versão; validar todas as linhas e apresentar prévia/erros antes de gravar.
 6. Implementar exportação/impressão com os mesmos filtros e autorização do relatório visual.
 
 **Aceite:** indicadores conferem com casos manuais conhecidos e exportações não ampliam o escopo de dados do usuário.
+
+### Etapa 6.1 — Grupos de motivo, tipo de entrega e observação por motivo (solicitado em 27/10/2026)
+
+1. O código da API real, contratos, ORM, telas de cadastro, formulário, histórico/CSV e painel já foi atualizado no branch de trabalho. Os grupos adotados neste primeiro corte são fixos; novas equipes devem ser homogêneas.
+2. `d2a8f6c1b904`, aplicada em staging após `c9b61a2f4d80`, acrescenta tipo da pessoa, grupo do motivo e observação por motivo como colunas nullable para preservar registros históricos. O banco está confirmado em `d2a8f6c1b904 (head)`.
+3. Reclassificar as versões atuais de pessoas e motivos no cadastro; não atribuir valores a linhas antigas por inferência. Os endpoints bloqueiam novos lançamentos que selecionem cadastros sem classificação ou equipe mista.
+4. O painel mostra contagem e percentuais por grupo/motivo e separa desempenho por tipo de entrega. O ranking exibe ocorrências das equipes por pessoa como informação coletiva; a fórmula continua sem penalidade por motivo até aprovação dos pesos e da regra de atribuição.
+5. Executar a CI no GitHub e fazer aceite funcional com cadastros e usuários de staging; publicar a API e o frontend atualizados somente com o workflow concluído. Produção é etapa posterior.
+
+**Aceite:** cada pessoa e motivo possui classificação válida; o lançamento mostra o tipo derivado da equipe; cada ocorrência guarda sua própria observação; indicadores conciliam os totais com o detalhe, sem duplicar quantidades.
+
+### Etapa 6.2 — Integração de entrada com SEAC antes do lançamento oficial
+
+1. Confirmar com a equipe SEAC a fonte autorizada (API, consulta read-only ou exportação estruturada), conta técnica, campos, códigos e frequência.
+2. Definir se o Portal importa rascunhos para conferência ou confirma automaticamente, como idempotência será calculada e como divergências com lançamentos manuais serão tratadas.
+3. Implementar adaptador no backend, trilha de origem, validação e reconciliação em staging com amostras aprovadas; nunca conectar o navegador diretamente ao ERP.
+4. Habilitar a carga automática oficial após aceite do gestor e autorização da Infra.
 
 ### Etapa 7 — Integração com VilarejoBI (fora do escopo)
 
@@ -561,6 +597,9 @@ Processo de coordenação:
 4. Informar username e nome completo da conta DEV a provisionar e definir as concessões de Suporte/localidade para o piloto.
 5. Concluir o ambiente EC2, endpoint HTTPS, DNS/TLS, Security Groups, secrets do GitHub e variáveis da Vercel conforme o guia de deploy.
 6. Confirmar se impressão/PDF é necessária no piloto. Metas e faixas de cor do OTIF estão adiadas para depois do piloto e não bloqueiam a primeira versão.
+7. Confirmar com o responsável do produto as premissas do primeiro corte (quatro grupos fixos e equipe homogênea) e a política de pesos/atribuição de motivos no ranking.
+8. Confirmar a migration `d2a8f6c1b904 (head)`, executar CI e publicar API/frontend atualizados em staging para aceite do piloto.
+9. Implementar e aprovar a integração SEAC de entrada antes do lançamento oficial; manter o staging/piloto em modo manual enquanto o contrato não estiver fechado.
 
 ## 14. Critérios de aceite do primeiro módulo
 
@@ -575,6 +614,8 @@ Processo de coordenação:
 - A carga analítica usa somente lançamentos confirmados e não duplica valores do SEAC/ETL.
 - Staging e produção da Vercel usam configurações diferentes; RDS não tem credenciais no frontend.
 - O piloto roda em paralelo à planilha e recebe aceite do gestor antes da adoção oficial.
+- Motivos guardam grupo e observação por item; pessoas guardam classificação de Entregas Próprias/Terceirizadas; o painel separa os recortes e documenta os denominadores.
+- Antes do lançamento oficial, a integração de backend com SEAC importa dados sem duplicidade, registra a origem e segue o fluxo de conferência/confirmação aprovado.
 
 ## 15. Referências
 

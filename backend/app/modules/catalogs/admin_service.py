@@ -324,6 +324,7 @@ def create_person_version(
             codigo_pessoa_origem=origin_code,
             nome_exibicao=payload.nome_exibicao,
             tipo_funcao=payload.tipo_funcao,
+            tipo_transporte_entrega=payload.tipo_transporte_entrega,
             ativo=True,
             vigente_desde=effective_date,
             vigente_ate=None,
@@ -431,6 +432,7 @@ def create_reason_version(
         item = MotivoNaoEntrega(
             codigo_motivo=stable_code,
             descricao_motivo=payload.descricao_motivo,
+            grupo_motivo=payload.grupo_motivo,
             ativo=True,
             vigente_desde=effective_date,
             vigente_ate=None,

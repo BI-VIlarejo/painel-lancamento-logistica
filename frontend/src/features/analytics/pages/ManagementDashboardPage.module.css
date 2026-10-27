@@ -93,6 +93,9 @@
 .rate-empty { color: #87928a; }
 .person-cell-name { display: block; overflow: hidden; text-overflow: ellipsis; }
 .manager-table tbody th small { display: block; margin-top: 3px; color: #7a887e; font-size: 10px; font-weight: 500; }
+.person-reason-list { display: grid; min-width: 190px; gap: 3px; text-align: left; white-space: normal; }
+.person-reason-list small { color: #647367; font-size: 10px; line-height: 1.35; }
+.person-reason-list > span { color: #87928a; text-align: center; }
 .manager-compact-table { min-width: 600px; }
 .manager-empty { padding: 34px 18px; color: #63748a; font-size: 13px; text-align: center; }
 

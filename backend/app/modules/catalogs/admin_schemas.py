@@ -101,6 +101,7 @@ class PersonAdminItem(BaseModel):
     codigo_pessoa: str
     nome_exibicao: str
     tipo_funcao: str
+    tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"] | None
     ativo: bool
     vigente_desde: date
     vigente_ate: date | None
@@ -114,6 +115,7 @@ class PersonCreateRequest(BaseModel):
     codigo_pessoa: UUID | None = None
     nome_exibicao: str = Field(min_length=1, max_length=160)
     tipo_funcao: Literal["MOTORISTA", "AJUDANTE"]
+    tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"]
     sistema_origem: str | None = Field(default=None, min_length=1, max_length=40)
     codigo_pessoa_origem: str | None = Field(default=None, min_length=1, max_length=120)
 
@@ -158,6 +160,12 @@ class ReasonAdminItem(BaseModel):
     id_motivo_nao_entrega: int
     codigo_motivo: str
     descricao_motivo: str
+    grupo_motivo: Literal[
+        "TRANSPORTE_PROPRIO",
+        "TRANSPORTE_TERCEIRIZADO",
+        "LOJA",
+        "LOGISTICA",
+    ] | None
     ativo: bool
     vigente_desde: date
     vigente_ate: date | None
@@ -168,6 +176,12 @@ class ReasonCreateRequest(BaseModel):
 
     codigo_motivo: str | None = Field(default=None, min_length=2, max_length=40)
     descricao_motivo: str = Field(min_length=1, max_length=160)
+    grupo_motivo: Literal[
+        "TRANSPORTE_PROPRIO",
+        "TRANSPORTE_TERCEIRIZADO",
+        "LOJA",
+        "LOGISTICA",
+    ]
 
     @field_validator("codigo_motivo")
     @classmethod

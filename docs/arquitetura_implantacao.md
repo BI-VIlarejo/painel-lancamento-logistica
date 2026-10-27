@@ -1,6 +1,6 @@
 # Arquitetura e conexão com a RDS
 
-**Status:** frontend e API já implementam autenticação, controle de acesso, catálogos e rascunhos de Entregas. O backend será hospedado em uma EC2 da AWS; detalhes da instância, endpoint HTTPS, rede e segredos ainda dependem de Infra. O catálogo `vilarejo_bi_logistica_staging` é o destino de staging confirmado, seguindo o procedimento do VilarejoBI. Para validar sem RDS, use o MySQL local isolado descrito em [rodar-localmente.md](./rodar-localmente.md).
+**Status em 27/10/2026:** o endpoint HTTPS e a conexão de staging com `vilarejo_bi_logistica_staging` foram confirmados. A migration `d2a8f6c1b904` foi aplicada e a cadeia está em `d2a8f6c1b904 (head)`. Vyctor e a gerente de Suporte estão carregando os cadastros oficiais. O código da API real, ORM, administração, lançamentos e indicadores foi atualizado para grupo de motivo, tipo própria/terceirizada e observação por motivo; ainda falta publicar esta versão e fazer o aceite funcional conectado ao banco. Para validar sem RDS, use o MySQL local isolado descrito em [rodar-localmente.md](./rodar-localmente.md).
 
 ## Componentes
 
@@ -13,6 +13,8 @@ flowchart LR
     LB -->|TCP 8081 privado| N[Nginx de Logística em EC2]
     N -->|rede Docker| A[API FastAPI]
     A -->|TCP 3306 privado| R[(RDS MySQL)]
+    S[ERP SEAC] -->|Conector de backend autorizado| I[Importação idempotente e mapeada]
+    I --> A
     D[Desenvolvedor] -->|HTTPS local| VDEV[Frontend Vite local]
     VDEV -->|localhost:8000| ADEV[API executada no host]
     ADEV -->|127.0.0.1:porta local| T[Processo SSH local]
@@ -20,7 +22,7 @@ flowchart LR
     E -->|TCP 3306 privado| R
 ```
 
-Em produção, somente a API na AWS acessa o endpoint privado da RDS. A RDS não deve ser aberta à internet nem acessada pelo navegador. O frontend Vercel conhece apenas a URL HTTPS da API.
+Em produção, somente a API na AWS acessa o endpoint privado da RDS. A RDS não deve ser aberta à internet nem acessada pelo navegador. O frontend Vercel conhece apenas a URL HTTPS da API. A integração futura com SEAC também deve executar no backend, usando uma conta técnica de leitura e sem expor segredo ao navegador.
 
 ## Desenvolvimento local isolado
 
@@ -46,7 +48,11 @@ O backend implantado na AWS deve conectar diretamente ao endpoint privado da RDS
 4. manter uma credencial separada para migrations, liberada somente na etapa controlada de release;
 5. separar endpoints, credenciais e catálogos de staging e produção.
 
-O backend do Portal será executado na EC2 e acessará a RDS diretamente pela rede privada; não abrirá túnel SSH por requisição. O túnel SSH via EC2/Tailscale continua sendo somente uma opção para desenvolvimento local. A configuração em [`deploy/ec2/`](../deploy/ec2/README.md) usa Docker Compose, Nginx na porta 8081 do host (a 8080 já é usada pelo BI) e FastAPI somente na rede Docker. O desenho-base termina TLS no ALB/proxy aprovado pela Infra. DNS, certificado, encaminhamento para a EC2 e regras dos Security Groups ainda precisam ser aplicados.
+O backend do Portal é executado na EC2 e acessa a RDS diretamente pela rede privada; não abre túnel SSH por requisição. O túnel SSH via EC2/Tailscale continua sendo somente uma opção para desenvolvimento local. A configuração em [`deploy/ec2/`](../deploy/ec2/README.md) usa Docker Compose, Nginx na porta 8081 do host (a 8080 já é usada pelo BI) e FastAPI somente na rede Docker. Em staging, o HTTPS já foi confirmado pela rota do proxy do BI `/logistica-staging/`, encaminhada à porta 8081. A topologia de produção permanece a definir.
+
+## Integração prevista com o ERP SEAC
+
+Antes do lançamento oficial do Portal, está prevista uma integração de entrada para buscar automaticamente no ERP os dados necessários aos lançamentos. A aplicação não deve acessar o SEAC pelo navegador. Um adaptador/worker de backend usará uma fonte oficialmente autorizada (API, consulta somente leitura ou exportação estruturada), códigos estáveis, idempotência, trilha de origem e reconciliação. Precisam ser definidos com a equipe SEAC os campos, frequência, credenciais técnicas, tratamento de divergências e se cada carga será criada como rascunho para conferência ou confirmada automaticamente. Esse fluxo é separado da integração analítica do VilarejoBI e da automação mensal das planilhas.
 
 ## Variáveis de ambiente
 
@@ -110,12 +116,13 @@ Para coletar feedback visual antes de publicar API ou banco, pode-se usar uma Pr
 
 Configurar CORS no backend para as origens oficiais e de preview que forem aceitas. A API precisa de endpoint HTTPS público protegido por autenticação e controles de rede; a conexão da API à RDS permanece privada dentro da AWS.
 
-## O que continua pendente
+## Próximos passos antes do piloto
 
-- **Integração funcional:** os clientes do frontend já chamam as rotas correspondentes da API, e o `compose.yaml` define frontend, API e MySQL local. Falta executar e registrar a validação integrada antes de usar staging.
-- **Vercel:** criar/vincular o projeto com `frontend/` como Root Directory e configurar `VITE_API_BASE_URL` para a API HTTPS em cada ambiente. Essa variável é pública no bundle; não pode conter credenciais.
-- **AWS:** aplicar a configuração em `deploy/ec2/` à EC2 aprovada. O workflow manual para publicar no GHCR e atualizar a EC2 está preparado; ainda faltam região/instância, domínios DNS, confirmação do ALB/proxy e target group, Security Groups, secrets do ambiente `staging` no GitHub, acesso SSH aprovado e URL/credencial operacional da RDS.
-- **Sessão web:** escolher domínios frontend/API no mesmo domínio registrável, configurar `CORS_ALLOWED_ORIGINS`, `SESSION_SECRET`, `SESSION_COOKIE_SECURE=true` e `SESSION_COOKIE_SAMESITE=lax`; depois validar login/logout publicado. Previews `vercel.app` com API em domínio separado são cross-site e podem depender de cookies de terceiros.
-- **Banco e migrations:** comparar os modelos atuais com o schema de staging e coordenar qualquer revisão necessária na cadeia Alembic `logistica`, mantida no repositório VilarejoBI. Este repositório contém instruções, mas não as revisões Alembic aplicadas.
-- **Dados e regras:** carregar catálogos oficiais e concluir a retenção de nome/relato antes de um piloto com feedback real. As regras de ranking misto e acesso aos perfis já foram definidas. Meta/faixas do OTIF ficam para depois do primeiro piloto; a fórmula é não realizadas ÷ total registrado, no geral e por motorista/equipe/loja.
-- **Operação:** executar a suíte e o build, validar os fluxos com perfis diferentes, definir logs/monitoramento, backups e teste de restauração, além do procedimento de release/rollback.
+- **Decisões usadas no primeiro corte:** quatro grupos controlados (`TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA`, `LOGISTICA`); equipes novas devem ter participantes de um mesmo tipo; registros históricos sem grupo/tipo ficam sem classificação até conferência. Os percentuais mostram participação entre as não realizadas e incidência sobre o total registrado.
+- **Ranking:** os motivos associados às equipes aparecem por pessoa como contexto coletivo; o score continua em +1 por elogio e −1 por reclamação. Não somar ocorrências entre pessoas nem alterar o peso dos motivos sem regra aprovada.
+- **Migration:** `d2a8f6c1b904` (down revision `c9b61a2f4d80`) foi aplicada em staging e conferida como `head`.
+- **API e interface:** os contratos, serviços, cadastros, formulário de Entregas, histórico, CSV e painel foram atualizados no código desta versão; faltam CI no GitHub, publicação da API/frontend e aceite funcional em staging.
+- **Cadastros/aceite:** acompanhar a carga feita por Vyctor e pela gerente de Suporte, reclassificar cada pessoa e motivo atual e testar os fluxos com contas/escopos reais do piloto. Não inventar grupo/tipo para registros antigos.
+- **SEAC:** definir acesso, campos, frequência, idempotência e estado de importação; implementar o conector de backend antes do lançamento oficial.
+- **Produção:** preparar publicação de produção depois do piloto; não reutilizar o banco, secrets nem workflow de staging.
+- **Operação:** completar a revisão de acessibilidade/responsividade, confirmar backup/restauração e logs/monitoramento antes de produção.

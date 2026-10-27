@@ -8,16 +8,19 @@
 - O setor responsável por novos lançamentos desse módulo é `SUPORTE` (Suporte); registros históricos não são reatribuídos automaticamente.
 - O portal já tem telas conectadas à API para autenticação, catálogos, feedback, painel, ranking, administração e auditoria.
 - Há um modo de demonstração com dados fictícios e uma configuração local com frontend, API e MySQL isolado. A demonstração não representa dados reais da operação.
-- O cadastro de lojas/filiais é próprio do Portal. O schema de staging foi atualizado, mas os catálogos reais de lojas, pessoas e motivos ainda estão vazios.
-- A publicação em Vercel e AWS ainda depende de domínio, ambiente de API, conectividade aprovada com o banco e configuração dos responsáveis de Infra.
+- O cadastro de lojas/filiais é próprio do Portal. Vyctor e a gerente de Suporte estão preenchendo os cadastros oficiais em staging.
+- A prévia Vercel e a API de staging estão publicadas; a migration `d2a8f6c1b904` foi aplicada e a revisão Alembic atual é `d2a8f6c1b904 (head)`.
+- A próxima versão da API real inclui grupo de motivo, tipo própria/terceirizada por pessoa e observação por motivo; falta publicar esta versão em staging e fazer o aceite funcional.
+- O primeiro corte usa quatro grupos controlados, bloqueia equipes mistas e deixa cadastros antigos sem classificação até revisão. O ranking mostra motivos ocorridos nas equipes sem tratá-los como responsabilidade individual.
 
 ## Agenda sugerida
 
 1. Mostrar o fluxo atual de Entregas e o painel.
 2. Confirmar como o processo funciona na operação e quais exceções precisam ser cobertas.
-3. Validar a apresentação dos indicadores e do ranking e fechar a política de retenção do feedback.
-4. Definir o piloto, as fontes de dados e quem responde por cada etapa.
-5. Listar o que precisa ser encaminhado a Infra para a publicação.
+3. Confirmar as premissas adotadas no primeiro corte: quatro grupos controlados, equipe homogênea, classificação dos cadastros e percentuais por grupo.
+4. Validar a apresentação do ranking e fechar a política de retenção do feedback.
+5. Definir o piloto, o fluxo de entrada do SEAC e quem responde por cada etapa.
+6. Listar o que precisa ser encaminhado a Infra para a integração SEAC e próximas publicações.
 
 ## Perguntas para fechar com o Diretor
 
@@ -44,6 +47,9 @@
 - Quem fornecerá e validará os cadastros de motoristas, ajudantes e motivos de não entrega?
 - Existe uma amostra anonimizada do CSV histórico de Entregas? Quais colunas e convenções devemos preservar?
 - Como os motivos e observações são preenchidos hoje? Há abreviações ou categorias que precisam ser mapeadas?
+- O primeiro corte controla quatro grupos de motivo: Transporte próprio, Transporte terceirizado, Loja e Logística. São suficientes para o piloto ou Suporte precisa cadastrar novos grupos?
+- Cada pessoa será classificada como Entregas Próprias ou Terceirizadas e a API bloqueia equipe mista. Há exceção operacional que exige aceitar uma equipe com tipos diferentes?
+- A observação é preenchida em cada motivo. Observações gerais antigas serão exibidas no histórico como legado e não serão distribuídas entre motivos; há algum tratamento adicional necessário?
 - O histórico antigo deve ser importado para o Portal ou ficará somente para consulta no sistema atual?
 
 ### 4. Indicadores e ranking
@@ -55,6 +61,8 @@
 - Há um volume mínimo ou outro critério de desempate que a gestão queira considerar depois de observar os dados do piloto?
 - Quais filtros e períodos são mais úteis para a gestão?
 - O volume realizado por equipe deve aparecer como resultado coletivo, sem ser apresentado como produtividade individual de cada participante?
+- O painel mostrará a participação de cada motivo nas não realizadas e a incidência sobre o total registrado. Esses dois percentuais atendem à análise de frequência e impacto?
+- Os indicadores separam volume, taxa de realização e OTIF para Entregas Próprias e Terceirizadas? Há outro corte por tipo que a gestão precisa ver?
 
 ### 5. Feedback de clientes
 
@@ -62,7 +70,16 @@
 - Todos os perfis do piloto podem consultar e exportar feedback dentro dos escopos; OPERADOR também pode registrar e importar. Esse acesso atende à rotina da equipe?
 - Por quanto tempo os relatos devem ser mantidos e quem será responsável por atender reclamações?
 - O score de atendimento entra no ranking misto como +1 por elogio e −1 por reclamação para cada participante da equipe relacionada. Como a gestão quer revisar situações em que o relato mencione apenas parte da equipe?
+- Motivos como avaria serão exibidos como ocorrências coletivas das equipes em que cada pessoa participou, sem penalidade individual nesta versão. Se forem entrar no score futuramente, quais grupos/motivos contam, com que peso e como normalizar pelo volume de entregas?
 - Há um CSV histórico de feedback anonimizado com os códigos necessários para relacionar cada registro à entrega correspondente?
+
+### 6. Entrada automática do ERP SEAC
+
+- Quais dados de cada lançamento devem vir do SEAC: data, loja, equipe, quantidades, motivos e/ou outros campos?
+- Qual fonte pode ser usada com autorização: API oficial, consulta somente leitura ou exportação estruturada? Quem fornece credencial técnica e códigos estáveis?
+- Com que frequência o Portal consulta o SEAC e como evita duplicar um lançamento já importado ou preenchido manualmente?
+- Os dados importados devem virar rascunho para a equipe revisar e confirmar ou devem ser registrados automaticamente?
+- Como tratar divergências entre SEAC e Portal e qual sistema é a fonte oficial de cada campo?
 
 ### 6. Acessos e responsabilidades
 
@@ -99,4 +116,7 @@ Estes pontos podem ser encaminhados pelo Diretor ao responsável técnico, sem c
 - [ ] Apresentação do ranking misto validada pela gestão; avaliar volume mínimo ou desempate depois de observar os dados.
 - [ ] Acesso, retenção e tratamento do feedback definidos.
 - [ ] Responsáveis e prazo para listas oficiais e CSVs anonimizados identificados.
+- [ ] Grupos de motivo, equipe própria/terceirizada, observações por motivo e bases percentuais confirmados.
+- [ ] Fórmula/atribuição de motivo no ranking aprovada sem inferir culpa a partir de resultado coletivo.
+- [ ] Campos, acesso e fluxo de conferência/confirmação da integração SEAC definidos.
 - [ ] Responsável de negócio e responsável de Infra nomeados para os próximos passos.

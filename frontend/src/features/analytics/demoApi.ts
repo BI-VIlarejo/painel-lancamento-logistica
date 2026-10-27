@@ -1,6 +1,7 @@
 import { demoApi } from "../deliveries/demoApi";
 import { demoFeedbackApi } from "../feedback/demoApi";
 import { demoAdministrationApi } from "../administration/demoApi";
+import type { DeliveryTransportType } from "../deliveries/classifications";
 import type { DashboardFilters, DashboardResponse } from "./types";
 
 const percentage = (count: number, total: number): number | null =>
@@ -27,6 +28,7 @@ export const demoAnalyticsApi = {
     const people = new Map<number, {
       name: string; role: string; teams: Set<string>; planned: number; completed: number;
       notCompleted: number; praise: number; complaint: number;
+      reasons: Map<number, { name: string; group: string | null; quantity: number }>;
     }>();
     const teams = new Map<string, {
       name: string; members: number[]; launches: Set<string>; planned: number;
@@ -37,7 +39,10 @@ export const demoAnalyticsApi = {
       name: string; launches: Set<string>; planned: number; completed: number;
       notCompleted: number; praise: number; complaint: number;
     }>();
-    const reasons = new Map<number, { name: string; quantity: number }>();
+    const reasons = new Map<number, { name: string; group: string | null; quantity: number }>();
+    const deliveryTypes = new Map<string | null, {
+      records: number; planned: number; completed: number; notCompleted: number;
+    }>();
     const days = new Map<string, { planned: number; completed: number; notCompleted: number }>();
 
     for (const { launch, item } of registered) {
@@ -60,11 +65,29 @@ export const demoAnalyticsApi = {
 
       for (const reason of item.motivos) {
         const current = reasons.get(reason.id_motivo_nao_entrega) ?? {
-          name: reason.descricao_motivo, quantity: 0,
+          name: reason.descricao_motivo, group: reason.grupo_motivo, quantity: 0,
         };
         current.quantity += reason.quantidade;
         reasons.set(reason.id_motivo_nao_entrega, current);
       }
+
+      const knownTypes = new Set(item.participantes
+        .map((person) => person.tipo_transporte_entrega)
+        .filter((type): type is DeliveryTransportType => type !== null));
+      const hasUnclassifiedParticipant = item.participantes.some((person) => !person.tipo_transporte_entrega);
+      const deliveryType = knownTypes.size > 1
+        ? "MISTO"
+        : hasUnclassifiedParticipant
+          ? null
+          : [...knownTypes][0] ?? null;
+      const typeTotals = deliveryTypes.get(deliveryType) ?? {
+        records: 0, planned: 0, completed: 0, notCompleted: 0,
+      };
+      typeTotals.records += 1;
+      typeTotals.planned += planned;
+      typeTotals.completed += item.quantidade_realizada;
+      typeTotals.notCompleted += item.quantidade_nao_realizada;
+      deliveryTypes.set(deliveryType, typeTotals);
 
       const ordered = [...item.participantes].sort((a, b) =>
         (a.papel_participante === "MOTORISTA" ? 0 : 1) - (b.papel_participante === "MOTORISTA" ? 0 : 1)
@@ -86,7 +109,7 @@ export const demoAnalyticsApi = {
         const person = people.get(participant.id_pessoa) ?? {
           name: participant.nome_exibicao, role: participant.papel_participante,
           teams: new Set<string>(), planned: 0, completed: 0, notCompleted: 0,
-          praise: 0, complaint: 0,
+          praise: 0, complaint: 0, reasons: new Map(),
         };
         person.teams.add(teamKey);
         // O resultado é lançado por equipe. Cada integrante recebe o resultado
@@ -94,6 +117,15 @@ export const demoAnalyticsApi = {
         person.planned += planned;
         person.completed += item.quantidade_realizada;
         person.notCompleted += item.quantidade_nao_realizada;
+        for (const reason of item.motivos) {
+          const reasonTotal = person.reasons.get(reason.id_motivo_nao_entrega) ?? {
+            name: reason.descricao_motivo,
+            group: reason.grupo_motivo,
+            quantity: 0,
+          };
+          reasonTotal.quantity += reason.quantidade;
+          person.reasons.set(reason.id_motivo_nao_entrega, reasonTotal);
+        }
         people.set(participant.id_pessoa, person);
       }
     }
@@ -118,6 +150,10 @@ export const demoAnalyticsApi = {
     const completed = registered.reduce((sum, { item }) => sum + item.quantidade_realizada, 0);
     const notCompleted = registered.reduce((sum, { item }) => sum + item.quantidade_nao_realizada, 0);
     const planned = completed + notCompleted;
+    const reasonGroups = new Map<string | null, number>();
+    for (const reason of reasons.values()) {
+      reasonGroups.set(reason.group, (reasonGroups.get(reason.group) ?? 0) + reason.quantity);
+    }
 
     const byPeople = [...people.entries()].map(([id, value]) => ({
       id_pessoa: id, nome: value.name, funcao: value.role,
@@ -128,6 +164,10 @@ export const demoAnalyticsApi = {
       otif_percentual: percentage(value.notCompleted, value.planned),
       elogios: value.praise, reclamacoes: value.complaint,
       score_atendimento: value.praise - value.complaint,
+      motivos_da_equipe: [...value.reasons.entries()].map(([reasonId, reason]) => ({
+        id_motivo: reasonId, motivo: reason.name, grupo_motivo: reason.group,
+        quantidade: reason.quantity,
+      })).sort((a, b) => b.quantidade - a.quantidade || a.motivo.localeCompare(b.motivo, "pt-BR")),
     })).sort((a, b) => (b.taxa_realizacao ?? -1) - (a.taxa_realizacao ?? -1)
       || b.score_atendimento - a.score_atendimento || b.realizadas - a.realizadas
       || a.nome.localeCompare(b.nome, "pt-BR"));
@@ -158,8 +198,28 @@ export const demoAnalyticsApi = {
         elogios: value.praise, reclamacoes: value.complaint,
       })).sort((a, b) => b.itens_planejados - a.itens_planejados || a.nome.localeCompare(b.nome, "pt-BR")),
       por_motivo: [...reasons.entries()].map(([id, value]) => ({
-        id_motivo: id, motivo: value.name, quantidade: value.quantity,
+        id_motivo: id,
+        motivo: value.name,
+        grupo_motivo: value.group,
+        quantidade: value.quantity,
+        percentual_das_nao_realizadas: percentage(value.quantity, notCompleted),
+        incidencia_sobre_total: percentage(value.quantity, planned),
       })).sort((a, b) => b.quantidade - a.quantidade || a.motivo.localeCompare(b.motivo, "pt-BR")),
+      por_grupo_motivo: [...reasonGroups.entries()].map(([group, quantity]) => ({
+        grupo_motivo: group,
+        quantidade: quantity,
+        percentual_das_nao_realizadas: percentage(quantity, notCompleted),
+        incidencia_sobre_total: percentage(quantity, planned),
+      })).sort((a, b) => b.quantidade - a.quantidade),
+      por_tipo_entrega: [...deliveryTypes.entries()].map(([type, value]) => ({
+        tipo_transporte_entrega: type,
+        registros_entrega: value.records,
+        itens_planejados: value.planned,
+        realizadas: value.completed,
+        nao_realizadas: value.notCompleted,
+        taxa_realizacao: percentage(value.completed, value.planned),
+        otif_percentual: percentage(value.notCompleted, value.planned),
+      })),
       por_pessoa: byPeople,
       por_equipe: [...teams.entries()].map(([key, value]) => ({
         chave: key, equipe: value.name, itens_planejados: value.planned,

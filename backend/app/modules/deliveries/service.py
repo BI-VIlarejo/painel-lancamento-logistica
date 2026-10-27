@@ -92,16 +92,30 @@ def _validate_references(
     }
 
     for item in items:
+        transport_types: set[str] = set()
         for participant in item.participantes:
             person = people.get(participant.id_pessoa)
             if person is None:
                 raise NotFoundError("Uma ou mais pessoas não foram encontradas.")
             _validate_person_for_item(person, participant.papel_participante, item.data_entrega)
+            if person.tipo_transporte_entrega is None:
+                raise ConflictError(
+                    "Classifique como Entregas próprias ou terceirizadas todas as pessoas da equipe."
+                )
+            transport_types.add(person.tipo_transporte_entrega)
+        if len(transport_types) != 1:
+            raise ConflictError(
+                "Motorista e ajudantes precisam pertencer ao mesmo tipo de entrega."
+            )
         for reason_input in item.motivos:
             reason = reasons.get(reason_input.id_motivo_nao_entrega)
             if reason is None:
                 raise NotFoundError("Um ou mais motivos não foram encontrados.")
             _validate_reason_for_item(reason, item.data_entrega)
+            if reason.grupo_motivo is None:
+                raise ConflictError(
+                    "Classifique o grupo de todos os motivos antes de usá-los em novos lançamentos."
+                )
 
 
 def _validate_person_for_item(person: Pessoa, role: str, reference_date: date) -> None:
@@ -162,6 +176,7 @@ def _build_details(
                 nome_exibicao=person.nome_exibicao,
                 papel_participante=participant.papel_participante,
                 ordem=participant.ordem,
+                tipo_transporte_entrega=person.tipo_transporte_entrega,
             )
         )
 
@@ -175,7 +190,9 @@ def _build_details(
                 id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
                 codigo_motivo=reason.codigo_motivo,
                 descricao_motivo=reason.descricao_motivo,
+                grupo_motivo=reason.grupo_motivo,
                 quantidade=reason_link.quantidade,
+                observacao=reason_link.observacao,
             )
         )
 
@@ -217,14 +234,14 @@ def _build_details(
 
 
 def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
-    return [
-        DeliveryItemInput(
+    copied_items = []
+    for item in detail.itens:
+        copied = DeliveryItemInput(
             codigo_item_lancamento=item.codigo_item_lancamento,
             data_entrega=item.data_entrega,
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
             quantidade_nao_realizada=item.quantidade_nao_realizada,
-            observacao=item.observacao,
             participantes=[
                 DeliveryParticipantInput(
                     id_pessoa=participant.id_pessoa,
@@ -236,12 +253,14 @@ def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
                 DeliveryReasonInput(
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
                     quantidade=reason.quantidade,
+                    observacao=reason.observacao,
                 )
                 for reason in item.motivos
             ],
         )
-        for item in detail.itens
-    ]
+        copied._legacy_observation = item.observacao
+        copied_items.append(copied)
+    return copied_items
 
 
 def _require_visible_launch(
@@ -282,7 +301,7 @@ def _create_item_rows(
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
             quantidade_nao_realizada=item.quantidade_nao_realizada,
-            observacao=item.observacao,
+            observacao=item._legacy_observation,
             criado_em=now,
             atualizado_em=now,
         )
@@ -303,6 +322,7 @@ def _create_item_rows(
                     id_entrega_diaria=delivery.id_entrega_diaria,
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
                     quantidade=reason.quantidade,
+                    observacao=reason.observacao,
                 )
             )
 
@@ -527,7 +547,11 @@ def update_draft(
             db,
             id_revisoes={revision.id_lancamento_revisao},
         )
-        old_codes = {delivery.codigo_item_lancamento for delivery, _ in old_item_rows}
+        old_observations_by_code = {
+            delivery.codigo_item_lancamento: delivery.observacao
+            for delivery, _ in old_item_rows
+        }
+        old_codes = set(old_observations_by_code)
         requested_codes = [
             str(item.codigo_item_lancamento)
             for item in payload.itens
@@ -537,6 +561,12 @@ def update_draft(
             raise ConflictError("O código de item aparece mais de uma vez no lançamento.")
         if any(code not in old_codes for code in requested_codes):
             raise ConflictError("O código de item não pertence a este rascunho.")
+
+        for item in payload.itens:
+            if item.codigo_item_lancamento is not None:
+                item._legacy_observation = old_observations_by_code.get(
+                    str(item.codigo_item_lancamento)
+                )
 
         delivery_ids = {delivery.id_entrega_diaria for delivery, _ in old_item_rows}
         if delivery_ids:

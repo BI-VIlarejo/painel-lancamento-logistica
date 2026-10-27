@@ -6,6 +6,8 @@ import { analyticsApi } from "../api";
 import type { DashboardResponse, DashboardTrendPoint } from "../types";
 import { catalogsApi } from "../../catalogs/api";
 import type { LocalityCatalogItem } from "../../deliveries/types";
+import { deliveryTransportLabel, nonDeliveryReasonGroupLabel } from "../../deliveries/classifications";
+import type { DeliveryTransportType, NonDeliveryReasonGroup } from "../../deliveries/classifications";
 import { messageFromApiError } from "../../../shared/api/apiError";
 
 const countFormat = new Intl.NumberFormat("pt-BR");
@@ -23,6 +25,19 @@ function firstDayOfCurrentMonth(): string {
 
 function rateLabel(value: number | null): string {
   return value === null ? "—" : `${percentageFormat.format(value)}%`;
+}
+
+function reasonGroupLabel(value: string | null): string {
+  return value === null
+    ? "Sem classificação (histórico)"
+    : nonDeliveryReasonGroupLabel(value as NonDeliveryReasonGroup);
+}
+
+function deliveryTypeLabel(value: string | null): string {
+  if (value === "MISTO") return "Equipe mista (histórico)";
+  return value === null
+    ? "Sem classificação (histórico)"
+    : deliveryTransportLabel(value as DeliveryTransportType);
 }
 
 function shortDate(value: string, monthly: boolean): string {
@@ -168,8 +183,6 @@ export function ManagementDashboardPage() {
   const feedbackAvailable = feedback?.disponivel ?? false;
   const shownPeople = showAllPeople ? data?.por_pessoa ?? [] : (data?.por_pessoa ?? []).slice(0, 8);
   const shownTeams = showAllTeams ? data?.por_equipe ?? [] : (data?.por_equipe ?? []).slice(0, 8);
-  const reasonMax = Math.max(1, ...(data?.por_motivo.map((reason) => reason.quantidade) ?? []));
-
   function resetFilters() {
     setFromDate(firstDayOfCurrentMonth());
     setToDate(localDate(new Date()));
@@ -205,6 +218,9 @@ export function ManagementDashboardPage() {
           <p><strong>OTIF:</strong> entregas não realizadas ÷ total registrado.</p>
           <p><strong>Ranking:</strong> motoristas e ajudantes aparecem juntos. A posição usa taxa de realização, score de atendimento (+1 por elogio e −1 por reclamação), volume realizado e nome como desempate.</p>
           <p><strong>Volumes por pessoa:</strong> as quantidades são o resultado das equipes em que a pessoa participou. Elas aparecem para cada integrante e não devem ser somadas entre pessoas.</p>
+          <p><strong>Motivos por pessoa:</strong> mostram as ocorrências das equipes em que a pessoa trabalhou; cada ocorrência aparece para todos os integrantes e não indica responsabilidade individual. Os motivos ainda não alteram o score de atendimento.</p>
+          <p><strong>Grupos de motivos:</strong> o percentual sobre as não realizadas divide a quantidade do motivo pelo total não realizado; a incidência sobre o total divide pelo total registrado.</p>
+          <p><strong>Tipo de entrega:</strong> é calculado pela classificação das pessoas da equipe. Equipes antigas sem classificação aparecem separadas; equipes antigas mistas são identificadas como mistas.</p>
           <p><strong>Status:</strong> indica se o cadastro da pessoa está ativo ou inativo; não representa uma faixa de desempenho.</p>
           {!feedbackAvailable && <p><strong>Feedback:</strong> elogios e reclamações aparecem quando as tabelas opcionais de feedback estiverem disponíveis no banco.</p>}
         </div>
@@ -244,9 +260,20 @@ export function ManagementDashboardPage() {
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lojas...</div> : !data?.por_localidade.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há lançamentos registrados para os filtros selecionados.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table")}><thead><tr><th>Loja</th><th>Lançamentos</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{data.por_localidade.map((item) => <tr key={item.id_localidade}><th scope="row">{item.nome}</th><td>{countFormat.format(item.lancamentos)}</td><td>{countFormat.format(item.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(item.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(item.nao_realizadas)}</td><td><PerformanceRate value={item.taxa_realizacao} /></td><td><PerformanceRate value={item.otif_percentual} label="OTIF" neutral /></td><td>{item.elogios === null ? "—" : countFormat.format(item.elogios)}</td><td>{item.reclamacoes === null ? "—" : countFormat.format(item.reclamacoes)}</td></tr>)}</tbody></table></div>}
       </section>
 
+      <div className={cx(styles, commonStyles, "manager-analysis-grid")}>
+        <section className={cx(styles, commonStyles, "manager-panel")}>
+          <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Não realizadas por grupo de motivo</h2><p>Percentual das não realizadas e incidência no total</p></div><span>{loading ? "—" : `${data?.por_grupo_motivo.length ?? 0} grupos`}</span></div>
+          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando grupos...</div> : !data?.por_grupo_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Grupo do motivo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_grupo_motivo.map((group) => <tr key={group.grupo_motivo ?? "unclassified"}><th scope="row">{reasonGroupLabel(group.grupo_motivo)}</th><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(group.quantidade)}</td><td>{rateLabel(group.percentual_das_nao_realizadas)}</td><td>{rateLabel(group.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>}
+        </section>
+        <section className={cx(styles, commonStyles, "manager-panel")}>
+          <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Entregas próprias e terceirizadas</h2><p>Resultado por tipo informado no cadastro da equipe</p></div><span>{loading ? "—" : `${data?.por_tipo_entrega.length ?? 0} tipos`}</span></div>
+          {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando tipos...</div> : !data?.por_tipo_entrega.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há entregas no período.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Tipo</th><th>Registros</th><th>Total</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{data.por_tipo_entrega.map((type) => <tr key={type.tipo_transporte_entrega ?? "unclassified"}><th scope="row">{deliveryTypeLabel(type.tipo_transporte_entrega)}</th><td>{countFormat.format(type.registros_entrega)}</td><td>{countFormat.format(type.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(type.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(type.nao_realizadas)}</td><td><PerformanceRate value={type.taxa_realizacao} /></td><td><PerformanceRate value={type.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table></div>}
+        </section>
+      </div>
+
       <section className={cx(styles, commonStyles, "manager-panel")}>
-        <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Entregas não realizadas por motivo</h2><p>Quantidade de ocorrências no período</p></div><span>{loading ? "—" : `${data?.por_motivo.length ?? 0} motivos`}</span></div>
-        {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando motivos...</div> : !data?.por_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <div className={cx(styles, commonStyles, "reason-list")}>{data.por_motivo.map((reason) => <div className={cx(styles, commonStyles, "reason-row")} key={reason.id_motivo}><div><span>{reason.motivo}</span><strong>{countFormat.format(reason.quantidade)}</strong></div><span className={cx(styles, commonStyles, "reason-track")}><i style={{ width: `${(reason.quantidade / reasonMax) * 100}%` }} /></span></div>)}</div>}
+        <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Não realizadas por motivo</h2><p>Quantidade, grupo associado e participação nas entregas do período</p></div><span>{loading ? "—" : `${data?.por_motivo.length ?? 0} motivos`}</span></div>
+        {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando motivos...</div> : !data?.por_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Motivo</th><th>Grupo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_motivo.map((reason) => <tr key={reason.id_motivo}><th scope="row">{reason.motivo}</th><td>{reasonGroupLabel(reason.grupo_motivo)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(reason.quantidade)}</td><td>{rateLabel(reason.percentual_das_nao_realizadas)}</td><td>{rateLabel(reason.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>}
       </section>
 
       <div className={cx(styles, commonStyles, "manager-analysis-grid")}>
@@ -278,6 +305,7 @@ export function ManagementDashboardPage() {
                       <th>Realizadas</th>
                       <th>Não realizadas</th>
                       <th>OTIF</th>
+                      <th>Motivos das equipes</th>
                       <th>Score de atendimento</th>
                       <th>Elogios</th>
                       <th>Reclamações</th>
@@ -295,6 +323,7 @@ export function ManagementDashboardPage() {
                         <td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(person.realizadas)}</td>
                         <td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(person.nao_realizadas)}</td>
                         <td><PerformanceRate value={person.otif_percentual} label="OTIF" neutral /></td>
+                        <td><div className={cx(styles, commonStyles, "person-reason-list")}>{person.motivos_da_equipe.length ? person.motivos_da_equipe.slice(0, 4).map((reason) => <small key={reason.id_motivo}>{reason.motivo} · {reasonGroupLabel(reason.grupo_motivo)} ({countFormat.format(reason.quantidade)})</small>) : <span>—</span>}</div></td>
                         <td>{person.score_atendimento > 0 ? `+${person.score_atendimento}` : person.score_atendimento}</td>
                         <td>{person.elogios === null ? "—" : countFormat.format(person.elogios)}</td>
                         <td>{person.reclamacoes === null ? "—" : countFormat.format(person.reclamacoes)}</td>

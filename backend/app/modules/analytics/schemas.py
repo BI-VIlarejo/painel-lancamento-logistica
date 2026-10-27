@@ -39,6 +39,33 @@ class LocalityPerformance(BaseModel):
 class ReasonPerformance(BaseModel):
     id_motivo: int
     motivo: str
+    grupo_motivo: str | None
+    quantidade: int
+    percentual_das_nao_realizadas: float | None
+    incidencia_sobre_total: float | None
+
+
+class ReasonGroupPerformance(BaseModel):
+    grupo_motivo: str | None
+    quantidade: int
+    percentual_das_nao_realizadas: float | None
+    incidencia_sobre_total: float | None
+
+
+class DeliveryTypePerformance(BaseModel):
+    tipo_transporte_entrega: str | None
+    registros_entrega: int
+    itens_planejados: int
+    realizadas: int
+    nao_realizadas: int
+    taxa_realizacao: float | None
+    otif_percentual: float | None
+
+
+class PersonReasonCount(BaseModel):
+    id_motivo: int
+    motivo: str
+    grupo_motivo: str | None
     quantidade: int
 
 
@@ -56,6 +83,7 @@ class PersonPerformance(BaseModel):
     elogios: int | None
     reclamacoes: int | None
     score_atendimento: int
+    motivos_da_equipe: list[PersonReasonCount]
 
 
 class TeamPerformance(BaseModel):
@@ -86,5 +114,7 @@ class DashboardResponse(BaseModel):
     evolucao: list[TrendPoint]
     por_localidade: list[LocalityPerformance]
     por_motivo: list[ReasonPerformance]
+    por_grupo_motivo: list[ReasonGroupPerformance]
+    por_tipo_entrega: list[DeliveryTypePerformance]
     por_pessoa: list[PersonPerformance]
     por_equipe: list[TeamPerformance]

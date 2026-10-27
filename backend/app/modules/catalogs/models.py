@@ -93,6 +93,11 @@ class Pessoa(Base):
             name="ck_op_logistica_pessoa_funcao",
         ),
         CheckConstraint(
+            "tipo_transporte_entrega is null or "
+            "tipo_transporte_entrega in ('PROPRIA', 'TERCEIRIZADA')",
+            name="ck_op_logistica_pessoa_tipo_transporte",
+        ),
+        CheckConstraint(
             "vigente_ate is null or vigente_ate > vigente_desde",
             name="ck_op_logistica_pessoa_periodo",
         ),
@@ -113,6 +118,7 @@ class Pessoa(Base):
     )
     nome_exibicao: Mapped[str] = mapped_column(String(160), nullable=False)
     tipo_funcao: Mapped[str] = mapped_column(String(24), nullable=False)
+    tipo_transporte_entrega: Mapped[str | None] = mapped_column(String(20), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     vigente_desde: Mapped[date] = mapped_column(Date, nullable=False)
     vigente_ate: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -148,6 +154,11 @@ class MotivoNaoEntrega(Base):
             "vigente_ate is null or vigente_ate > vigente_desde",
             name="ck_op_logistica_motivo_periodo",
         ),
+        CheckConstraint(
+            "grupo_motivo is null or grupo_motivo in "
+            "('TRANSPORTE_PROPRIO', 'TRANSPORTE_TERCEIRIZADO', 'LOJA', 'LOGISTICA')",
+            name="ck_op_logistica_motivo_grupo",
+        ),
     )
 
     id_motivo_nao_entrega: Mapped[int] = mapped_column(
@@ -155,6 +166,7 @@ class MotivoNaoEntrega(Base):
     )
     codigo_motivo: Mapped[str] = mapped_column(String(40), nullable=False)
     descricao_motivo: Mapped[str] = mapped_column(String(160), nullable=False)
+    grupo_motivo: Mapped[str | None] = mapped_column(String(40), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     vigente_desde: Mapped[date] = mapped_column(Date, nullable=False)
     vigente_ate: Mapped[date | None] = mapped_column(Date, nullable=True)

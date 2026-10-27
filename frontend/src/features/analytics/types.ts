@@ -26,7 +26,35 @@ export type DashboardLocality = {
   reclamacoes: number | null;
 };
 
-export type DashboardReason = { id_motivo: number; motivo: string; quantidade: number };
+export type DashboardReason = {
+  id_motivo: number;
+  motivo: string;
+  grupo_motivo: string | null;
+  quantidade: number;
+  percentual_das_nao_realizadas: number | null;
+  incidencia_sobre_total: number | null;
+};
+export type DashboardReasonGroup = {
+  grupo_motivo: string | null;
+  quantidade: number;
+  percentual_das_nao_realizadas: number | null;
+  incidencia_sobre_total: number | null;
+};
+export type DashboardDeliveryType = {
+  tipo_transporte_entrega: string | null;
+  registros_entrega: number;
+  itens_planejados: number;
+  realizadas: number;
+  nao_realizadas: number;
+  taxa_realizacao: number | null;
+  otif_percentual: number | null;
+};
+export type DashboardPersonReason = {
+  id_motivo: number;
+  motivo: string;
+  grupo_motivo: string | null;
+  quantidade: number;
+};
 
 export type DashboardPerson = {
   id_pessoa: number;
@@ -42,6 +70,7 @@ export type DashboardPerson = {
   elogios: number | null;
   reclamacoes: number | null;
   score_atendimento: number;
+  motivos_da_equipe: DashboardPersonReason[];
 };
 
 export type DashboardTeam = {
@@ -73,6 +102,8 @@ export type DashboardResponse = {
   evolucao: DashboardTrendPoint[];
   por_localidade: DashboardLocality[];
   por_motivo: DashboardReason[];
+  por_grupo_motivo: DashboardReasonGroup[];
+  por_tipo_entrega: DashboardDeliveryType[];
   por_pessoa: DashboardPerson[];
   por_equipe: DashboardTeam[];
 };

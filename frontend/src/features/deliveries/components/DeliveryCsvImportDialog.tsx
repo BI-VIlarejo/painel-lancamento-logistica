@@ -48,7 +48,7 @@ const templateHeader = [
   "quantidade_realizada",
   "quantidade_nao_realizada",
   "motivos",
-  "observacao",
+  "observacoes_motivos",
 ];
 
 const acceptedSectorValues = new Set(["suporte", "entregas", "entregas diarias"]);
@@ -87,6 +87,9 @@ const headerAliases: Record<string, string> = {
   entregas_completas: "quantidade_entregas_completas",
   motivos: "motivos",
   motivo: "motivos",
+  observacoes_motivos: "observacoes_motivos",
+  observacoes_dos_motivos: "observacoes_motivos",
+  observacao_motivos: "observacoes_motivos",
   observacao: "observacao",
   observacoes: "observacao",
 };
@@ -220,6 +223,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     "quantidade_entregas_no_prazo",
     "quantidade_entregas_completas",
     "motivos",
+    "observacoes_motivos",
     "observacao",
   ];
   const missing = required.filter((header) => !headers.includes(header));
@@ -277,6 +281,14 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     const helperValues = [{ field: "ajudante_1", value: get("ajudante_1") }, { field: "ajudante_2", value: get("ajudante_2") }].filter((item) => item.value);
     const helperMatches = helperValues.map(({ field, value }) => ({ field, value, ...resolvePerson(value, catalogs.helpers) }));
     helperMatches.forEach((match) => { if (!match.person) previewRow.errors.push(`${match.field}: ${match.error ?? "ajudante inválido."}`); });
+    const teamTypes = [driverMatch.person, ...helperMatches.map((match) => match.person)]
+      .filter((person): person is PersonCatalogItem => Boolean(person))
+      .map((person) => person.tipo_transporte_entrega);
+    if (teamTypes.some((type) => type === null)) {
+      previewRow.errors.push("motorista/ajudantes: classifique todas as pessoas como Entregas próprias ou terceirizadas.");
+    } else if (new Set(teamTypes).size > 1) {
+      previewRow.errors.push("motorista/ajudantes: a equipe precisa ter um único tipo de entrega.");
+    }
 
     const completed = quantity(completedValue);
     const notCompleted = quantity(notCompletedValue);
@@ -287,7 +299,8 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     }
 
     const reasonValue = get("motivos");
-    if (get("observacao").length > 5000) previewRow.errors.push("observacao: não pode ultrapassar 5.000 caracteres.");
+    if (get("observacao")) previewRow.errors.push("observacao: informe o texto por motivo na coluna observacoes_motivos.");
+    const reasonObservationValue = get("observacoes_motivos");
     const reasons: DeliveryItemInput["motivos"] = [];
     if (notCompleted !== undefined && notCompleted === 0 && reasonValue) {
       previewRow.errors.push("motivos: remova os motivos quando quantidade_nao_realizada for zero.");
@@ -306,10 +319,27 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
           previewRow.errors.push(`motivos: "${entry}" inválido ou não encontrado; use código ou descrição:quantidade.`);
           continue;
         }
-        reasons.push({ id_motivo_nao_entrega: resolvedMatches[0].id_motivo_nao_entrega, quantidade: amount });
+        if (!resolvedMatches[0].grupo_motivo) {
+          previewRow.errors.push(`motivos: classifique o grupo de "${resolvedReasonLabel}" antes de importar.`);
+        }
+        reasons.push({ id_motivo_nao_entrega: resolvedMatches[0].id_motivo_nao_entrega, quantidade: amount, observacao: null });
       }
       if (new Set(reasons.map((reason) => reason.id_motivo_nao_entrega)).size !== reasons.length) {
         previewRow.errors.push("motivos: cada motivo deve aparecer uma vez por linha.");
+      }
+    }
+    if (reasonObservationValue) {
+      const reasonObservations = reasonObservationValue.split("|").map((value) => value.trim());
+      if (reasonObservations.length !== reasons.length) {
+        previewRow.errors.push("observacoes_motivos: informe uma observação por motivo, na mesma ordem, separadas por |.");
+      } else {
+        reasonObservations.forEach((observation, index) => {
+          if (observation.length > 5000) {
+            previewRow.errors.push(`observacoes_motivos: a observação ${index + 1} não pode ultrapassar 5.000 caracteres.`);
+          } else if (reasons[index]) {
+            reasons[index].observacao = observation || null;
+          }
+        });
       }
     }
     if (notCompleted !== undefined && reasons.reduce((sum, reason) => sum + reason.quantidade, 0) !== notCompleted) {
@@ -334,7 +364,6 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
         id_localidade: locality.id_localidade,
         quantidade_realizada: completed,
         quantidade_nao_realizada: notCompleted,
-        observacao: get("observacao") || null,
         participantes: participants,
         motivos: reasons,
       });
@@ -428,7 +457,7 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
         <p className={cx(styles, commonStyles, "csv-import-description")}>O CSV histórico de Entregas pode ser validado antes de criar um rascunho. Importamos até 100 linhas por vez; nenhuma linha é gravada se houver erro.</p>
 
         <div className={cx(styles, commonStyles, "csv-template-help")}>
-          <div><strong>Prepare o arquivo</strong><span>Novos lançamentos ficam vinculados ao setor Suporte. O histórico também pode informar Entregas como setor de origem. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Um motivo sem quantidade recebe o total não realizado; para vários motivos, informe CODIGO_MOTIVO:QUANTIDADE e separe com |.</span></div>
+          <div><strong>Prepare o arquivo</strong><span>Novos lançamentos ficam vinculados ao setor Suporte. O histórico também pode informar Entregas como setor de origem. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Um motivo sem quantidade recebe o total não realizado; para vários motivos, informe CODIGO_MOTIVO:QUANTIDADE e separe com |. Se preencher observações, use uma por motivo, na mesma ordem, na coluna observacoes_motivos; a coluna antiga observacao não é aceita em novos lançamentos.</span></div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={downloadTemplate}>Baixar modelo CSV</button>
         </div>
         <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Colunas:</strong> {templateHeader.join(" · ")}</p>

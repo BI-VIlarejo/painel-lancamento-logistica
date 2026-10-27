@@ -2,6 +2,7 @@ import { apiRequest, isDemoMode } from "../../shared/api/apiClient";
 import { cachedRequest } from "../../shared/api/requestCache";
 import { demoAdministrationApi } from "./demoApi";
 import type { LocalityCatalogItem, SectorCatalogItem } from "../deliveries/types";
+import type { DeliveryTransportType, NonDeliveryReasonGroup } from "../deliveries/classifications";
 import type {
   LocalityAdminItem,
   LocalityCreateInput,
@@ -28,14 +29,14 @@ export const administrationApi = {
     ? demoAdministrationApi.setLocalityActive(id, ativo)
     : apiRequest<LocalityAdminItem>(`/cadastros/localidades/${id}`, { method: "PATCH", body: { ativo } }),
   people: () => isDemoMode ? demoAdministrationApi.people() : cachedRequest("admin/people", () => apiRequest<PersonAdminItem[]>("/cadastros/pessoas")),
-  createPerson: (payload: { codigo_pessoa?: string; nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; sistema_origem?: string; codigo_pessoa_origem?: string }) => isDemoMode
+  createPerson: (payload: { codigo_pessoa?: string; nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; tipo_transporte_entrega: DeliveryTransportType; sistema_origem?: string; codigo_pessoa_origem?: string }) => isDemoMode
     ? demoAdministrationApi.createPerson({ ...payload, codigo_pessoa: payload.codigo_pessoa ?? crypto.randomUUID(), sistema_origem: payload.sistema_origem ?? null, codigo_pessoa_origem: payload.codigo_pessoa_origem ?? null })
     : apiRequest<PersonAdminItem>("/cadastros/pessoas", { method: "POST", body: payload }),
   deactivatePerson: (id: number) => isDemoMode
     ? demoAdministrationApi.deactivatePerson(id)
     : apiRequest<PersonAdminItem>(`/cadastros/pessoas/${id}`, { method: "PATCH", body: { ativo: false } }),
   reasons: () => isDemoMode ? demoAdministrationApi.reasons() : cachedRequest("admin/reasons", () => apiRequest<ReasonAdminItem[]>("/cadastros/motivos")),
-  createReason: (payload: { codigo_motivo?: string; descricao_motivo: string }) => isDemoMode
+  createReason: (payload: { codigo_motivo?: string; descricao_motivo: string; grupo_motivo: NonDeliveryReasonGroup }) => isDemoMode
     ? demoAdministrationApi.createReason(payload)
     : apiRequest<ReasonAdminItem>("/cadastros/motivos", { method: "POST", body: payload }),
   deactivateReason: (id: number) => isDemoMode

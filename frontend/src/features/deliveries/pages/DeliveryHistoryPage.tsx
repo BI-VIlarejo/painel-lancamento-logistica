@@ -6,6 +6,8 @@ import { deliveriesApi } from "../api";
 import { catalogsApi } from "../../catalogs/api";
 import { DeliveryCsvImportDialog } from "../components/DeliveryCsvImportDialog";
 import { messageFromApiError } from "../../../shared/api/apiError";
+import { deliveryTransportLabel, nonDeliveryReasonGroupLabel } from "../classifications";
+import type { DeliveryTransportType } from "../classifications";
 import type { DeliveryEvent, DeliveryHistoryFilters, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem } from "../types";
 
 type DeliveryHistoryPageProps = { onNavigate: (path: string) => void; canCreate: boolean; canEditDraft: boolean; canCorrect: boolean; canCancel: boolean; currentUserId: number };
@@ -51,10 +53,28 @@ function teamDescription(item: DeliveryItemResponse): string {
   return [driver ? `Motorista: ${driver.nome_exibicao}` : "Motorista não informado", helpers.length ? `Ajudantes: ${helpers.map((person) => person.nome_exibicao).join(", ")}` : "Sem ajudantes"].join("; ");
 }
 
+function deliveryTypeDescription(item: DeliveryItemResponse): string {
+  const types = new Set(item.participantes
+    .map((person) => person.tipo_transporte_entrega)
+    .filter((type): type is DeliveryTransportType => type !== null));
+  if (types.size > 1) return "Equipe mista";
+  if (item.participantes.some((person) => person.tipo_transporte_entrega === null)) return "Sem classificação";
+  return deliveryTransportLabel([...types][0]);
+}
+
 function reasonDescription(item: DeliveryItemResponse): string {
   return item.motivos.length
-    ? item.motivos.map((reason) => `${reason.descricao_motivo} (${reason.quantidade})`).join("; ")
+    ? item.motivos.map((reason) => `${reason.descricao_motivo} [${nonDeliveryReasonGroupLabel(reason.grupo_motivo)}] (${reason.quantidade})`).join("; ")
     : "Sem ocorrências";
+}
+
+function reasonObservationDescription(item: DeliveryItemResponse): string {
+  return item.motivos
+    .flatMap((reason) => {
+      const observation = reason.observacao?.trim();
+      return observation ? [`${reason.descricao_motivo}: ${observation}`] : [];
+    })
+    .join("; ");
 }
 
 function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: { detail: DeliveryLaunchDetail; events: DeliveryEvent[]; onClose: () => void; onEdit?: () => void; onCorrect?: () => void; onCancel?: () => void }) {
@@ -90,9 +110,9 @@ function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: 
               <div className={cx(styles, commonStyles, "detail-item-heading")}><span className={cx(styles, commonStyles, "delivery-index")}>{String(index + 1).padStart(2, "0")}</span><div><strong>{item.nome_localidade}</strong><small>{formatDate(item.data_entrega)}</small></div></div>
               <div className={cx(styles, commonStyles, "detail-metrics")}><div><strong>{item.quantidade_realizada}</strong><span>realizadas</span></div><div><strong>{item.quantidade_nao_realizada}</strong><span>não realizadas</span></div></div>
               {(() => { const otif = otifValue(item); const total = item.quantidade_realizada + item.quantidade_nao_realizada; return <div className={cx(styles, commonStyles, "detail-otif")}><strong>OTIF</strong>{otif === null ? <span>Sem entregas registradas para calcular</span> : <span>{rateText(otif)} · {item.quantidade_nao_realizada.toLocaleString("pt-BR")} não realizadas de {total.toLocaleString("pt-BR")}</span>}</div>; })()}
-              <div className={cx(styles, commonStyles, "detail-team")}><span>Equipe</span>{item.participantes.map((person) => <span className={cx(styles, commonStyles, "team-chip")} key={`${person.id_pessoa}-${person.papel_participante}`}>{person.nome_exibicao}<small>{person.papel_participante === "MOTORISTA" ? "Motorista" : "Ajudante"}</small></span>)}</div>
-              {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivos</span>{item.motivos.map((reason) => <span key={reason.id_motivo_nao_entrega}>{reason.descricao_motivo} <b>{reason.quantidade}</b></span>)}</div>}
-              {item.observacao && <p className={cx(styles, commonStyles, "detail-observation")}>{item.observacao}</p>}
+              <div className={cx(styles, commonStyles, "detail-team")}><span>Equipe · {deliveryTypeDescription(item)}</span>{item.participantes.map((person) => <span className={cx(styles, commonStyles, "team-chip")} key={`${person.id_pessoa}-${person.papel_participante}`}>{person.nome_exibicao}<small>{person.papel_participante === "MOTORISTA" ? "Motorista" : "Ajudante"} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</small></span>)}</div>
+              {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivos e observações</span>{item.motivos.map((reason) => <div className={cx(styles, commonStyles, "detail-reason")} key={reason.id_motivo_nao_entrega}><span>{reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)} <b>{reason.quantidade}</b></span>{reason.observacao && <small>Observação: {reason.observacao}</small>}</div>)}</div>}
+              {item.observacao && <p className={cx(styles, commonStyles, "detail-observation")}><strong>Observação geral (registro antigo):</strong> {item.observacao}</p>}
             </article>
           ))}
         </div>
@@ -272,13 +292,15 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         ["data", (row) => row.delivery.data_entrega],
         ["loja", (row) => row.delivery.nome_localidade],
         ["equipe", (row) => teamDescription(row.delivery)],
+        ["tipo_entrega", (row) => deliveryTypeDescription(row.delivery)],
         ["realizadas", (row) => row.delivery.quantidade_realizada],
         ["nao_realizadas", (row) => row.delivery.quantidade_nao_realizada],
         ["otif_percentual", (row) => { const value = otifValue(row.delivery); return value === null ? "" : rateText(value); }],
         ["lancamento", (row) => row.launch.codigo_lancamento],
         ["status", (row) => statusLabels[row.launch.estado]],
         ["motivos_das_ocorrencias", (row) => reasonDescription(row.delivery)],
-        ["observacoes", (row) => row.delivery.observacao ?? ""],
+        ["observacoes_dos_motivos", (row) => reasonObservationDescription(row.delivery)],
+        ["observacao_geral_legada", (row) => row.delivery.observacao ?? ""],
       ];
       const csvCell = (value: string | number) => {
         const text = String(value);
@@ -344,7 +366,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lançamentos...</div> : items.length === 0 ? (
           <div className={cx(styles, commonStyles, "history-empty")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌕</div><h3>Nenhum lançamento encontrado</h3><p>{canCreate ? "Ajuste os filtros ou crie um novo lançamento de Entregas." : "Ajuste os filtros para localizar outros lançamentos."}</p><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button></div>
         ) : (
-          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Loja</th><th>Equipe</th><th>Realizadas</th><th>Não realizadas</th><th><span title="Não realizadas ÷ total registrado">OTIF</span></th><th>Lançamento</th><th>Motivos das ocorrências</th><th>Observações</th><th>Ações</th></tr></thead><tbody>
+          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Loja</th><th>Equipe</th><th>Realizadas</th><th>Não realizadas</th><th><span title="Não realizadas ÷ total registrado">OTIF</span></th><th>Lançamento</th><th>Motivos e observações</th><th>Observação geral (legado)</th><th>Ações</th></tr></thead><tbody>
           {items.flatMap((launch) => launch.itens.map((delivery) => {
               const driver = delivery.participantes.find((person) => person.papel_participante === "MOTORISTA");
               const helpers = delivery.participantes.filter((person) => person.papel_participante === "AJUDANTE");
@@ -355,6 +377,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
                 <td><div className={cx(styles, commonStyles, "history-team-cell")}>
                   <span><b>Motorista</b>{driver?.nome_exibicao ?? "Não informado"}</span>
                   <span><b>Ajudantes</b>{helpers.length ? helpers.map((person) => person.nome_exibicao).join(", ") : "Nenhum"}</span>
+                  <span><b>Tipo da entrega</b>{deliveryTypeDescription(delivery)}</span>
                 </div></td>
                 <td><span className={cx(styles, commonStyles, "table-count count-positive")}>{delivery.quantidade_realizada}</span></td>
                 <td><span className={cx(styles, commonStyles, `table-count${delivery.quantidade_nao_realizada > 0 ? " count-muted" : ""}`)}>{delivery.quantidade_nao_realizada}</span></td>
@@ -362,7 +385,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
                   ? <span className={cx(styles, commonStyles, "history-muted-cell")}>—</span>
                   : <span className={cx(styles, commonStyles, "history-otif-values")}>{rateText(otif)}</span>; })()}</td>
                 <td><div className={cx(styles, commonStyles, "history-launch-cell")}><strong title={launch.codigo_lancamento}>{launch.codigo_lancamento.slice(0, 8).toUpperCase()}</strong><span className={cx(styles, commonStyles, statusClass(launch.estado))}><i />{statusLabels[launch.estado]}</span><small>Versão {launch.numero_revisao}</small></div></td>
-                <td>{delivery.motivos.length ? <ul className={cx(styles, commonStyles, "history-reasons")}>{delivery.motivos.map((reason) => <li key={reason.id_motivo_nao_entrega}>{reason.descricao_motivo} <b>({reason.quantidade})</b></li>)}</ul> : <span className={cx(styles, commonStyles, "history-muted-cell")}>Sem ocorrências</span>}</td>
+                <td>{delivery.motivos.length ? <ul className={cx(styles, commonStyles, "history-reasons")}>{delivery.motivos.map((reason) => <li key={reason.id_motivo_nao_entrega}>{reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)} <b>({reason.quantidade})</b>{reason.observacao && <small>Observação: {reason.observacao}</small>}</li>)}</ul> : <span className={cx(styles, commonStyles, "history-muted-cell")}>Sem ocorrências</span>}</td>
                 <td><span className={cx(styles, commonStyles, "history-observation")}>{delivery.observacao || "Sem observações"}</span></td>
                 <td><div className={cx(styles, commonStyles, "history-row-actions")}>
                   <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => void openDetail(launch)} disabled={detailLoading || discardingId === launch.codigo_lancamento}>{detailLoading ? "Abrindo..." : "Detalhes"}</button>

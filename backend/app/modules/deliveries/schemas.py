@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
 
 
 class DeliveryParticipantInput(BaseModel):
@@ -19,19 +19,7 @@ class DeliveryReasonInput(BaseModel):
 
     id_motivo_nao_entrega: int = Field(ge=1)
     quantidade: int = Field(gt=0, le=2_147_483_647)
-
-
-class DeliveryItemInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    codigo_item_lancamento: UUID | None = None
-    data_entrega: date
-    id_localidade: int = Field(ge=1)
-    quantidade_realizada: int = Field(ge=0, le=2_147_483_647)
-    quantidade_nao_realizada: int = Field(ge=0, le=2_147_483_647)
     observacao: str | None = Field(default=None, max_length=5000)
-    participantes: list[DeliveryParticipantInput] = Field(min_length=1, max_length=3)
-    motivos: list[DeliveryReasonInput] = Field(default_factory=list, max_length=30)
 
     @field_validator("observacao")
     @classmethod
@@ -41,8 +29,41 @@ class DeliveryItemInput(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+
+class DeliveryItemInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Preserves a general observation only when the server copies a legacy
+    # record into a correction. This private field is never accepted over HTTP.
+    _legacy_observation: str | None = PrivateAttr(default=None)
+
+    codigo_item_lancamento: UUID | None = None
+    data_entrega: date
+    id_localidade: int = Field(ge=1)
+    quantidade_realizada: int = Field(ge=0, le=2_147_483_647)
+    quantidade_nao_realizada: int = Field(ge=0, le=2_147_483_647)
+    # Empty values are tolerated for the currently deployed frontend; a new
+    # non-empty delivery-level observation is rejected below.
+    observacao: str | None = Field(
+        default=None,
+        max_length=5000,
+        json_schema_extra={"deprecated": True},
+    )
+    participantes: list[DeliveryParticipantInput] = Field(min_length=1, max_length=3)
+    motivos: list[DeliveryReasonInput] = Field(default_factory=list, max_length=30)
+
+    @field_validator("observacao")
+    @classmethod
+    def normalize_legacy_observation(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
     @model_validator(mode="after")
     def validate_item(self) -> "DeliveryItemInput":
+        if self.observacao is not None:
+            raise ValueError("Informe cada observação na linha do motivo correspondente.")
         if self.quantidade_realizada + self.quantidade_nao_realizada == 0:
             raise ValueError("Informe ao menos uma entrega realizada ou não realizada.")
         drivers = [
@@ -104,13 +125,16 @@ class DeliveryParticipantResponse(BaseModel):
     nome_exibicao: str
     papel_participante: Literal["MOTORISTA", "AJUDANTE"]
     ordem: int
+    tipo_transporte_entrega: str | None
 
 
 class DeliveryReasonResponse(BaseModel):
     id_motivo_nao_entrega: int
     codigo_motivo: str
     descricao_motivo: str
+    grupo_motivo: str | None
     quantidade: int
+    observacao: str | None
 
 
 class DeliveryItemResponse(BaseModel):

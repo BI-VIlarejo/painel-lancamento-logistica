@@ -8,6 +8,7 @@ import { messageFromApiError } from "../../../shared/api/apiError";
 import { administrationApi } from "../api";
 import type { LocalityAdminItem, PersonAdminItem, Profile, ProfilePermission, ReasonAdminItem, UserAccessGrant, UserAccount, UserScopeGrantInput } from "../types";
 import type { LocalityCatalogItem, SectorCatalogItem } from "../../deliveries/types";
+import { deliveryTransportLabel, deliveryTransportTypes, nonDeliveryReasonGroupLabel, nonDeliveryReasonGroups } from "../../deliveries/classifications";
 
 type Props = { permissions: string[]; currentUserId: number };
 type MainTab = "operation" | "users";
@@ -216,8 +217,8 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
         item,
       }))
       : catalogTab === "people"
-        ? people.map((item) => ({ id: item.id_pessoa, primary: item.nome_exibicao, secondary: item.tipo_funcao === "MOTORISTA" ? "Motorista" : "Ajudante", detail: "Vigente desde " + formatDate(item.vigente_desde), active: item.ativo, item }))
-        : reasons.map((item) => ({ id: item.id_motivo_nao_entrega, primary: item.descricao_motivo, secondary: "Vigente desde " + formatDate(item.vigente_desde), detail: "", active: item.ativo, item }));
+        ? people.map((item) => ({ id: item.id_pessoa, primary: item.nome_exibicao, secondary: item.tipo_funcao === "MOTORISTA" ? "Motorista" : "Ajudante", detail: `${deliveryTransportLabel(item.tipo_transporte_entrega)} · Vigente desde ${formatDate(item.vigente_desde)}`, active: item.ativo, item }))
+        : reasons.map((item) => ({ id: item.id_motivo_nao_entrega, primary: item.descricao_motivo, secondary: nonDeliveryReasonGroupLabel(item.grupo_motivo), detail: "Vigente desde " + formatDate(item.vigente_desde), active: item.ativo, item }));
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return rows.filter((row) => statusFilter === "ALL" || (statusFilter === "ACTIVE" ? row.active : !row.active))
       .filter((row) => !needle || (row.primary + " " + row.secondary + " " + row.detail + " " + (isLocality(row.item) ? row.item.codigo_localidade : "")).toLocaleLowerCase("pt-BR").includes(needle));
@@ -242,10 +243,10 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
       });
     } else if (kind === "people") {
       const person = isPerson(item) ? item : undefined;
-      setForm({ nome: person?.nome_exibicao ?? "", funcao: person?.tipo_funcao ?? "MOTORISTA", codigoPessoa: person?.codigo_pessoa ?? "" });
+      setForm({ nome: person?.nome_exibicao ?? "", funcao: person?.tipo_funcao ?? "MOTORISTA", tipoTransporte: person?.tipo_transporte_entrega ?? "", codigoPessoa: person?.codigo_pessoa ?? "" });
     } else {
       const reason = isReason(item) ? item : undefined;
-      setForm({ codigo: reason?.codigo_motivo ?? "", descricao: reason?.descricao_motivo ?? "" });
+      setForm({ codigo: reason?.codigo_motivo ?? "", descricao: reason?.descricao_motivo ?? "", grupoMotivo: reason?.grupo_motivo ?? "" });
     }
   };
   const closeCatalog = () => { setDialog(null); setForm({}); };
@@ -282,10 +283,12 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
         ...(form.codigoPessoa ? { codigo_pessoa: form.codigoPessoa } : {}),
         nome_exibicao: form.nome.trim(),
         tipo_funcao: form.funcao as "MOTORISTA" | "AJUDANTE",
+        tipo_transporte_entrega: form.tipoTransporte as "PROPRIA" | "TERCEIRIZADA",
       })
       : administrationApi.createReason({
         ...(form.codigo ? { codigo_motivo: form.codigo } : {}),
         descricao_motivo: form.descricao.trim(),
+        grupo_motivo: form.grupoMotivo as "TRANSPORTE_PROPRIO" | "TRANSPORTE_TERCEIRIZADO" | "LOJA" | "LOGISTICA",
       });
     void operation.then((created) => {
       setNotice(`${dialog.item ? "Nova versão criada" : "Cadastro criado"}. Vigência a partir de ${formatDate(created.vigente_desde)}; histórico anterior preservado.`);
@@ -512,12 +515,12 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
               <button className={cx(styles, commonStyles, "button button-primary add-button")} type="button" onClick={() => openCatalog(catalogTab === "stores" ? "localities" : catalogTab)}><span>＋</span>{catalogTab === "stores" ? "Cadastrar loja" : catalogTab === "people" ? "Cadastrar pessoa" : "Cadastrar motivo"}</button>
             </div>
             <div className={cx(styles, commonStyles, "list-controls")}><label className={cx(styles, commonStyles, "search-box")}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogTab === "stores" ? "Buscar por loja, código ou cidade" : catalogTab === "people" ? "Buscar por nome ou função" : "Buscar pela descrição do motivo"} aria-label="Buscar cadastros" /></label><StatusFilters value={statusFilter} onChange={setStatusFilter} /></div>
-            {currentPanelLoading ? <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando {catalogWord}...</div> : currentPanelError && !currentPanelLoaded ? <EmptyState title={"Não foi possível carregar " + catalogWord} description="Tente novamente usando o aviso acima." /> : catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={query ? "Altere a busca ou o filtro de situação." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja / filial" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Cidade / UF" : catalogTab === "people" ? "Função" : "Vigência"}</th>{catalogTab === "stores" && <th>Tipo</th>}{catalogTab === "people" && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
+            {currentPanelLoading ? <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando {catalogWord}...</div> : currentPanelError && !currentPanelLoaded ? <EmptyState title={"Não foi possível carregar " + catalogWord} description="Tente novamente usando o aviso acima." /> : catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={query ? "Altere a busca ou o filtro de situação." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja / filial" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Cidade / UF" : catalogTab === "people" ? "Função" : "Grupo"}</th>{catalogTab === "stores" && <th>Tipo</th>}{(catalogTab === "people" || catalogTab === "reasons") && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
               {catalogRows.map((row) => <tr key={catalogTab + "-" + row.id}>
                 <td><strong>{row.primary}</strong>{catalogTab === "stores" && isLocality(row.item) && <small>{row.item.codigo_localidade}</small>}</td>
                 <td><span className={cx(styles, commonStyles, "role-cell")}>{row.secondary}</span></td>
                 {catalogTab === "stores" && <td><span className={cx(styles, commonStyles, "detail-cell")}>{row.detail}</span></td>}
-                {catalogTab === "people" && <td><span className={cx(styles, commonStyles, "detail-cell")}>{row.detail}</span></td>}
+                {(catalogTab === "people" || catalogTab === "reasons") && <td><span className={cx(styles, commonStyles, "detail-cell")}>{row.detail}</span></td>}
                 <td><StatusPill active={row.active} /></td>
                 <td><div className={cx(styles, commonStyles, "row-actions")}>
                   {catalogTab === "stores" && isLocality(row.item) && <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => openCatalog("localities", row.item)}>Editar</button>}
@@ -544,8 +547,8 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
           </div>
           <label>Tipo de localidade<select value={form.tipoLocalidade ?? "LOJA"} onChange={(event) => setField("tipoLocalidade", event.target.value)} required>{form.tipoLocalidade && !["LOJA", "CD", "OUTRO"].includes(form.tipoLocalidade) && <option value={form.tipoLocalidade}>Tipo atual: {form.tipoLocalidade}</option>}<option value="LOJA">Loja</option><option value="CD">Centro de distribuição</option><option value="OUTRO">Outro</option></select></label>
           <p className={cx(styles, commonStyles, "form-guidance")}>A edição preserva lançamentos existentes. Desativar uma localidade remove-a das novas operações sem apagar seu histórico.</p>
-        </> : dialog.kind === "people" ? <><label>Nome para exibição<input autoFocus value={form.nome ?? ""} onChange={(event) => setField("nome", event.target.value)} required maxLength={160} placeholder="Nome e sobrenome" /></label><label>Função<select value={form.funcao ?? "MOTORISTA"} onChange={(event) => setField("funcao", event.target.value)}><option value="MOTORISTA">Motorista</option><option value="AJUDANTE">Ajudante</option></select></label><p className={cx(styles, commonStyles, "form-guidance")}>O sistema define a vigência automaticamente. A versão anterior será preservada no histórico.</p></>
-            : <><label>Descrição do motivo<input autoFocus value={form.descricao ?? ""} onChange={(event) => setField("descricao", event.target.value)} required maxLength={160} placeholder="Ex.: Cliente ausente" /></label><p className={cx(styles, commonStyles, "form-guidance")}>O sistema define a vigência automaticamente. Alterações mantêm o histórico e a identificação interna.</p></>}
+        </> : dialog.kind === "people" ? <><label>Nome para exibição<input autoFocus value={form.nome ?? ""} onChange={(event) => setField("nome", event.target.value)} required maxLength={160} placeholder="Nome e sobrenome" /></label><label>Função<select value={form.funcao ?? "MOTORISTA"} onChange={(event) => setField("funcao", event.target.value)}><option value="MOTORISTA">Motorista</option><option value="AJUDANTE">Ajudante</option></select></label><label>Grupo de entrega<select value={form.tipoTransporte ?? ""} onChange={(event) => setField("tipoTransporte", event.target.value)} required><option value="" disabled>Selecione o grupo</option>{deliveryTransportTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><p className={cx(styles, commonStyles, "form-guidance")}>O sistema define a vigência automaticamente. A versão anterior será preservada no histórico.</p></>
+            : <><label>Descrição do motivo<input autoFocus value={form.descricao ?? ""} onChange={(event) => setField("descricao", event.target.value)} required maxLength={160} placeholder="Ex.: Cliente ausente" /></label><label>Grupo do motivo<select value={form.grupoMotivo ?? ""} onChange={(event) => setField("grupoMotivo", event.target.value)} required><option value="" disabled>Selecione o grupo</option>{nonDeliveryReasonGroups.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><p className={cx(styles, commonStyles, "form-guidance")}>O sistema define a vigência automaticamente. Alterações mantêm o histórico e a identificação interna.</p></>}
         <div className={cx(styles, commonStyles, "modal-actions")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={closeCatalog} disabled={saving}>Cancelar</button><button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={saving}>{saving ? "Salvando..." : dialog.kind === "localities" ? dialog.item ? "Salvar alterações" : "Cadastrar loja" : dialog.item ? "Salvar nova versão" : "Cadastrar"}</button></div>
       </form>
     </section></div>}

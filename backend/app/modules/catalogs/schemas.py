@@ -39,6 +39,7 @@ class PersonCatalogItem(BaseModel):
     id_pessoa: int
     nome_exibicao: str
     tipo_funcao: str
+    tipo_transporte_entrega: str | None
 
 
 class NonDeliveryReasonCatalogItem(BaseModel):
@@ -47,3 +48,4 @@ class NonDeliveryReasonCatalogItem(BaseModel):
     id_motivo_nao_entrega: int
     codigo_motivo: str
     descricao_motivo: str
+    grupo_motivo: str | None

@@ -5,6 +5,8 @@ import { useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { messageFromApiError } from "../../../shared/api/apiError";
 import { deliveriesApi } from "../api";
+import { deliveryTransportLabel, nonDeliveryReasonGroupLabel } from "../classifications";
+import type { DeliveryTransportType } from "../classifications";
 import type {
   DeliveryDraftRequest,
   DeliveryItemInput,
@@ -14,7 +16,7 @@ import type {
   PersonCatalogItem,
 } from "../types";
 
-type ReasonDraft = { key: string; id: string; quantity: string };
+type ReasonDraft = { key: string; id: string; quantity: string; observation: string };
 type DeliveryDraftLine = {
   key: string;
   itemCode?: string;
@@ -25,7 +27,7 @@ type DeliveryDraftLine = {
   completed: string;
   notCompleted: string;
   reasons: ReasonDraft[];
-  observation: string;
+  legacyObservation: string;
 };
 
 type DeliveryFormProps = {
@@ -56,12 +58,12 @@ function newLine(): DeliveryDraftLine {
     completed: "",
     notCompleted: "",
     reasons: [],
-    observation: "",
+    legacyObservation: "",
   };
 }
 
 function newReason(quantity = "1"): ReasonDraft {
-  return { key: crypto.randomUUID(), id: "", quantity };
+  return { key: crypto.randomUUID(), id: "", quantity, observation: "" };
 }
 
 function linesFromLaunch(launch: DeliveryLaunchDetail): DeliveryDraftLine[] {
@@ -83,8 +85,9 @@ function linesFromLaunch(launch: DeliveryLaunchDetail): DeliveryDraftLine[] {
         key: `${item.codigo_item_lancamento}-${reason.id_motivo_nao_entrega}`,
         id: String(reason.id_motivo_nao_entrega),
         quantity: String(reason.quantidade),
+        observation: reason.observacao ?? "",
       })),
-      observation: item.observacao ?? "",
+      legacyObservation: item.observacao ?? "",
     };
   });
 }
@@ -93,7 +96,42 @@ function numberValue(value: string): number {
   return value === "" ? 0 : Number(value);
 }
 
-function validateLines(lines: DeliveryDraftLine[]): Record<string, string> {
+function personTransportType(
+  personId: string,
+  line: DeliveryDraftLine,
+  drivers: PersonCatalogItem[],
+  helpers: PersonCatalogItem[],
+  initialLaunch?: DeliveryLaunchDetail,
+): DeliveryTransportType | null {
+  const catalogPerson = [...drivers, ...helpers].find((person) => String(person.id_pessoa) === personId);
+  if (catalogPerson) return catalogPerson.tipo_transporte_entrega;
+  return initialLaunch?.itens
+    .find((item) => item.codigo_item_lancamento === line.itemCode)
+    ?.participantes.find((person) => String(person.id_pessoa) === personId)
+    ?.tipo_transporte_entrega ?? null;
+}
+
+function reasonGroup(
+  reasonId: string,
+  line: DeliveryDraftLine,
+  reasons: NonDeliveryReasonCatalogItem[],
+  initialLaunch?: DeliveryLaunchDetail,
+) {
+  const catalogReason = reasons.find((reason) => String(reason.id_motivo_nao_entrega) === reasonId);
+  if (catalogReason) return catalogReason.grupo_motivo;
+  return initialLaunch?.itens
+    .find((item) => item.codigo_item_lancamento === line.itemCode)
+    ?.motivos.find((reason) => String(reason.id_motivo_nao_entrega) === reasonId)
+    ?.grupo_motivo ?? null;
+}
+
+function validateLines(
+  lines: DeliveryDraftLine[],
+  drivers: PersonCatalogItem[],
+  helpers: PersonCatalogItem[],
+  reasons: NonDeliveryReasonCatalogItem[],
+  initialLaunch?: DeliveryLaunchDetail,
+): Record<string, string> {
   const errors: Record<string, string> = {};
   lines.forEach((line, index) => {
     const prefix = `item-${index + 1}`;
@@ -108,9 +146,18 @@ function validateLines(lines: DeliveryDraftLine[]): Record<string, string> {
     if (completed + notCompleted <= 0) errors[`${prefix}-total`] = "Informe pelo menos uma entrega realizada ou não realizada.";
     const selectedPeople = [line.driver, ...line.helpers].filter(Boolean);
     if (new Set(selectedPeople).size !== selectedPeople.length) errors[`${prefix}-team`] = "Uma pessoa não pode ocupar dois papéis.";
+    const selectedTypes = selectedPeople.map((id) => personTransportType(id, line, drivers, helpers, initialLaunch));
+    if (selectedTypes.some((type) => type === null)) {
+      errors[`${prefix}-team`] = "Classifique como própria ou terceirizada todas as pessoas da equipe.";
+    } else if (new Set(selectedTypes).size > 1) {
+      errors[`${prefix}-team`] = "Motorista e ajudantes precisam pertencer ao mesmo tipo de entrega.";
+    }
 
     const selectedReasons = line.reasons.filter((reason) => reason.id);
     const reasonQuantity = selectedReasons.reduce((sum, reason) => sum + numberValue(reason.quantity), 0);
+    if (selectedReasons.some((reason) => !reasonGroup(reason.id, line, reasons, initialLaunch))) {
+      errors[`${prefix}-reasons`] = "Classifique o grupo de todos os motivos antes de usá-los.";
+    }
     if (line.reasons.some((reason) => reason.id && (!Number.isSafeInteger(numberValue(reason.quantity)) || numberValue(reason.quantity) <= 0 || numberValue(reason.quantity) > maximumQuantity))) {
       errors[`${prefix}-reasons`] = `A quantidade de cada motivo deve ser um inteiro entre um e ${maximumQuantity}.`;
     }
@@ -144,13 +191,13 @@ function toPayloadLine(line: DeliveryDraftLine): DeliveryItemInput {
     id_localidade: Number(line.locality),
     quantidade_realizada: numberValue(line.completed),
     quantidade_nao_realizada: numberValue(line.notCompleted),
-    observacao: line.observation.trim() || null,
     participantes: participants,
     motivos: line.reasons
       .filter((reason) => reason.id)
       .map((reason) => ({
         id_motivo_nao_entrega: Number(reason.id),
         quantidade: numberValue(reason.quantity),
+        observacao: reason.observation.trim() || null,
       })),
   };
 }
@@ -215,7 +262,7 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
   }
 
   function validateForm(): boolean {
-    const nextErrors = validateLines(lines);
+    const nextErrors = validateLines(lines, drivers, helpers, reasons, initialLaunch);
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       document.querySelector("[data-form-error]")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -314,6 +361,16 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
             const filledReasonIds = line.reasons.map((reason) => reason.id).filter(Boolean);
             const completed = numberValue(line.completed);
             const notCompleted = numberValue(line.notCompleted);
+            const selectedTeamIds = [line.driver, ...line.helpers].filter(Boolean);
+            const teamTypes = selectedTeamIds.map((id) => personTransportType(id, line, drivers, helpers, initialLaunch));
+            const distinctTeamTypes = new Set(teamTypes.filter((type): type is DeliveryTransportType => Boolean(type)));
+            const teamTypeLabel = selectedTeamIds.length === 0
+              ? "Selecione a equipe"
+              : teamTypes.some((type) => type === null)
+                ? "Classificação pendente"
+                : distinctTeamTypes.size > 1
+                  ? "Equipe mista"
+                  : deliveryTransportLabel([...distinctTeamTypes][0]);
             return (
               <article className={cx(styles, commonStyles, "delivery-line-card")} key={line.key}>
                 <div className={cx(styles, commonStyles, "delivery-line-top")}>
@@ -343,8 +400,8 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
                     <span>Motorista <b>*</b></span>
                     <select value={line.driver} onChange={(event) => updateLine(line.key, { driver: event.target.value })} required>
                       <option value="">Selecione o motorista</option>
-                      {initialLaunch?.itens.find((item) => item.codigo_item_lancamento === line.itemCode)?.participantes.filter((person) => person.papel_participante === "MOTORISTA" && !drivers.some((candidate) => String(candidate.id_pessoa) === line.driver)).map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao}</option>)}
-                      {drivers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao}</option>)}
+                      {initialLaunch?.itens.find((item) => item.codigo_item_lancamento === line.itemCode)?.participantes.filter((person) => person.papel_participante === "MOTORISTA" && !drivers.some((candidate) => String(candidate.id_pessoa) === line.driver)).map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</option>)}
+                      {drivers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</option>)}
                     </select>
                     {errors[`${prefix}-driver`] && <small className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-driver`]}</small>}
                   </label>
@@ -360,12 +417,13 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
                         }}
                       >
                         <option value="">Nenhum</option>
-                        {initialLaunch?.itens.find((item) => item.codigo_item_lancamento === line.itemCode)?.participantes.filter((person) => person.papel_participante === "AJUDANTE" && String(person.id_pessoa) === helperId && !helpers.some((candidate) => String(candidate.id_pessoa) === helperId)).map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao}</option>)}
-                        {helpers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao}</option>)}
+                        {initialLaunch?.itens.find((item) => item.codigo_item_lancamento === line.itemCode)?.participantes.filter((person) => person.papel_participante === "AJUDANTE" && String(person.id_pessoa) === helperId && !helpers.some((candidate) => String(candidate.id_pessoa) === helperId)).map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</option>)}
+                        {helpers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</option>)}
                       </select>
                     </label>
                   ))}
                 </div>
+                <div className={cx(styles, commonStyles, "team-classification")}><span>Tipo da entrega</span><strong className={cx(styles, commonStyles, `transport-badge${teamTypeLabel.includes("pendente") || teamTypeLabel === "Equipe mista" ? " transport-badge-warning" : ""}`)}>{teamTypeLabel}</strong></div>
                 {errors[`${prefix}-team`] && <small className={cx(styles, commonStyles, "field-error team-error")}>{errors[`${prefix}-team`]}</small>}
 
                 <div className={cx(styles, commonStyles, "quantity-section")}>
@@ -385,24 +443,27 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
                   <div className={cx(styles, commonStyles, "reasons-panel")}>
                     <div className={cx(styles, commonStyles, "reasons-heading")}><div><strong>Motivos de não realização</strong><p>Distribua as {notCompleted} entrega(s) não realizada(s).</p></div><button type="button" className={cx(styles, commonStyles, "text-button")} disabled={line.reasons.length >= 30 || saving} onClick={() => addReason(line)}>＋ Adicionar motivo</button></div>
                     {line.reasons.map((reason, reasonIndex) => (
-                      <div className={cx(styles, commonStyles, "reason-row")} key={reason.key}>
-                        <label className={cx(styles, commonStyles, "form-field reason-select")}><span className={cx(styles, commonStyles, "visually-hidden")}>Motivo</span><select aria-label={`Motivo ${reasonIndex + 1} da entrega ${index + 1}`} value={reason.id} onChange={(event) => updateReason(line.key, reason.key, { id: event.target.value })}>
-                          <option value="">Selecione o motivo</option>
-                          {initialLaunch?.itens.find((item) => item.codigo_item_lancamento === line.itemCode)?.motivos.filter((entry) => String(entry.id_motivo_nao_entrega) === reason.id && !reasons.some((candidate) => String(candidate.id_motivo_nao_entrega) === reason.id)).map((entry) => <option key={entry.id_motivo_nao_entrega} value={entry.id_motivo_nao_entrega}>{entry.descricao_motivo}</option>)}
-                          {reasons.filter((item) => !filledReasonIds.includes(String(item.id_motivo_nao_entrega)) || String(item.id_motivo_nao_entrega) === reason.id).map((item) => <option key={item.id_motivo_nao_entrega} value={item.id_motivo_nao_entrega}>{item.descricao_motivo}</option>)}
-                        </select></label>
-                        <label className={cx(styles, commonStyles, "form-field reason-quantity")}><span className={cx(styles, commonStyles, "visually-hidden")}>Quantidade</span><input type="number" min="1" max={maximumQuantity} step="1" value={reason.quantity} onChange={(event) => updateReason(line.key, reason.key, { quantity: event.target.value })} aria-label={`Quantidade do motivo ${reasonIndex + 1} da entrega ${index + 1}`} /></label>
-                        <button type="button" className={cx(styles, commonStyles, "icon-button remove-reason")} aria-label={`Remover motivo ${reasonIndex + 1} da entrega ${index + 1}`} disabled={saving} onClick={() => removeReason(line, reason.key)}>×</button>
+                      <div className={cx(styles, commonStyles, "reason-entry")} key={reason.key}>
+                        <div className={cx(styles, commonStyles, "reason-row")}>
+                          <label className={cx(styles, commonStyles, "form-field reason-select")}><span className={cx(styles, commonStyles, "visually-hidden")}>Motivo</span><select aria-label={`Motivo ${reasonIndex + 1} da entrega ${index + 1}`} value={reason.id} onChange={(event) => updateReason(line.key, reason.key, { id: event.target.value, observation: event.target.value === reason.id ? reason.observation : "" })}>
+                            <option value="">Selecione o motivo</option>
+                            {initialLaunch?.itens.find((item) => item.codigo_item_lancamento === line.itemCode)?.motivos.filter((entry) => String(entry.id_motivo_nao_entrega) === reason.id && !reasons.some((candidate) => String(candidate.id_motivo_nao_entrega) === reason.id)).map((entry) => <option key={entry.id_motivo_nao_entrega} value={entry.id_motivo_nao_entrega}>{entry.descricao_motivo} · {nonDeliveryReasonGroupLabel(entry.grupo_motivo)}</option>)}
+                            {reasons.filter((item) => !filledReasonIds.includes(String(item.id_motivo_nao_entrega)) || String(item.id_motivo_nao_entrega) === reason.id).map((item) => <option key={item.id_motivo_nao_entrega} value={item.id_motivo_nao_entrega}>{item.descricao_motivo} · {nonDeliveryReasonGroupLabel(item.grupo_motivo)}</option>)}
+                          </select></label>
+                          <label className={cx(styles, commonStyles, "form-field reason-quantity")}><span className={cx(styles, commonStyles, "visually-hidden")}>Quantidade</span><input type="number" min="1" max={maximumQuantity} step="1" value={reason.quantity} onChange={(event) => updateReason(line.key, reason.key, { quantity: event.target.value })} aria-label={`Quantidade do motivo ${reasonIndex + 1} da entrega ${index + 1}`} /></label>
+                          <button type="button" className={cx(styles, commonStyles, "icon-button remove-reason")} aria-label={`Remover motivo ${reasonIndex + 1} da entrega ${index + 1}`} disabled={saving} onClick={() => removeReason(line, reason.key)}>×</button>
+                        </div>
+                        <label className={cx(styles, commonStyles, "form-field reason-observation")}>
+                          <span>Observação deste motivo <small className={cx(styles, commonStyles, "field-hint")}>opcional</small></span>
+                          <textarea value={reason.observation} onChange={(event) => updateReason(line.key, reason.key, { observation: event.target.value })} placeholder="Detalhe o que aconteceu com este motivo..." maxLength={5000} rows={2} />
+                        </label>
                       </div>
                     ))}
                     {errors[`${prefix}-reasons`] && <small className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-reasons`]}</small>}
                   </div>
                 )}
 
-                <label className={cx(styles, commonStyles, "form-field observation-field")}>
-                  <span>Observações <small className={cx(styles, commonStyles, "field-hint")}>opcional</small></span>
-                  <textarea value={line.observation} onChange={(event) => updateLine(line.key, { observation: event.target.value })} placeholder="Inclua algum detalhe importante sobre esta rota..." maxLength={5000} rows={3} />
-                </label>
+                {line.legacyObservation.trim() && <div className={cx(styles, commonStyles, "notice notice-info legacy-observation")}><strong>Observação geral de um lançamento antigo:</strong> {line.legacyObservation.trim()}</div>}
               </article>
             );
           })}
@@ -426,12 +487,27 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
           const driverName = drivers.find((person) => String(person.id_pessoa) === line.driver)?.nome_exibicao ?? originalItem?.participantes.find((person) => person.papel_participante === "MOTORISTA")?.nome_exibicao ?? "Motorista não disponível";
           const helperNames = line.helpers.map((id) => helpers.find((person) => String(person.id_pessoa) === id)?.nome_exibicao ?? originalItem?.participantes.find((person) => person.papel_participante === "AJUDANTE" && String(person.id_pessoa) === id)?.nome_exibicao).filter(Boolean);
           const date = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long", year: "numeric" }).format(new Date(`${line.date}T12:00:00`));
-          const reasonLabels = line.reasons.map((reason) => `${reasons.find((item) => String(item.id_motivo_nao_entrega) === reason.id)?.descricao_motivo ?? originalItem?.motivos.find((item) => String(item.id_motivo_nao_entrega) === reason.id)?.descricao_motivo ?? "Motivo"} (${numberValue(reason.quantity)})`);
+          const selectedTeamIds = [line.driver, ...line.helpers].filter(Boolean);
+          const teamTypes = selectedTeamIds.map((id) => personTransportType(id, line, drivers, helpers, initialLaunch));
+          const distinctTeamTypes = new Set(teamTypes.filter((type): type is DeliveryTransportType => Boolean(type)));
+          const teamTypeLabel = selectedTeamIds.length === 0
+            ? "Sem classificação"
+            : teamTypes.some((type) => type === null)
+              ? "Classificação pendente"
+              : distinctTeamTypes.size > 1
+                ? "Equipe mista"
+                : deliveryTransportLabel([...distinctTeamTypes][0]);
+          const reasonLabels = line.reasons.map((reason) => {
+            const label = reasons.find((item) => String(item.id_motivo_nao_entrega) === reason.id)?.descricao_motivo ?? originalItem?.motivos.find((item) => String(item.id_motivo_nao_entrega) === reason.id)?.descricao_motivo ?? "Motivo";
+            const group = reasonGroup(reason.id, line, reasons, initialLaunch);
+            const observation = reason.observation.trim();
+            return `${label} · ${nonDeliveryReasonGroupLabel(group)} (${numberValue(reason.quantity)})${observation ? ` — Observação: ${observation}` : ""}`;
+          });
           return <article className={cx(styles, commonStyles, "review-delivery-card")} key={line.key}>
             <div className={cx(styles, commonStyles, "review-delivery-heading")}><span className={cx(styles, commonStyles, "delivery-index")}>{String(index + 1).padStart(2, "0")}</span><div><h3>{locality}</h3><p>{date}</p></div></div>
-            <div className={cx(styles, commonStyles, "review-data-grid")}><div><span>Motorista</span><strong>{driverName}</strong></div><div><span>Ajudantes</span><strong>{helperNames.length ? helperNames.join(", ") : "Nenhum"}</strong></div><div><span>Realizadas</span><strong>{numberValue(line.completed).toLocaleString("pt-BR")}</strong></div><div><span>Não realizadas</span><strong>{numberValue(line.notCompleted).toLocaleString("pt-BR")}</strong></div></div>
+            <div className={cx(styles, commonStyles, "review-data-grid")}><div><span>Motorista</span><strong>{driverName}</strong></div><div><span>Ajudantes</span><strong>{helperNames.length ? helperNames.join(", ") : "Nenhum"}</strong></div><div><span>Tipo da entrega</span><strong>{teamTypeLabel}</strong></div><div><span>Realizadas</span><strong>{numberValue(line.completed).toLocaleString("pt-BR")}</strong></div><div><span>Não realizadas</span><strong>{numberValue(line.notCompleted).toLocaleString("pt-BR")}</strong></div></div>
             {reasonLabels.length > 0 && <p className={cx(styles, commonStyles, "review-reasons")}><strong>Motivos:</strong> {reasonLabels.join(", ")}</p>}
-            {line.observation.trim() && <p className={cx(styles, commonStyles, "review-observation")}><strong>Observação:</strong> {line.observation.trim()}</p>}
+            {line.legacyObservation.trim() && <p className={cx(styles, commonStyles, "review-observation")}><strong>Observação geral (registro antigo):</strong> {line.legacyObservation.trim()}</p>}
           </article>;
         })}</div>
         <div className={cx(styles, commonStyles, "review-total-row")}><span>Total do lançamento</span><strong>{totals.completed.toLocaleString("pt-BR")} realizadas</strong><strong>{totals.notCompleted.toLocaleString("pt-BR")} não realizadas</strong></div>

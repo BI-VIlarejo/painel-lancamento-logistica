@@ -1,3 +1,5 @@
+import type { DeliveryTransportType, NonDeliveryReasonGroup } from "../deliveries/classifications";
+
 export type LocalityAdminItem = {
   id_localidade: number;
   codigo_localidade: string;
@@ -25,6 +27,7 @@ export type PersonAdminItem = {
   codigo_pessoa: string;
   nome_exibicao: string;
   tipo_funcao: "MOTORISTA" | "AJUDANTE";
+  tipo_transporte_entrega: DeliveryTransportType | null;
   ativo: boolean;
   vigente_desde: string;
   vigente_ate: string | null;
@@ -36,6 +39,7 @@ export type ReasonAdminItem = {
   id_motivo_nao_entrega: number;
   codigo_motivo: string;
   descricao_motivo: string;
+  grupo_motivo: NonDeliveryReasonGroup | null;
   ativo: boolean;
   vigente_desde: string;
   vigente_ate: string | null;

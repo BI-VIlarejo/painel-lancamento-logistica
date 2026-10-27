@@ -482,3 +482,4 @@ class EntregaMotivo(Base):
         primary_key=True,
     )
     quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
+    observacao: Mapped[str | None] = mapped_column(Text, nullable=True)

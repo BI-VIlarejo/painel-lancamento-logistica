@@ -37,18 +37,18 @@ const localities: LocalityCatalogItem[] = [
   { id_localidade: 14, codigo_localidade: "CD", nome_localidade: "Centro de Distribuição", tipo_localidade: "CD" },
 ];
 const people: PersonCatalogItem[] = [
-  { id_pessoa: 21, nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA" },
-  { id_pessoa: 22, nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA" },
-  { id_pessoa: 23, nome_exibicao: "Bruno Souza", tipo_funcao: "MOTORISTA" },
-  { id_pessoa: 31, nome_exibicao: "Marina Alves", tipo_funcao: "AJUDANTE" },
-  { id_pessoa: 32, nome_exibicao: "Pedro Lima", tipo_funcao: "AJUDANTE" },
-  { id_pessoa: 33, nome_exibicao: "Luiz Fernando", tipo_funcao: "AJUDANTE" },
+  { id_pessoa: 21, nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA" },
+  { id_pessoa: 22, nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "TERCEIRIZADA" },
+  { id_pessoa: 23, nome_exibicao: "Bruno Souza", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA" },
+  { id_pessoa: 31, nome_exibicao: "Marina Alves", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "PROPRIA" },
+  { id_pessoa: 32, nome_exibicao: "Pedro Lima", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "TERCEIRIZADA" },
+  { id_pessoa: 33, nome_exibicao: "Luiz Fernando", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "PROPRIA" },
 ];
 const reasons: NonDeliveryReasonCatalogItem[] = [
-  { id_motivo_nao_entrega: 41, codigo_motivo: "CLIENTE_AUSENTE", descricao_motivo: "Cliente ausente" },
-  { id_motivo_nao_entrega: 42, codigo_motivo: "ENDERECO_INCORRETO", descricao_motivo: "Endereço incorreto" },
-  { id_motivo_nao_entrega: 43, codigo_motivo: "AVARIA", descricao_motivo: "Produto avariado" },
-  { id_motivo_nao_entrega: 44, codigo_motivo: "VEICULO", descricao_motivo: "Imprevisto com veículo" },
+  { id_motivo_nao_entrega: 41, codigo_motivo: "CLIENTE_AUSENTE", descricao_motivo: "Cliente ausente", grupo_motivo: "LOJA" },
+  { id_motivo_nao_entrega: 42, codigo_motivo: "ENDERECO_INCORRETO", descricao_motivo: "Endereço incorreto", grupo_motivo: "LOJA" },
+  { id_motivo_nao_entrega: 43, codigo_motivo: "AVARIA", descricao_motivo: "Produto avariado", grupo_motivo: "TRANSPORTE_PROPRIO" },
+  { id_motivo_nao_entrega: 44, codigo_motivo: "VEICULO", descricao_motivo: "Imprevisto com veículo", grupo_motivo: "TRANSPORTE_PROPRIO" },
 ];
 
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 140));
@@ -88,11 +88,11 @@ function makeItem(
     quantidade_nao_realizada: notCompleted,
     observacao: null,
     participantes: [
-      { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1 },
-      { id_pessoa: helperId, codigo_pessoa: uuid(), nome_exibicao: personName(helperId), papel_participante: "AJUDANTE", ordem: 2 },
+      { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1, tipo_transporte_entrega: people.find((person) => person.id_pessoa === driverId)?.tipo_transporte_entrega ?? null },
+      { id_pessoa: helperId, codigo_pessoa: uuid(), nome_exibicao: personName(helperId), papel_participante: "AJUDANTE", ordem: 2, tipo_transporte_entrega: people.find((person) => person.id_pessoa === helperId)?.tipo_transporte_entrega ?? null },
     ],
     motivos: notCompleted > 0
-      ? [{ id_motivo_nao_entrega: reasonId, quantidade: notCompleted, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo }]
+      ? [{ id_motivo_nao_entrega: reasonId, quantidade: notCompleted, observacao: null, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo, grupo_motivo: reason.grupo_motivo }]
       : [],
   };
 }
@@ -203,15 +203,17 @@ function toResponseItem(item: DeliveryDraftRequest["itens"][number]): DeliveryIt
     codigo_item_lancamento: item.codigo_item_lancamento ?? uuid(),
     codigo_localidade: locality.codigo_localidade,
     nome_localidade: locality.nome_localidade,
+    observacao: null,
     participantes: item.participantes.map((participant, index) => ({
       ...participant,
       codigo_pessoa: uuid(),
       nome_exibicao: personName(participant.id_pessoa),
+      tipo_transporte_entrega: people.find((person) => person.id_pessoa === participant.id_pessoa)?.tipo_transporte_entrega ?? null,
       ordem: index + 1,
     })),
     motivos: item.motivos.map((entry) => {
       const reason = reasons.find((candidate) => candidate.id_motivo_nao_entrega === entry.id_motivo_nao_entrega) ?? reasons[0];
-      return { ...entry, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo };
+      return { ...entry, observacao: entry.observacao ?? null, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo, grupo_motivo: reason.grupo_motivo };
     }),
   };
 }

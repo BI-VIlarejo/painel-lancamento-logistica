@@ -1,6 +1,6 @@
 # Pendências para retomada — Portal de Logística
 
-**Atualizado:** 26/10/2026
+**Atualizado:** 27/10/2026
 **Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
 
 ## Escopo confirmado
@@ -11,7 +11,7 @@
 - Não haverá integração com o BI nesta etapa. O Portal manterá seu próprio cadastro de lojas/filiais.
 - A migration de localidades `b817e6c2a904` foi aplicada em staging em 22/10/2026; `alembic --name logistica current` confirmou essa revisão como `head`.
 
-## Estado atual — 26/10/2026
+## Estado atual — 27/10/2026
 
 - [x] O projeto Vercel foi criado e a primeira prévia visual chegou a `Ready` em modo demonstração. Depois, a prévia foi configurada para alcançar a API de staging.
 - [x] A correção visual de Reclamações e Elogios foi publicada em `staging` no commit `2258144`; a correção deixa claro que motorista e ajudantes dependem de uma entrega confirmada para a data e loja escolhidas.
@@ -23,9 +23,32 @@
 - [x] O usuário confirmou o parse sanitizado da `OP_LOGISTICA_DATABASE_URL` e a conexão da API ao banco `vilarejo_bi_logistica_staging`; o script informou que nenhum dado foi alterado.
 - [x] O usuário confirmou `HTTP 200` em `https://api-bi.vilarejosolucoes.com.br/logistica-staging/health`, usando a regra `/logistica-staging/` no Nginx já existente do BI para encaminhar à Logística na porta `8081`.
 - [x] Depois de configurar a origem Vercel em `CORS_ALLOWED_ORIGINS`, o usuário confirmou que conseguiu entrar no portal e que a sessão persistiu.
-- [ ] Depois de publicar as alterações locais de otimização e edição de identidade, conferir novamente a prévia e repetir as medições.
-- [ ] A conta e os cadastros oficiais do gestor de Logística ainda precisam ser confirmados/cadastrados em staging.
+- [x] A correção de JSX de acesso negado foi commitada em `1fa4432`; o CI e a prévia foram confirmados pelo usuário. O deploy manual da API foi executado, e a revisão Alembic `c9b61a2f4d80 (head)` foi confirmada em staging.
+- [ ] Depois de publicar as alterações de otimização e edição de identidade, repetir as medições de desempenho com a mesma navegação e correlacionar chamadas pelo `X-Request-ID`.
+- [ ] Vyctor e a gerente do setor de Suporte estão preenchendo os cadastros oficiais em staging; validar os registros e confirmar conta/perfil/escopos do gestor antes do aceite do piloto.
 - [ ] A base de produção ainda não foi provisionada; produção continua bloqueada até haver banco, infraestrutura, secrets e validações próprios.
+
+## Novas alterações solicitadas — 27/10/2026
+
+- [x] Atualizar a API real e os modelos para classificar cada versão de pessoa como `PROPRIA`/`TERCEIRIZADA` e cada motivo em um dos grupos `TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`. Novos cadastros exigem classificação; os campos permanecem nullable para preservar versões antigas.
+- [x] Exibir a classificação de transporte junto às pessoas e bloquear equipes novas que misturem tipos. Pessoas históricas sem classificação devem ser versionadas e revisadas antes do próximo lançamento.
+- [x] Implementar observação por motivo na API real, formulário, histórico e CSV. Novos lançamentos não aceitam observação geral; `op_logistica_entrega_diaria.observacao` continua preservada como legado.
+- [x] Atualizar indicadores da API e do painel com contagem e percentuais por grupo/motivo, taxa e OTIF por tipo de entrega, e motivos coletivos das equipes no ranking. Os percentuais apresentam participação nas não realizadas e incidência no total registrado.
+- [x] Preservar o score atual (`+1` elogio e `−1` reclamação) e mostrar motivos por pessoa como ocorrências das equipes em que participou. Atribuição individual e peso de motivos continuam sem aprovação.
+- [x] Revisar/aplicar `d2a8f6c1b904` após `c9b61a2f4d80`; confirmou `d2a8f6c1b904 (head)` em staging. A revisão adiciona `Pessoa.tipo_transporte_entrega`, `MotivoNaoEntrega.grupo_motivo` e `EntregaMotivo.observacao` como nullable.
+- [ ] Executar CI no GitHub e publicar API/frontend no staging. Fazer aceite funcional com Suporte, cadastros oficiais e permissões reais.
+- [ ] Confirmar com o responsável as premissas de quatro grupos controlados e equipe homogênea; não preencher classificações históricas por inferência.
+- [ ] Prever integração do Portal com o ERP SEAC antes do lançamento oficial. Confirmar fonte e acesso autorizados, campos, frequência, idempotência e se os dados serão importados como rascunho ou confirmados automaticamente.
+
+### Ordem de publicação acordada para esta alteração
+
+1. Rodar CI para esta versão e corrigir falhas.
+2. Revisar a migration e aplicá-la no banco de staging; conferir schema e manter os registros históricos sem classificação.
+3. Atualizar os cadastros atuais com as classificações validadas por Suporte.
+4. Publicar a API real e o frontend de staging; aceitar login, cadastro, lançamento, observação por motivo, histórico/CSV e indicadores.
+5. Iniciar o piloto; acompanhar feedback e corrigir problemas antes de liberar a versão para todos.
+6. Projetar e implementar a entrada SEAC no backend antes do lançamento oficial.
+7. Preparar deploy de produção depois do aceite do piloto, com banco, secrets e migration próprios.
 
 Esta atualização substitui, para o staging atual, as instruções antigas abaixo que sugeriam criar um ALB e um DNS novos para a API. O caminho HTTPS validado usa o domínio do BI e o prefixo `/logistica-staging/`.
 
@@ -49,11 +72,11 @@ Esta atualização substitui, para o staging atual, as instruções antigas abai
 
    A checagem do endpoint `/health` confirma que a API inicia; o comando acima também confirmou a conexão ao catálogo de staging sem alterar dados. A credencial real não deve ser adicionada a este arquivo nem enviada em chat.
 
-5. [ ] Com a Infra, configurar o ALB/proxy HTTPS e o DNS `api-staging`, encaminhando para EC2:8081. Permitir TCP `8081` na EC2 somente a partir do Security Group do ALB/proxy; manter `8000` interno e a RDS privada.
-6. [ ] Confirmar a revisão Alembic `b817e6c2a904` e as tabelas necessárias no catálogo `vilarejo_bi_logistica_staging`. Ela foi registrada como `head` e checada anteriormente; revalidar a conexão usando a credencial de runtime agora instalada na EC2. Não executar bootstrap local nem migrations automaticamente pelo container.
-7. [ ] Definir os domínios de staging do frontend e da API. Para login/cookies, preferir domínios próprios no mesmo domínio registrável, por exemplo `portal-staging.empresa.com` e `api-staging.empresa.com`.
-8. [ ] Na Vercel, conferir a prévia da branch `staging` e adicionar, somente no ambiente **Preview**, `VITE_API_BASE_URL=https://<dominio-api-staging>/api/v1` e `VITE_DEMO_MODE=false`. Fazer um novo deploy da Vercel após salvar as variáveis.
-9. [ ] Na EC2, atualizar `CORS_ALLOWED_ORIGINS` no `.env` para a origem HTTPS exata do frontend, sem caminho nem barra final. Depois, executar novamente o workflow da API para aplicar o CORS atualizado.
+5. [x] O endpoint externo usa o Nginx/proxy existente do BI no caminho `/logistica-staging/`, encaminhando à EC2 na porta `8081`; não é necessário criar outro ALB/DNS para o staging atual. A API respondeu `200`.
+6. [x] A revisão `c9b61a2f4d80 (head)` foi confirmada antes desta alteração; depois foi aplicada `d2a8f6c1b904`, e o estado atual é `d2a8f6c1b904 (head)`. Não executar bootstrap local nem migrations automaticamente pelo container.
+7. [x] A prévia Vercel foi configurada para alcançar a API de staging; o login e a persistência da sessão foram confirmados.
+8. [x] O frontend atual passou pela CI e a prévia do commit `1fa4432` foi confirmada pelo usuário.
+9. [x] `CORS_ALLOWED_ORIGINS` foi configurado para a origem da prévia; a sessão funcionou no navegador.
 10. [ ] Com API e RDS validadas, provisionar a conta DEV de staging pelo procedimento de [`provisionar-staging.md`](./provisionar-staging.md), usando somente o banco de staging e entregando a senha temporária por canal privado.
 11. [ ] Cadastrar dados de demonstração identificados como fictícios ou carregar cadastros oficiais aprovados de lojas, motoristas/ajudantes e motivos. Configurar usuários e escopos autorizados para `SUPORTE`.
 12. [ ] Validar no navegador, com a prévia conectada à API: login/sessão, criação e confirmação de Entrega, registro de Reclamação/Elogio ligado à equipe correta, painel, exportação/importação permitidas, permissões/escopos e auditoria. Conferir também o formulário de ajudantes corrigido no commit `2258144`.
@@ -80,7 +103,7 @@ Os catálogos atuais são compartilhados pelo Portal e não têm vínculo de pro
 
 ### 2. Cadastrar lojas e filiais sem BI
 
-O CRUD administrativo foi implementado no Portal. A permissão `CADASTROS:ADMINISTRAR` pode ser concedida sem `CONTROLE_ACESSO:ADMINISTRAR`; o perfil `CADASTRADOR` atende quem mantém lojas, equipe e motivos sem administrar contas. A migration `b817e6c2a904` acrescenta cidade e UF ao catálogo compartilhado e amplia a auditoria para alterações de localidade; ela já foi aplicada em staging. O catálogo operacional de localidades ainda está vazio.
+O CRUD administrativo foi implementado no Portal. A permissão `CADASTROS:ADMINISTRAR` pode ser concedida sem `CONTROLE_ACESSO:ADMINISTRAR`; o perfil `CADASTRADOR` atende quem mantém lojas, equipe e motivos sem administrar contas. A migration `b817e6c2a904` acrescentou cidade e UF e a revisão atual `c9b61a2f4d80` habilita auditoria de mudanças de identidade; ambas estão aplicadas em staging. Vyctor e a gerente de Suporte estão preenchendo os cadastros oficiais, que precisam ser conferidos antes do piloto.
 
 - [x] Adicionar cidade e UF ao cadastro de lojas/filiais; são obrigatórias em cadastros, edições e reativações.
 - [x] Criar API e interface administrativa para cadastrar, editar, ativar e desativar lojas.
@@ -143,7 +166,7 @@ Regra confirmada em 22/10/2026: `OTIF = entregas não realizadas / (realizadas +
 
 ### 7. Carregar cadastros reais de staging
 
-O provisionamento DEV prepara perfis, o setor Suporte e o formulário, mas não cadastra as lojas, pessoas e motivos reais. Em 22/10/2026, uma checagem somente de leitura confirmou conexão ao catálogo de staging e presença das tabelas necessárias; nenhuma alteração foi feita nessa checagem. A migration está em `head`; as tabelas de catálogo permanecem sem carga oficial. A conta DEV e a criação de Suporte/formulário seguem pendentes até definir a conta a provisionar. Não usar o BI como fonte automática.
+O provisionamento DEV prepara perfis, o setor Suporte e o formulário, mas não cadastra lojas, pessoas ou motivos. A conexão ao catálogo de staging e a presença das tabelas necessárias foram confirmadas; após aplicar a migration desta alteração, o Alembic informou `d2a8f6c1b904 (head)`. O preenchimento dos cadastros oficiais está em andamento com Vyctor e a gerente de Suporte. Não usar o BI como fonte automática para esses cadastros.
 
 - [x] Aplicar a migration `b817e6c2a904` em staging e confirmar `b817e6c2a904 (head)`.
 - [x] Confirmar conexão de staging e presença das tabelas necessárias para provisionamento (checagem somente de leitura, 22/10/2026).
@@ -187,7 +210,7 @@ Os clientes do frontend já chamam as rotas correspondentes da API, e o `compose
 
 ## Plano completo para retomar amanhã
 
-**Objetivo:** concluir a preparação do primeiro staging funcional para o Diretor de Logística testar. A publicação visual isolada na Vercel é a alternativa se a API ou a rede da AWS ainda não estiverem prontas. Staging não é produção.
+**Objetivo:** publicar no staging operacional a API real e o frontend conectado ao banco `vilarejo_bi_logistica_staging`, para o piloto de Suporte começar a usar. A prévia Vercel em modo demo é isolada e não atende a esse piloto. Produção continua sendo uma etapa posterior.
 
 ### A. Conferir o repositório e iniciar o inventário AWS — primeiro passo
 
@@ -196,7 +219,7 @@ Os clientes do frontend já chamam as rotas correspondentes da API, e o `compose
 - [ ] Em **EC2 → Instances**, localizar a instância indicada por `EC2_HOST` no `.env` local. Confirmar que ela está aprovada para hospedar o Portal; não presumir que uma EC2 usada pelo BI pode ser reutilizada sem validação da Infra.
 - [ ] Registrar para a instância: nome/ID, estado, VPC, subnet, IP privado, Security Groups anexados, IAM Role, versão/estado de Docker e Compose, usuário de deploy e diretório de deploy disponível.
 - [ ] Em **RDS → Databases**, localizar a instância `vilarejo-bi` e conferir endpoint, porta `3306`, VPC, subnet group, Security Groups e **Publicly accessible = No**.
-- [ ] Confirmar que o endpoint usado pela aplicação aponta para o catálogo `vilarejo_bi_logistica_staging`. O estado registrado do Portal é `b817e6c2a904 (head)`; não executar upgrade nem bootstrap Alembic de novo.
+- [x] Confirmar que o endpoint usado pela aplicação aponta para o catálogo `vilarejo_bi_logistica_staging`. Em 27/10/2026, o estado confirmado é `d2a8f6c1b904 (head)`. O workflow de deploy não executa migrations; qualquer revisão futura deve ser aplicada manualmente antes do código que depender dela.
 - [ ] Em **EC2 → Load Balancers** (ou junto à Infra, se o tráfego passar por proxy corporativo), identificar se já existe um ALB/proxy aprovado para a API. Registrar DNS/domínio, esquema público/interno, listener HTTPS `443`, certificado, target group, porta de destino e health check.
 - [ ] Registrar os resultados sem incluir senhas, chaves privadas, tokens ou valores secretos. Modelo para preencher:
 
@@ -240,10 +263,9 @@ Os nomes/endpoints já existentes no `.env` local servem como pistas para locali
 
 ### E. Preparar Vercel e escolher tipo de prévia
 
-- [x] Criar o projeto Vercel ligado ao repositório, configurar `frontend/` como **Root Directory** e publicar uma prévia visual `Ready` na branch `staging`.
-- [x] Configurar a prévia visual com `VITE_DEMO_MODE=true`; ela usa dados locais de demonstração e não chama API/banco.
-- [ ] Conferir se a prévia gerada após os commits `2258144` e `2470aff` está `Ready` e mostra a correção de alinhamento/equipe.
-- [ ] Para uma prévia funcional, configurar `VITE_API_BASE_URL=https://<domínio-da-api>/api/v1` e `VITE_DEMO_MODE=false`. Configurar o domínio próprio do frontend, preferencialmente no mesmo domínio registrável da API.
+- [x] Criar o projeto Vercel ligado ao repositório e configurar `frontend/` como **Root Directory**.
+- [x] Publicar anteriormente uma prévia em modo demo. Ela usa dados locais e não chama API/banco; não usar essa prévia no piloto operacional.
+- [ ] Publicar a versão funcional da branch `staging` com `VITE_API_BASE_URL=https://<domínio-da-api>/api/v1` e `VITE_DEMO_MODE=false`. A tela do piloto deve chamar a API real e persistir no banco de staging.
 - [ ] Atualizar `CORS_ALLOWED_ORIGINS` na EC2 com a origem exata do frontend (sem `/*` nem barra final) e publicar novamente a API se essa variável mudar.
 - [ ] Fazer o deploy Preview na Vercel e conferir no navegador login, cookie de sessão, CORS e chamadas da API.
 - [ ] Se a API/rede ainda não estiverem prontas, disponibilizar somente a prévia visual com `VITE_DEMO_MODE=true`, sem URL de API ou banco. Identificar para o Diretor que essa prévia não persiste dados.
@@ -255,7 +277,6 @@ Os nomes/endpoints já existentes no `.env` local servem como pistas para locali
 - [ ] Solicitar a lista oficial aprovada de lojas/filiais com código, nome, cidade e UF, e identificar quem responde pela conferência. A migration está aplicada, mas o catálogo operacional de localidades está vazio.
 - [ ] Solicitar lista aprovada de motoristas/ajudantes e motivos de ocorrência. Carregar e revisar cadastros antes de conceder escopos aos usuários finais.
 - [ ] Criar/atribuir usuários operacionais e escopos autorizados para `SUPORTE` e localidades. Concessões legadas para `ENTREGAS` não migram automaticamente.
-- [ ] Se as listas oficiais ainda não estiverem disponíveis, usar apenas dados sintéticos claramente identificados para demonstração; não apresentar os registros fictícios como dados reais.
 
 ### G. Validar fluxo funcional e decidir liberação de dados reais
 

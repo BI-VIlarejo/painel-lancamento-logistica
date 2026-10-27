@@ -18,8 +18,11 @@ from app.modules.analytics.schemas import (
     DashboardSummary,
     FeedbackSummary,
     LocalityPerformance,
+    DeliveryTypePerformance,
     PersonPerformance,
+    PersonReasonCount,
     ReasonPerformance,
+    ReasonGroupPerformance,
     TeamPerformance,
     TrendPoint,
 )
@@ -234,7 +237,8 @@ def get_dashboard(
             select(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
-                func.sum(EntregaMotivo.quantidade),
+                MotivoNaoEntrega.grupo_motivo,
+                func.sum(EntregaMotivo.quantidade).label("quantity"),
             )
             .join(
                 registered_items,
@@ -248,10 +252,72 @@ def get_dashboard(
             .group_by(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
+                MotivoNaoEntrega.grupo_motivo,
             )
-            .order_by(func.sum(EntregaMotivo.quantidade).desc(), MotivoNaoEntrega.descricao_motivo)
+            .order_by(
+                func.sum(EntregaMotivo.quantidade).desc(),
+                MotivoNaoEntrega.grupo_motivo,
+                MotivoNaoEntrega.descricao_motivo,
+            )
         ).all()
         _log_dashboard_step("reasons", request_id, query_started_at)
+
+        team_transport_types = (
+            select(
+                registered_items.c.id_entrega_diaria.label("id_entrega_diaria"),
+                func.count(func.distinct(Pessoa.tipo_transporte_entrega)).label(
+                    "type_count"
+                ),
+                func.sum(
+                    case((Pessoa.tipo_transporte_entrega.is_(None), 1), else_=0)
+                ).label("unclassified_count"),
+                func.min(Pessoa.tipo_transporte_entrega).label("single_type"),
+            )
+            .select_from(registered_items)
+            .outerjoin(
+                EntregaParticipante,
+                EntregaParticipante.id_entrega_diaria
+                == registered_items.c.id_entrega_diaria,
+            )
+            .outerjoin(Pessoa, Pessoa.id_pessoa == EntregaParticipante.id_pessoa)
+            .group_by(registered_items.c.id_entrega_diaria)
+            .subquery("tipo_transporte_por_entrega")
+        )
+        classified_items = (
+            select(
+                registered_items.c.id_entrega_diaria,
+                registered_items.c.id_lancamento,
+                registered_items.c.realizadas,
+                registered_items.c.nao_realizadas,
+                case(
+                    (team_transport_types.c.type_count > 1, "MISTO"),
+                    (team_transport_types.c.unclassified_count > 0, None),
+                    else_=team_transport_types.c.single_type,
+                ).label("tipo_transporte_entrega"),
+            )
+            .select_from(registered_items)
+            .join(
+                team_transport_types,
+                team_transport_types.c.id_entrega_diaria
+                == registered_items.c.id_entrega_diaria,
+            )
+            .subquery("entregas_com_tipo_transporte")
+        )
+        query_started_at = perf_counter()
+        delivery_type_rows = db.execute(
+            select(
+                classified_items.c.tipo_transporte_entrega,
+                func.count(
+                    func.distinct(classified_items.c.id_entrega_diaria)
+                ).label("delivery_count"),
+                func.sum(classified_items.c.realizadas).label("completed"),
+                func.sum(classified_items.c.nao_realizadas).label("not_completed"),
+            )
+            .select_from(classified_items)
+            .group_by(classified_items.c.tipo_transporte_entrega)
+            .order_by(classified_items.c.tipo_transporte_entrega)
+        ).all()
+        _log_dashboard_step("delivery_types", request_id, query_started_at)
 
         team_members = (
             select(
@@ -347,6 +413,49 @@ def get_dashboard(
             _log_dashboard_step("people", request_id, query_started_at)
         else:
             people_by_id = {}
+
+        person_reason_totals: dict[int, dict[int, dict[str, object]]] = {}
+        query_started_at = perf_counter()
+        person_reason_rows = db.execute(
+            select(
+                EntregaParticipante.id_pessoa,
+                MotivoNaoEntrega.id_motivo_nao_entrega,
+                MotivoNaoEntrega.descricao_motivo,
+                MotivoNaoEntrega.grupo_motivo,
+                func.sum(EntregaMotivo.quantidade).label("quantity"),
+            )
+            .select_from(EntregaParticipante)
+            .join(
+                registered_items,
+                registered_items.c.id_entrega_diaria
+                == EntregaParticipante.id_entrega_diaria,
+            )
+            .join(
+                EntregaMotivo,
+                EntregaMotivo.id_entrega_diaria
+                == EntregaParticipante.id_entrega_diaria,
+            )
+            .join(
+                MotivoNaoEntrega,
+                MotivoNaoEntrega.id_motivo_nao_entrega
+                == EntregaMotivo.id_motivo_nao_entrega,
+            )
+            .group_by(
+                EntregaParticipante.id_pessoa,
+                MotivoNaoEntrega.id_motivo_nao_entrega,
+                MotivoNaoEntrega.descricao_motivo,
+                MotivoNaoEntrega.grupo_motivo,
+            )
+        ).all()
+        _log_dashboard_step("person_reason_counts", request_id, query_started_at)
+        for row in person_reason_rows:
+            person_id = int(row.id_pessoa)
+            reason_id = int(row.id_motivo_nao_entrega)
+            person_reason_totals.setdefault(person_id, {})[reason_id] = {
+                "name": row.descricao_motivo,
+                "group": row.grupo_motivo,
+                "quantity": int(row.quantity or 0),
+            }
 
         person_totals: dict[int, dict[str, object]] = {
             person_id: {
@@ -626,6 +735,21 @@ def get_dashboard(
                 elogios=int(values["praise"]) if feedback_available else None,
                 reclamacoes=int(values["complaint"]) if feedback_available else None,
                 score_atendimento=int(values["praise"]) - int(values["complaint"]),
+                motivos_da_equipe=[
+                    PersonReasonCount(
+                        id_motivo=reason_id,
+                        motivo=str(reason["name"]),
+                        grupo_motivo=reason["group"],
+                        quantidade=int(reason["quantity"]),
+                    )
+                    for reason_id, reason in sorted(
+                        person_reason_totals.get(person_id, {}).items(),
+                        key=lambda entry: (
+                            -int(entry[1]["quantity"]),
+                            str(entry[1]["name"]).casefold(),
+                        ),
+                    )
+                ],
             )
             for id_person, values in person_totals.items()
         ]
@@ -676,13 +800,52 @@ def get_dashboard(
             )
             for row in daily_rows
         ]
-        reasons = [
-            ReasonPerformance(
-                id_motivo=row[0],
-                motivo=row[1],
-                quantidade=int(row[2] or 0),
+        reason_group_totals: dict[str | None, int] = {}
+        reasons = []
+        for row in reason_rows:
+            quantity = int(row.quantity or 0)
+            reason_group_totals[row.grupo_motivo] = (
+                reason_group_totals.get(row.grupo_motivo, 0) + quantity
             )
-            for row in reason_rows
+            reasons.append(
+                ReasonPerformance(
+                    id_motivo=row.id_motivo_nao_entrega,
+                    motivo=row.descricao_motivo,
+                    grupo_motivo=row.grupo_motivo,
+                    quantidade=quantity,
+                    percentual_das_nao_realizadas=_percentage(
+                        quantity, not_completed_total
+                    ),
+                    incidencia_sobre_total=_percentage(quantity, planned_total),
+                )
+            )
+        reason_groups = [
+            ReasonGroupPerformance(
+                grupo_motivo=group,
+                quantidade=quantity,
+                percentual_das_nao_realizadas=_percentage(
+                    quantity, not_completed_total
+                ),
+                incidencia_sobre_total=_percentage(quantity, planned_total),
+            )
+            for group, quantity in sorted(
+                reason_group_totals.items(),
+                key=lambda entry: (entry[0] is None, entry[0] or ""),
+            )
+        ]
+        by_delivery_type = [
+            DeliveryTypePerformance(
+                tipo_transporte_entrega=row.tipo_transporte_entrega,
+                registros_entrega=int(row.delivery_count),
+                itens_planejados=int(row.completed) + int(row.not_completed),
+                realizadas=int(row.completed),
+                nao_realizadas=int(row.not_completed),
+                taxa_realizacao=_rate(int(row.completed), int(row.not_completed)),
+                otif_percentual=_percentage(
+                    int(row.not_completed), int(row.completed) + int(row.not_completed)
+                ),
+            )
+            for row in delivery_type_rows
         ]
         return DashboardResponse(
             data_de=data_de,
@@ -704,6 +867,8 @@ def get_dashboard(
             evolucao=daily,
             por_localidade=by_locality,
             por_motivo=reasons,
+            por_grupo_motivo=reason_groups,
+            por_tipo_entrega=by_delivery_type,
             por_pessoa=by_people,
             por_equipe=by_teams,
         )

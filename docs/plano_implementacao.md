@@ -1,11 +1,31 @@
 # Plano de implementação do portal de lançamento de dados
 
-**Atualizado em:** 22/10/2026
-**Status:** plano de execução; as decisões de negócio e infraestrutura indicadas como pendentes precisam ser aprovadas antes de gravar dados reais ou publicar em produção.
+**Atualizado em:** 27/10/2026
+**Status em 27/10/2026:** a versão de trabalho altera a API real, os modelos operacionais e a interface para o piloto. A migration `d2a8f6c1b904` foi aplicada em staging e confirmada como `head`. Os bloqueios antes do piloto são a CI no GitHub, publicação da nova versão da API/frontend e aceite funcional com os cadastros oficiais. Produção fica para depois do piloto.
 
 Este documento organiza o trabalho do `LancamentoLogistica` em ordem de implementação. A [especificação do portal](./especificacao_portal_lancamento_logistica.md) continua sendo a referência para campos, regras, arquitetura, segurança e modelo de dados. O [DBML operacional](./modelo_operacional_lancamento_logistica.dbml) é uma proposta, ainda não é uma migration aplicada.
 
-### Atualização de implementação — 21/10/2026
+### Atualização de escopo solicitada — 27/10/2026
+
+- O staging operacional está publicado e a cadeia Alembic `logistica` está em `d2a8f6c1b904 (head)` após aplicar a migration desta alteração. Vyctor e a gerente do setor de Suporte estão preenchendo os cadastros; a carga e validação final permanecem em andamento.
+- Cada motivo exige um grupo controlado: `TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`. Cada pessoa exige tipo `PROPRIA` ou `TERCEIRIZADA`; novas equipes precisam ser homogêneas. Versões históricas sem classificação ficam nulas até revisão.
+- A observação é gravada por motivo; novos lançamentos não aceitam observação geral. A coluna geral continua preservada para histórico. A migration `d2a8f6c1b904` inclui observação, grupo e tipo como nullable, após `c9b61a2f4d80`.
+- O painel por motivo/grupo exibe participação entre não realizadas e incidência sobre o total. O painel também compara Entregas Próprias e Terceirizadas. O ranking mostra motivos associados às equipes como contexto; não aplica peso/penalidade por motivo sem regra aprovada.
+- Está prevista integração do Portal com o ERP SEAC para buscar automaticamente os dados dos lançamentos antes do lançamento oficial. O acesso, campos, frequência, idempotência e conferência/auto-confirmação ainda serão definidos. Essa entrada do SEAC não equivale à publicação analítica no BI.
+
+### Ordem de publicação desta alteração
+
+1. A migration `d2a8f6c1b904` já foi aplicada em staging; conferir a revisão `head` antes de publicar código que consulta as colunas novas.
+2. Executar CI no GitHub e corrigir falhas. As verificações locais já passaram; a CI ainda precisa rodar após a publicação do commit.
+3. Reclassificar os cadastros oficiais de pessoas e motivos; a API não permitirá novos lançamentos com itens sem classificação nem equipe mista.
+4. Publicar a API real e o frontend no staging conectado ao banco operacional. Fazer aceite com contas/escopos e cadastros do piloto.
+5. Usar o portal no piloto mantendo a fonte atual em paralelo; registrar erros e corrigir antes de liberar para toda a operação.
+6. Definir e implementar o conector SEAC no backend antes do lançamento oficial, com origem rastreável, credencial de leitura, importação idempotente e reconciliação.
+7. Preparar produção depois do aceite do piloto, com migration e secrets próprios e revisão operacional.
+
+Os grupos fixos, a equipe homogênea e os dois percentuais foram adotados como premissas operacionais para o primeiro corte, pois não chegou resposta às perguntas de validação. O score por motivo e o comportamento automático do SEAC permanecem sem regra aprovada.
+
+### Atualização de implementação — 21/10/2026 (registro histórico)
 
 - Decisões do responsável pelo produto: Entregas, feedback, painel e ranking entram no release. O feedback aponta para uma entrega e inclui o cliente. DEV, GESTOR e DIRETORIA podem usar as ações do portal; OPERADOR (Suporte) pode consultar, registrar e editar Entregas e também registrar, consultar, importar e exportar feedback dentro dos escopos concedidos. O catálogo de localidades pertence ao portal; integração automática com o BI fica fora deste projeto e deste release.
 - Os CSVs de referência são: feedback com data, tipo, cliente, loja, motorista, até dois ajudantes e descrição; histórico de Entregas com data, loja, motorista, até dois ajudantes, quantidades realizadas/não realizadas, motivos e observações.
