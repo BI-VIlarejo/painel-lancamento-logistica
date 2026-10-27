@@ -87,7 +87,38 @@ function PortalApp() {
           ? <DeliveryHistoryPage onNavigate={navigate} canCreate={canCreate} canEditDraft={canEditDraft} canCorrect={canCorrect} canCancel={canCancelDelivery} currentUserId={user.id_usuario} />
           : (path === "/entregas" && canCreate) || (editMatch && canEditDraft && canView)
             ? <DeliveryLaunchPage onNavigate={navigate} responsibleName={user.nome_completo} canLaunch={canCreate} canManageCatalogs={canManageCatalogs} editId={editMatch?.[1]} />
-            : <div className={cx(styles, commonStyles, "access-denied-card")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌑</div><h1>Acesso não disponível</h1><p>Seu perfil não tem permissão para abrir esta área. Se precisar, peça à pessoa administradora para revisar seus acessos.</p>{canView && currentPath !== "/historico" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/historico")}>Ir para o histórico</button>}{canCreate && currentPath !== "/entregas" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/entregas")}>Novo lançamento</button>}{canAccessFeedback && currentPath !== "/feedback" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/feedback")}>Reclamações e elogios</button>}{canViewDashboard && currentPath !== "/painel" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/painel")}>Abrir painel gerencial</button>}{canViewAudit && currentPath !== "/auditoria" && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/auditoria")}>Abrir auditoria</button></div>}
+            : (
+              <div className={cx(styles, commonStyles, "access-denied-card")}>
+                <div className={cx(styles, commonStyles, "empty-state-icon")}>⌑</div>
+                <h1>Acesso não disponível</h1>
+                <p>Seu perfil não tem permissão para abrir esta área. Se precisar, peça à pessoa administradora para revisar seus acessos.</p>
+                {canView && currentPath !== "/historico" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/historico")}>
+                    Ir para o histórico
+                  </button>
+                )}
+                {canCreate && currentPath !== "/entregas" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/entregas")}>
+                    Novo lançamento
+                  </button>
+                )}
+                {canAccessFeedback && currentPath !== "/feedback" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/feedback")}>
+                    Reclamações e elogios
+                  </button>
+                )}
+                {canViewDashboard && currentPath !== "/painel" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/painel")}>
+                    Abrir painel gerencial
+                  </button>
+                )}
+                {canViewAudit && currentPath !== "/auditoria" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/auditoria")}>
+                    Abrir auditoria
+                  </button>
+                )}
+              </div>
+            )}
       </Suspense>
     </AppShell>
   );
