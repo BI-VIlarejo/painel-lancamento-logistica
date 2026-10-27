@@ -19,6 +19,19 @@ npm run dev
 
 Abra `http://localhost:5173`. Para o portal completo com API e MySQL locais, use as instruções de [`../docs/rodar-localmente.md`](../docs/rodar-localmente.md).
 
+## Publicar o portal operacional conectado à API de staging
+
+Para o piloto real, publique a branch `staging` na Vercel com estas variáveis no ambiente **Preview**:
+
+```dotenv
+VITE_API_BASE_URL=/api/v1
+VITE_DEMO_MODE=false
+```
+
+O [`vercel.json`](./vercel.json) encaminha `/api/v1/*` para `https://api-bi.vilarejosolucoes.com.br/logistica-staging/api/v1/*`. Assim, o portal usa a API e o banco de staging. Depois do deploy, valide login, sessão e uma operação controlada no navegador. A origem exata do deployment precisa estar autorizada em `CORS_ALLOWED_ORIGINS` na API.
+
+Não use a prévia demonstrativa abaixo para lançamentos operacionais: ela grava apenas no navegador e não chama a API.
+
 ## Demonstração opcional
 
 O modo fictício inicia quando `VITE_DEMO_MODE=true`. Ele usa dados guardados no navegador e não chama a API, mesmo se `VITE_API_BASE_URL` estiver configurada. Para conectar ao backend, mantenha `VITE_DEMO_MODE=false`.

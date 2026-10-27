@@ -523,7 +523,7 @@ Para cada novo setor:
 
 1. Conectar o repositório Git privado `LancamentoLogistica` ao projeto da equipe na Vercel.
 2. Configurar `frontend/` como Root Directory, `npm run build` como build e `dist` como diretório de saída.
-3. Usar PRs/branches para gerar previews da interface e manter `VITE_API_BASE_URL` apontando para a API de staging; Vercel documenta deploy por Git e previews ([Git deployments](https://vercel.com/docs/git)).
+3. Usar PRs/branches para gerar previews da interface. No piloto de staging, configurar `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false`; o rewrite do `frontend/vercel.json` aponta para a API de staging. Vercel documenta deploy por Git e previews ([Git deployments](https://vercel.com/docs/git)).
 4. Implantar a imagem Docker do backend na EC2 de staging, dentro da VPC, e disponibilizar um endpoint HTTPS para o frontend.
 5. Configurar o domínio oficial e TLS após liberação de DNS/Infra; confirmar health check, logs e região AWS próxima da RDS.
 
@@ -531,7 +531,7 @@ Para cada novo setor:
 
 Criar configurações separadas para `Development`, `Preview/Staging` e `Production`:
 
-- `VITE_API_BASE_URL` na Vercel, contendo somente a URL HTTPS pública da API correspondente ao ambiente; todas as variáveis `VITE_*` são públicas no bundle;
+- `VITE_API_BASE_URL` na Vercel, contendo somente uma URL pública ou caminho relativo correspondente ao ambiente, sem segredo; todas as variáveis `VITE_*` são públicas no bundle;
 - `OP_LOGISTICA_DATABASE_URL`, segredo de sessão e configurações privadas somente no backend, por secret store aprovado;
 - `CORS_ALLOWED_ORIGINS` no backend, limitado às URLs oficiais e de preview autorizadas;
 - credenciais de runtime e de migration distintas, ambas separadas entre staging e produção.

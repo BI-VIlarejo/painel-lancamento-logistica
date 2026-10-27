@@ -36,16 +36,16 @@
 - [x] Atualizar indicadores da API e do painel com contagem e percentuais por grupo/motivo, taxa e OTIF por tipo de entrega, e motivos coletivos das equipes no ranking. Os percentuais apresentam participação nas não realizadas e incidência no total registrado.
 - [x] Preservar o score atual (`+1` elogio e `−1` reclamação) e mostrar motivos por pessoa como ocorrências das equipes em que participou. Atribuição individual e peso de motivos continuam sem aprovação.
 - [x] Revisar/aplicar `d2a8f6c1b904` após `c9b61a2f4d80`; confirmou `d2a8f6c1b904 (head)` em staging. A revisão adiciona `Pessoa.tipo_transporte_entrega`, `MotivoNaoEntrega.grupo_motivo` e `EntregaMotivo.observacao` como nullable.
-- [ ] Executar CI no GitHub e publicar API/frontend no staging. Fazer aceite funcional com Suporte, cadastros oficiais e permissões reais.
+- [ ] Confirmar que o CI disparado pelo commit `2abb4ea` passou; depois executar o workflow manual `Deploy Portal API to Staging` e publicar a Preview Vercel com API real. Fazer aceite funcional com Suporte, cadastros oficiais e permissões reais.
 - [ ] Confirmar com o responsável as premissas de quatro grupos controlados e equipe homogênea; não preencher classificações históricas por inferência.
 - [ ] Prever integração do Portal com o ERP SEAC antes do lançamento oficial. Confirmar fonte e acesso autorizados, campos, frequência, idempotência e se os dados serão importados como rascunho ou confirmados automaticamente.
 
 ### Ordem de publicação acordada para esta alteração
 
-1. Rodar CI para esta versão e corrigir falhas.
-2. Revisar a migration e aplicá-la no banco de staging; conferir schema e manter os registros históricos sem classificação.
+1. Confirmar o CI da branch `staging`; corrigir e enviar qualquer falha.
+2. A migration `d2a8f6c1b904` já está aplicada em staging; conferir que a API publicada é compatível com esse schema.
 3. Atualizar os cadastros atuais com as classificações validadas por Suporte.
-4. Publicar a API real e o frontend de staging; aceitar login, cadastro, lançamento, observação por motivo, histórico/CSV e indicadores.
+4. Executar o workflow manual da API e publicar a Preview da Vercel com `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false`; aceitar login, cadastro, lançamento, observação por motivo, histórico/CSV e indicadores.
 5. Iniciar o piloto; acompanhar feedback e corrigir problemas antes de liberar a versão para todos.
 6. Projetar e implementar a entrada SEAC no backend antes do lançamento oficial.
 7. Preparar deploy de produção depois do aceite do piloto, com banco, secrets e migration próprios.
@@ -249,7 +249,7 @@ Os nomes/endpoints já existentes no `.env` local servem como pistas para locali
 - [ ] Criar ou confirmar um usuário de runtime exclusivo para o Portal no catálogo de staging, com privilégio mínimo. Não usar a credencial de migration do BI como credencial da aplicação.
 - [ ] Na EC2, criar `.env` no diretório `EC2_DEPLOY_DIR`, ao lado do `compose.yaml`, com proprietário do usuário de deploy e modo `0600`, usando `deploy/ec2/api.env.example` como modelo. Preencher `APP_ENV=staging`, `USE_DB_TUNNEL=false`, a URL privada da RDS com senha codificada em URL, origem exata da Vercel em `CORS_ALLOWED_ORIGINS`, sessão segura e o segredo gerado no host com `openssl rand -hex 32`.
 - [ ] Usar `SESSION_COOKIE_SECURE=true` e `SESSION_COOKIE_SAMESITE=lax`. Para evitar bloqueio de cookies, preferir domínio próprio do frontend e da API sob o mesmo domínio registrável, conforme `deploy/ec2/README.md`.
-- [ ] Não colocar credenciais em `VITE_*`, no bundle do frontend, no repositório ou no histórico do terminal. `VITE_API_BASE_URL` é pública e pode conter somente a URL da API.
+- [ ] Não colocar credenciais em `VITE_*`, no bundle do frontend, no repositório ou no histórico do terminal. `VITE_API_BASE_URL` é pública e pode conter somente a URL pública da API ou um caminho relativo, como `/api/v1`.
 - [ ] Em **GitHub → Settings → Environments → staging**, configurar os secrets exigidos pelo workflow: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `EC2_SECURITY_GROUP_ID`, `EC2_HOST`, `EC2_USER`, `EC2_PRIVATE_KEY`, `EC2_HOST_FINGERPRINT` e `EC2_DEPLOY_DIR`.
 - [ ] Restringir a credencial AWS do Actions a autorizar/remover ingress TCP `22` apenas no Security Group de staging. Conferir o fingerprint SSH por canal confiável. `GITHUB_TOKEN` é fornecido pelo Actions e não deve ser cadastrado manualmente.
 
@@ -258,17 +258,17 @@ Os nomes/endpoints já existentes no `.env` local servem como pistas para locali
 - [x] Confirmar `.env` ao lado do `compose.yaml` no diretório de deploy da EC2.
 - [x] Em **Actions → Deploy Portal API to Staging → Run workflow**, selecionar `staging`. A imagem foi publicada no GHCR, os arquivos foram copiados e os containers iniciaram; o workflow não aplica migrations.
 - [x] Conferir que o workflow terminou e que os containers estão `healthy`; o Nginx da Logística usa a porta `8081`.
-- [ ] Validar `https://<domínio-da-api>/health` pelo endpoint HTTPS aprovado.
+- [ ] Validar `https://api-bi.vilarejosolucoes.com.br/logistica-staging/health` pelo endpoint HTTPS aprovado.
 - [ ] Executar o check de conectividade DB descrito no guia a partir do container do backend (`scripts.check_staging_db`) e confirmar a conexão sem gravar dados. Investigar DNS privado, rota, Security Groups e credencial se falhar; não tornar a RDS pública para contornar falha de rede.
 
 ### E. Preparar Vercel e escolher tipo de prévia
 
 - [x] Criar o projeto Vercel ligado ao repositório e configurar `frontend/` como **Root Directory**.
 - [x] Publicar anteriormente uma prévia em modo demo. Ela usa dados locais e não chama API/banco; não usar essa prévia no piloto operacional.
-- [ ] Publicar a versão funcional da branch `staging` com `VITE_API_BASE_URL=https://<domínio-da-api>/api/v1` e `VITE_DEMO_MODE=false`. A tela do piloto deve chamar a API real e persistir no banco de staging.
+- [ ] Publicar a versão funcional da branch `staging` na Vercel com `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false`. O rewrite em `frontend/vercel.json` encaminha as chamadas para `https://api-bi.vilarejosolucoes.com.br/logistica-staging/api/v1/`; a tela do piloto deve chamar a API real e persistir no banco de staging.
 - [ ] Atualizar `CORS_ALLOWED_ORIGINS` na EC2 com a origem exata do frontend (sem `/*` nem barra final) e publicar novamente a API se essa variável mudar.
 - [ ] Fazer o deploy Preview na Vercel e conferir no navegador login, cookie de sessão, CORS e chamadas da API.
-- [ ] Se a API/rede ainda não estiverem prontas, disponibilizar somente a prévia visual com `VITE_DEMO_MODE=true`, sem URL de API ou banco. Identificar para o Diretor que essa prévia não persiste dados.
+- [ ] Se a API/rede ainda não estiverem prontas, disponibilizar somente para avaliação visual uma prévia com `VITE_DEMO_MODE=true`, sem URL de API ou banco. Identificar para o Diretor que essa prévia não serve para lançamentos e não persiste dados no sistema.
 
 ### F. Provisionar acesso e dados de demonstração/piloto
 

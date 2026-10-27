@@ -72,7 +72,7 @@ O `compose.yaml` fornece configurações seguras para o MySQL local isolado. Nos
 | `OP_LOGISTICA_DATABASE_URL` | Conexão de runtime com o catálogo operacional; nunca é variável do frontend. |
 | `OP_LOGISTICA_MIGRATION_DATABASE_URL` | Conexão privilegiada para etapa controlada de migrations; não deve ser disponibilizada à API em produção. |
 | `USE_DB_TUNNEL`, `USE_TAILSCALE`, `TAILSCALE_EC2_IP`, `EC2_HOST`, `RDS_ENDPOINT`, `SSH_KEY_PATH` | Configuração opcional do túnel SSH da API local executada no host. Na EC2, mantenha `USE_DB_TUNNEL=false` e conecte diretamente à RDS. |
-| `VITE_API_BASE_URL` | URL pública da API embutida no frontend no build; não colocar segredo nesse valor. |
+| `VITE_API_BASE_URL` | URL pública da API ou caminho relativo servido por rewrite, embutido no frontend no build; não colocar segredo nesse valor. |
 
 O catálogo operacional de staging confirmado é `vilarejo_bi_logistica_staging`, conforme o script de provisionamento seguro do Portal e o procedimento do VilarejoBI. Endpoint RDS, credenciais e regras de rede devem ser obtidos com BI/Infra; não deduzir esses valores do nome do catálogo. O catálogo e as credenciais de produção continuam separados e fora deste deploy base.
 
@@ -110,7 +110,9 @@ controlada de migration.
 
 ## Publicação do frontend
 
-Na configuração do projeto Vercel, usar `frontend/` como **Root Directory**, `npm run build` como comando de build e `dist` como diretório de saída. Definir `VITE_API_BASE_URL` por ambiente. Como esse valor é enviado ao navegador, ele deve conter somente a URL pública HTTPS da API.
+Na configuração do projeto Vercel, usar `frontend/` como **Root Directory**, `npm run build` como comando de build e `dist` como diretório de saída. Definir `VITE_API_BASE_URL` por ambiente. Como esse valor é enviado ao navegador, ele pode conter somente uma URL pública ou um caminho relativo, nunca segredo.
+
+Para o piloto operacional em staging, configurar `VITE_API_BASE_URL=/api/v1` e `VITE_DEMO_MODE=false` no ambiente **Preview** usado pela branch `staging`. O [`frontend/vercel.json`](../frontend/vercel.json) encaminha essa rota para `https://api-bi.vilarejosolucoes.com.br/logistica-staging/api/v1/`; assim, as chamadas usam a API de staging pelo mesmo domínio do portal. Autorizar a origem exata do deployment em `CORS_ALLOWED_ORIGINS`.
 
 Para coletar feedback visual antes de publicar API ou banco, pode-se usar uma Preview isolada: em uma branch não produtiva, configurar `VITE_DEMO_MODE=true` apenas no ambiente **Preview**. Esse modo força os adaptadores de demonstração, ignora a URL de API configurada e mantém alterações no armazenamento local de cada navegador; não chama API nem acessa banco. Deixar `VITE_DEMO_MODE=false` em **Production** e não promover essa Preview. Compartilhar somente a URL da branch Preview; deploys Preview são públicos por padrão, salvo se a proteção de deploy estiver ativada.
 
