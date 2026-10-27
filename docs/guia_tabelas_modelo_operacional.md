@@ -1,6 +1,6 @@
 # Guia das tabelas do modelo operacional de Logística
 
-**Status em 27/10/2026:** staging está na revisão `e31f9a7c2b64 (head)`. A migration `a640c9e2f7b1`, necessária para coletas e ocorrências individuais de motivo, ainda não foi aplicada. O código local separa entregas e coletas, inclui ambas no OTIF e registra um motivo/observação por item não realizado. Faltam revisão/CI, aplicação da migration, publicação da API/frontend e aceite em staging.
+**Status em 27/10/2026:** staging está na revisão `e31f9a7c2b64 (head)`. O código do Portal foi publicado em `staging` e o CI passou; a migration `a640c9e2f7b1` também está publicada na cadeia `logistica`, mas ainda não foi aplicada. Antes do upgrade falta snapshot RDS; depois, deploy manual da API e aceite funcional.
 
 Este guia explica o papel de cada tabela `op_logistica_*` definida no [DBML operacional](./modelo_operacional_lancamento_logistica.dbml). O modelo dá suporte à autenticação e às sessões, aos cadastros, às permissões, ao preenchimento de formulários e aos eventos auditáveis. Algumas colunas de vigência/versionamento permanecem por compatibilidade com dados anteriores; a edição corrente de pessoas e motivos atualiza o registro existente.
 

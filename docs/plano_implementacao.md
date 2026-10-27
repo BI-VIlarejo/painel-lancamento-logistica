@@ -1,7 +1,7 @@
 # Plano de implementação do portal de lançamento de dados
 
 **Atualizado em:** 27/10/2026
-**Status em 27/10/2026:** a API e a interface em trabalho incluem edição direta de pessoas/motivos e auditoria com ator, alvo e alterações seguras. As migrations `d2a8f6c1b904` e `e31f9a7c2b64` estão aplicadas em staging; a migration `a640c9e2f7b1` para coletas e motivos por ocorrência ainda precisa de CI, publicação e aplicação em staging. Produção fica para depois do piloto.
+**Status em 27/10/2026:** o Portal de coletas e motivos por ocorrência foi publicado em `staging` no commit `2af9da7`; o CI passou e a prévia Vercel reportou deployment concluído. A migration `a640c9e2f7b1` foi publicada na branch `logistica` do VilarejoBI (`c11e36e`), mas ainda não foi aplicada ao banco. Staging está em `e31f9a7c2b64`; antes do upgrade falta snapshot RDS. Depois da migration, ainda faltam o deploy manual da API e o aceite funcional. Produção fica para depois do piloto.
 
 **Atualização de escopo em 27/10/2026:** a migration `e31f9a7c2b64` foi confirmada como `head` em staging. Para incluir coletas e motivos por ocorrência, foi criada a migration dependente `a640c9e2f7b1`; ela e as alterações do Portal ainda precisam de revisão, CI, publicação e aplicação em staging. Detalhes e critérios de aceite: [entregas, coletas e indicadores](./alteracoes-coletas-edicao-indicadores.md).
 
@@ -20,7 +20,7 @@ Escopo detalhado da edição no mesmo registro, autoria das ações, gráficos d
 ### Ordem de publicação desta alteração
 
 1. As migrations `d2a8f6c1b904` e `e31f9a7c2b64` já foram aplicadas em staging. Antes de publicar o novo código de entregas/coletas, revisar e aplicar `a640c9e2f7b1`, que acrescenta a operação `COLETA` e motivos por ocorrência.
-2. Executar CI no GitHub e corrigir falhas. As verificações locais já passaram; a CI ainda precisa rodar após a publicação do commit.
+2. CI do commit `2af9da7` passou; repetir após qualquer commit de acompanhamento.
 3. Reclassificar os cadastros oficiais de pessoas e motivos; a API não permitirá novos lançamentos com itens sem classificação nem equipe mista.
 4. Publicar a API real e o frontend no staging conectado ao banco operacional. Fazer aceite com contas/escopos e cadastros do piloto.
 5. Usar o portal no piloto mantendo a fonte atual em paralelo; registrar erros e corrigir antes de liberar para toda a operação.

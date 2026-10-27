@@ -39,4 +39,4 @@
 5. Validar criação, edição, consulta histórica, cancelamento auditado, filtros de transporte e agregações de entregas/coletas com usuários e cadastros do piloto.
 6. Após o aceite operacional, planejar separadamente migration e publicação em produção.
 
-**Estado registrado neste documento:** implementação local em andamento. A migration ainda não foi aplicada nem publicada em staging. A integração automática com o ERP SEAC continua prevista antes do lançamento oficial, conforme a especificação e o plano geral do projeto.
+**Estado registrado neste documento:** o Portal foi publicado na branch `staging` no commit `2af9da7` e o CI passou; a prévia Vercel reportou deployment concluído. A migration foi publicada na branch `logistica` do VilarejoBI no commit `c11e36e`. O banco de staging segue em `e31f9a7c2b64`; ainda falta snapshot RDS e aplicação de `a640c9e2f7b1`, seguida do deploy manual da API e do aceite funcional. Produção permanece fora desta etapa. A integração automática com o ERP SEAC continua prevista antes do lançamento oficial.

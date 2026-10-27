@@ -9,7 +9,7 @@
 - A implementação local adiciona a operação `COLETA`, grava um motivo/observação para cada item não realizado, inclui coletas no OTIF combinado e mantém os totais identificados por operação.
 - O lançamento normal confirma diretamente, sem a página de conferência. A edição pelo histórico não pede justificativa; o cancelamento auditado mantém justificativa obrigatória.
 - O painel recebe filtro própria/terceirizada e o ranking passa à página separada `/indicadores/pessoas`, com filtros adicionais.
-- A migration `a640c9e2f7b1` depende da `e31f9a7c2b64`, já aplicada em staging. `a640c9e2f7b1` ainda não foi aplicada; o branch local ainda precisa de CI, publicação da API, atualização da preview e aceite funcional.
+- A migration `a640c9e2f7b1` foi publicada na branch `logistica` do VilarejoBI e depende de `e31f9a7c2b64`, já aplicada em staging. O Portal foi publicado em `staging`; CI passou e a prévia Vercel reportou deployment concluído. Ainda faltam snapshot RDS, aplicação da migration, deploy manual da API e aceite funcional.
 - Não publicar em produção nesta etapa. Depois do aceite do piloto, preparar migration e deploy de produção em fluxo separado.
 
 ## Atualização de edição direta e auditoria — 27/10/2026
