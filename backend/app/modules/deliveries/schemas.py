@@ -72,12 +72,18 @@ class DeliveryItemInput(BaseModel):
         normalized["quantidade_realizada"] = 0
         normalized["quantidade_nao_realizada"] = 0
         normalized["tipo_operacao"] = "ENTREGA"
+
+        def mark_collection_reason(reason: Any) -> Any:
+            if isinstance(reason, DeliveryReasonInput):
+                if reason.tipo_operacao == "ENTREGA":
+                    return reason.model_copy(update={"tipo_operacao": "COLETA"})
+                return reason
+            if isinstance(reason, dict) and not reason.get("tipo_operacao"):
+                return {**reason, "tipo_operacao": "COLETA"}
+            return reason
+
         normalized["motivos"] = [
-            (
-                {**reason, "tipo_operacao": "COLETA"}
-                if isinstance(reason, dict) and not reason.get("tipo_operacao")
-                else reason
-            )
+            mark_collection_reason(reason)
             for reason in normalized.get("motivos", [])
         ]
         return normalized
