@@ -41,15 +41,19 @@ export type DeliveryParticipantInput = {
 };
 export type DeliveryReasonInput = {
   id_motivo_nao_entrega: number;
+  tipo_operacao: "ENTREGA" | "COLETA";
   observacao?: string | null;
 };
 export type DeliveryItemInput = {
   codigo_item_lancamento?: string;
-  tipo_operacao: "ENTREGA" | "COLETA";
+  /** Legacy discriminator accepted while an old form tab is still open. */
+  tipo_operacao?: "ENTREGA" | "COLETA";
   data_entrega: string;
   id_localidade: number;
   quantidade_realizada: number;
   quantidade_nao_realizada: number;
+  quantidade_coleta_realizada: number;
+  quantidade_coleta_nao_realizada: number;
   participantes: DeliveryParticipantInput[];
   motivos: DeliveryReasonInput[];
 };
@@ -71,6 +75,8 @@ export type DeliveryReasonResponse = DeliveryReasonInput & {
 };
 export type DeliveryItemResponse = Omit<DeliveryItemInput, "participantes" | "motivos"> & {
   codigo_item_lancamento: string;
+  /** Present only in responses from the previous API version. */
+  tipo_operacao?: "ENTREGA" | "COLETA";
   nome_localidade: string;
   codigo_localidade: string;
   observacao: string | null;
@@ -106,6 +112,8 @@ export type DeliveryLaunchSummary = {
   quantidade_itens: number;
   quantidade_realizada: number;
   quantidade_nao_realizada: number;
+  quantidade_coleta_realizada?: number;
+  quantidade_coleta_nao_realizada?: number;
   entregas_realizadas: number;
   entregas_nao_realizadas: number;
   coletas_realizadas: number;

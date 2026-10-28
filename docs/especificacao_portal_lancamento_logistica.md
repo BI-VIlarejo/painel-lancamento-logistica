@@ -636,11 +636,11 @@ Processo de coordenação:
 
 ## Atualização de requisitos — entregas, coletas e indicadores (27/10/2026)
 
-- O formulário contém seções próprias para entregas e coletas. Cada linha usa equipe, data e localidade e registra quantidades realizadas/não realizadas.
+- O formulário mantém entrega e coleta dentro do mesmo item: data, localidade, motorista e ajudantes são preenchidos uma vez e compartilhados. As quantidades realizadas e não realizadas são separadas por operação.
 - Para cada unidade não realizada existe uma associação de motivo individual com sua própria observação. O mesmo código de motivo pode repetir na mesma linha.
 - O OTIF agrega entregas e coletas não realizadas sobre o total registrado das duas operações. Resumos e gráficos também mantêm os valores separados por operação.
 - O fluxo normal registra diretamente, sem tela de conferência final. O histórico permite editar/abrir correção ou cancelar; editar não exige justificativa e cancelar lançamento confirmado continua auditado e exige justificativa.
 - O painel global aceita filtro de transporte próprio/terceirizado. O ranking por pessoa tem página própria em `/indicadores/pessoas`, preservando a classificação conjunta de motoristas e ajudantes e acrescentando filtros por pessoa, função, situação, período, localidade e tipo de transporte.
-- CSV aceita `tipo_operacao` (padrão `ENTREGA` para arquivos antigos) e expande quantidades de motivo em ocorrências separadas.
+- CSV usa uma linha por item compartilhado, com quantidades, motivos e observações identificados por operação. Arquivos antigos com `tipo_operacao` continuam aceitos e são convertidos para o modelo combinado.
 
-O plano de banco, a migration pendente, as etapas para staging e o aceite estão em [alteracoes-coletas-edicao-indicadores.md](./alteracoes-coletas-edicao-indicadores.md). A integração automática com o ERP SEAC permanece necessária antes do lançamento oficial.
+O plano de banco e o deploy em staging planejado para 28/10/2026 estão em [alteracoes-coletas-edicao-indicadores.md](./alteracoes-coletas-edicao-indicadores.md). A integração automática com o ERP SEAC permanece necessária antes do lançamento oficial.

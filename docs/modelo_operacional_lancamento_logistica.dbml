@@ -403,11 +403,13 @@ Table op_logistica_entrega_diaria {
   id_entrega_diaria bigint [pk, increment]
   id_lancamento_revisao bigint [not null]
   codigo_item_lancamento char(36) [not null, note: 'UUID estável preservado entre revisões; identifica esta linha lógica.']
-  tipo_operacao varchar(16) [not null, default: 'ENTREGA', note: 'ENTREGA ou COLETA; linhas legadas recebem ENTREGA na migration.']
+  tipo_operacao varchar(16) [not null, default: 'ENTREGA', note: 'Compatibilidade temporária; o novo item combinado usa ENTREGA. A operação de cada motivo fica em op_logistica_entrega_motivo.']
   data_entrega date [not null]
   id_localidade bigint [not null]
   quantidade_realizada int [not null]
   quantidade_nao_realizada int [not null]
+  quantidade_coleta_realizada int [not null, default: 0]
+  quantidade_coleta_nao_realizada int [not null, default: 0]
   quantidade_entregas_no_prazo int [note: 'Coluna legada, mantida por compatibilidade; não é mais coletada nem usada no OTIF.']
   quantidade_entregas_completas int [note: 'Coluna legada, mantida por compatibilidade; não é mais coletada nem usada no OTIF.']
   observacao text [note: 'LEGADO: manter durante a transição para preservar lançamentos existentes. Novos registros guardam observação por motivo em op_logistica_entrega_motivo.']
@@ -422,12 +424,12 @@ Table op_logistica_entrega_diaria {
   }
 
   checks {
-    `quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 and (quantidade_realizada > 0 or quantidade_nao_realizada > 0)` [name: 'ck_op_logistica_entrega_quantidades']
+    `quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 and quantidade_coleta_realizada >= 0 and quantidade_coleta_nao_realizada >= 0 and (quantidade_realizada > 0 or quantidade_nao_realizada > 0 or quantidade_coleta_realizada > 0 or quantidade_coleta_nao_realizada > 0)` [name: 'ck_op_logistica_entrega_quantidades']
     `tipo_operacao in ('ENTREGA', 'COLETA')` [name: 'ck_op_logistica_entrega_tipo_operacao']
     `((quantidade_entregas_no_prazo is null and quantidade_entregas_completas is null) or (quantidade_entregas_no_prazo is not null and quantidade_entregas_completas is not null and quantidade_entregas_no_prazo >= 0 and quantidade_entregas_completas >= 0 and quantidade_entregas_no_prazo <= quantidade_realizada and quantidade_entregas_completas <= quantidade_realizada))` [name: 'ck_op_logistica_entrega_otif_quantidades']
   }
 
-  Note: 'Grão operacional: uma linha de resumo por data/localidade/equipe no formulário. OTIF = não realizadas / (realizadas + não realizadas), calculado no total e por motorista, equipe, loja e tipo de entrega. Novos lançamentos exigem participantes com a mesma classificação própria/terceirizada; históricos sem classificação ou mistos são identificados separadamente. As colunas de prazo/completude e observacao geral são legadas. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia.'
+  Note: 'Um único registro compartilha data, localidade, motorista e ajudantes entre entregas e coletas. As colunas de quantidades mantêm cada operação separada; o OTIF combinado inclui ambas. Novos lançamentos exigem participantes com a mesma classificação própria/terceirizada. tipo_operacao permanece somente por compatibilidade. As colunas de prazo/completude e observacao geral são legadas. Não impor unicidade por data/localidade: mais de uma equipe pode lançar no mesmo dia.'
 }
 
 Table op_logistica_entrega_participante {
@@ -454,6 +456,7 @@ Table op_logistica_entrega_motivo {
   id_entrega_motivo bigint [pk, increment]
   id_entrega_diaria bigint [not null]
   id_motivo_nao_entrega bigint [not null]
+  tipo_operacao varchar(16) [not null, default: 'ENTREGA']
   quantidade int [not null]
   observacao text [note: 'Observação registrada nesta linha de motivo.']
 
@@ -464,9 +467,10 @@ Table op_logistica_entrega_motivo {
 
   checks {
     `quantidade > 0` [name: 'ck_op_logistica_entrega_motivo_quantidade']
+    `tipo_operacao in ('ENTREGA', 'COLETA')` [name: 'ck_op_logistica_entrega_motivo_tipo_operacao']
   }
 
-  Note: 'Cada ocorrência de não realização tem uma linha própria e uma observação independente; o mesmo motivo pode repetir no mesmo item. Registros legados podem manter quantidade maior que um e são expandidos na resposta da API. O grupo vem do motivo referenciado; novas linhas usam quantidade igual a um.'
+  Note: 'Cada ocorrência de entrega ou coleta não realizada tem uma linha própria, operação identificada e observação independente; o mesmo motivo pode repetir no mesmo item. Registros legados podem manter quantidade maior que um e são expandidos na resposta da API. O grupo vem do motivo referenciado; novas linhas usam quantidade igual a um.'
 }
 
 Table op_logistica_feedback {

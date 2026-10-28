@@ -359,7 +359,11 @@ class EntregaDiaria(Base):
         ),
         CheckConstraint(
             "quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 "
-            "and (quantidade_realizada > 0 or quantidade_nao_realizada > 0)",
+            "and quantidade_coleta_realizada >= 0 "
+            "and quantidade_coleta_nao_realizada >= 0 "
+            "and (quantidade_realizada > 0 or quantidade_nao_realizada > 0 "
+            "or quantidade_coleta_realizada > 0 "
+            "or quantidade_coleta_nao_realizada > 0)",
             name="ck_op_logistica_entrega_quantidades",
         ),
         CheckConstraint(
@@ -407,6 +411,12 @@ class EntregaDiaria(Base):
     )
     quantidade_realizada: Mapped[int] = mapped_column(Integer, nullable=False)
     quantidade_nao_realizada: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantidade_coleta_realizada: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    quantidade_coleta_nao_realizada: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     # Legacy columns retained for database compatibility; the API and OTIF ignore them.
     quantidade_entregas_no_prazo: Mapped[int | None] = mapped_column(
         Integer, nullable=True
@@ -474,6 +484,10 @@ class EntregaMotivo(Base):
             "quantidade > 0",
             name="ck_op_logistica_entrega_motivo_quantidade",
         ),
+        CheckConstraint(
+            "tipo_operacao in ('ENTREGA', 'COLETA')",
+            name="ck_op_logistica_entrega_motivo_tipo_operacao",
+        ),
     )
 
     id_entrega_motivo: Mapped[int] = mapped_column(
@@ -496,6 +510,9 @@ class EntregaMotivo(Base):
             name="fk_op_logistica_entrega_motivo_motivo",
         ),
         nullable=False,
+    )
+    tipo_operacao: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="ENTREGA", server_default="ENTREGA"
     )
     quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)

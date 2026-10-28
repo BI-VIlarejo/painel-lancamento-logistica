@@ -6,10 +6,11 @@
 ## Atualização de escopo: coletas e motivos por unidade — 27/10/2026
 
 - Requisitos e critérios técnicos registrados em [alteracoes-coletas-edicao-indicadores.md](./alteracoes-coletas-edicao-indicadores.md).
-- A implementação local adiciona a operação `COLETA`, grava um motivo/observação para cada item não realizado, inclui coletas no OTIF combinado e mantém os totais identificados por operação.
+- A implementação corrigida coloca a coleta dentro do mesmo item da entrega. Data, localidade, motorista e ajudantes são compartilhados; quantidades e motivos/observações permanecem separados por operação.
 - O lançamento normal confirma diretamente, sem a página de conferência. A edição pelo histórico não pede justificativa; o cancelamento auditado mantém justificativa obrigatória.
 - O painel recebe filtro própria/terceirizada e o ranking passa à página separada `/indicadores/pessoas`, com filtros adicionais.
-- A migration `a640c9e2f7b1` foi publicada na branch `logistica` do VilarejoBI e depende de `e31f9a7c2b64`, já aplicada em staging. O Portal foi publicado em `staging`; CI passou e a prévia Vercel reportou deployment concluído. Ainda faltam snapshot RDS, aplicação da migration, deploy manual da API e aceite funcional.
+- Staging está em `a640c9e2f7b1`; o snapshot já foi confirmado antes da migration anterior. O código corrigido ainda requer novo commit/CI e a migration `b17d4e82c906` requer publicação/aplicação. O deploy do Portal/API e o aceite funcional estão planejados para amanhã, 28/10/2026.
+- Ordem de amanhã: CI verde e Preview; snapshot disponível; `alembic --name logistica upgrade head`; confirmar `current` em `b17d4e82c906`; executar o workflow manual **Deploy Portal API to Staging**; validar um registro com entrega e coleta, mesma data e equipe, histórico e indicadores. Não executar o workflow da API antes da migration.
 - Não publicar em produção nesta etapa. Depois do aceite do piloto, preparar migration e deploy de produção em fluxo separado.
 
 ## Atualização de edição direta e auditoria — 27/10/2026

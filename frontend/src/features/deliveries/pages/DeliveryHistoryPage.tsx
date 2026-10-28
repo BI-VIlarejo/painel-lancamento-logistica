@@ -34,9 +34,24 @@ function formatDateTime(value: string): string {
 }
 
 function otifValue(item: DeliveryItemResponse): number | null {
-  const total = item.quantidade_realizada + item.quantidade_nao_realizada;
+  const legacyCollection = item.tipo_operacao === "COLETA";
+  const deliveryCompleted = legacyCollection ? 0 : item.quantidade_realizada;
+  const deliveryNotCompleted = legacyCollection ? 0 : item.quantidade_nao_realizada;
+  const collectionCompleted = item.quantidade_coleta_realizada ?? (legacyCollection ? item.quantidade_realizada : 0);
+  const collectionNotCompleted = item.quantidade_coleta_nao_realizada ?? (legacyCollection ? item.quantidade_nao_realizada : 0);
+  const total = deliveryCompleted + deliveryNotCompleted + collectionCompleted + collectionNotCompleted;
   if (!total) return null;
-  return (item.quantidade_nao_realizada / total) * 100;
+  return (deliveryNotCompleted + collectionNotCompleted) / total * 100;
+}
+
+function itemQuantities(item: DeliveryItemResponse) {
+  const legacyCollection = item.tipo_operacao === "COLETA";
+  return {
+    entregasRealizadas: legacyCollection ? 0 : item.quantidade_realizada,
+    entregasNaoRealizadas: legacyCollection ? 0 : item.quantidade_nao_realizada,
+    coletasRealizadas: item.quantidade_coleta_realizada ?? (legacyCollection ? item.quantidade_realizada : 0),
+    coletasNaoRealizadas: item.quantidade_coleta_nao_realizada ?? (legacyCollection ? item.quantidade_nao_realizada : 0),
+  };
 }
 
 function rateText(value: number): string {
@@ -64,19 +79,22 @@ function deliveryTypeDescription(item: DeliveryItemResponse): string {
 
 function reasonDescription(item: DeliveryItemResponse): string {
   return item.motivos.length
-    ? item.motivos.map((reason) => `${reason.descricao_motivo} [${nonDeliveryReasonGroupLabel(reason.grupo_motivo)}]`).join("; ")
+    ? item.motivos.map((reason) => `${reason.tipo_operacao === "COLETA" ? "Coleta" : "Entrega"}: ${reason.descricao_motivo} [${nonDeliveryReasonGroupLabel(reason.grupo_motivo)}]`).join("; ")
     : "Sem ocorrências";
 }
 
 function operationName(item: DeliveryItemResponse): string {
-  return item.tipo_operacao === "COLETA" ? "Coleta" : "Entrega";
+  const quantities = itemQuantities(item);
+  const hasDelivery = quantities.entregasRealizadas + quantities.entregasNaoRealizadas > 0;
+  const hasCollection = quantities.coletasRealizadas + quantities.coletasNaoRealizadas > 0;
+  return hasDelivery && hasCollection ? "Entrega + coleta" : hasCollection ? "Coleta" : "Entrega";
 }
 
 function reasonObservationDescription(item: DeliveryItemResponse): string {
   return item.motivos
     .flatMap((reason) => {
       const observation = reason.observacao?.trim();
-      return observation ? [`${reason.descricao_motivo}: ${observation}`] : [];
+      return observation ? [`${reason.tipo_operacao === "COLETA" ? "Coleta" : "Entrega"} · ${reason.descricao_motivo}: ${observation}`] : [];
     })
     .join("; ");
 }
@@ -111,11 +129,11 @@ function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: 
         <div className={cx(styles, commonStyles, "detail-items")}>
           {detail.itens.map((item, index) => (
             <article className={cx(styles, commonStyles, "detail-item")} key={item.codigo_item_lancamento}>
-              <div className={cx(styles, commonStyles, "detail-item-heading")}><span className={cx(styles, commonStyles, "delivery-index")}>{String(index + 1).padStart(2, "0")}</span><div><strong>{operationName(item)} · {item.nome_localidade}</strong><small>{formatDate(item.data_entrega)}</small></div></div>
-              <div className={cx(styles, commonStyles, "detail-metrics")}><div><strong>{item.quantidade_realizada}</strong><span>{item.tipo_operacao === "COLETA" ? "coletas realizadas" : "entregas realizadas"}</span></div><div><strong>{item.quantidade_nao_realizada}</strong><span>{item.tipo_operacao === "COLETA" ? "coletas não realizadas" : "entregas não realizadas"}</span></div></div>
-              {(() => { const otif = otifValue(item); const total = item.quantidade_realizada + item.quantidade_nao_realizada; return <div className={cx(styles, commonStyles, "detail-otif")}><strong>OTIF</strong>{otif === null ? <span>Sem entregas registradas para calcular</span> : <span>{rateText(otif)} · {item.quantidade_nao_realizada.toLocaleString("pt-BR")} não realizadas de {total.toLocaleString("pt-BR")}</span>}</div>; })()}
+              <div className={cx(styles, commonStyles, "detail-item-heading")}><span className={cx(styles, commonStyles, "delivery-index")}>{String(index + 1).padStart(2, "0")}</span><div><strong>Registro · {item.nome_localidade}</strong><small>{formatDate(item.data_entrega)}</small></div></div>
+              {(() => { const q = itemQuantities(item); return <div className={cx(styles, commonStyles, "detail-metrics")}><div><strong>{q.entregasRealizadas}</strong><span>entregas realizadas</span></div><div><strong>{q.entregasNaoRealizadas}</strong><span>entregas não realizadas</span></div><div><strong>{q.coletasRealizadas}</strong><span>coletas realizadas</span></div><div><strong>{q.coletasNaoRealizadas}</strong><span>coletas não realizadas</span></div></div>; })()}
+              {(() => { const otif = otifValue(item); const q = itemQuantities(item); const notCompleted = q.entregasNaoRealizadas + q.coletasNaoRealizadas; const total = q.entregasRealizadas + q.entregasNaoRealizadas + q.coletasRealizadas + q.coletasNaoRealizadas; return <div className={cx(styles, commonStyles, "detail-otif")}><strong>OTIF combinado</strong>{otif === null ? <span>Sem entregas ou coletas registradas para calcular</span> : <span>{rateText(otif)} · {notCompleted.toLocaleString("pt-BR")} não realizadas de {total.toLocaleString("pt-BR")}</span>}</div>; })()}
               <div className={cx(styles, commonStyles, "detail-team")}><span>Equipe · {deliveryTypeDescription(item)}</span>{item.participantes.map((person) => <span className={cx(styles, commonStyles, "team-chip")} key={`${person.id_pessoa}-${person.papel_participante}`}>{person.nome_exibicao}<small>{person.papel_participante === "MOTORISTA" ? "Motorista" : "Ajudante"} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</small></span>)}</div>
-              {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivos e observações, um por item não realizado</span>{item.motivos.map((reason, reasonIndex) => <div className={cx(styles, commonStyles, "detail-reason")} key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}><span>{reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}</span>{reason.observacao && <small>Observação: {reason.observacao}</small>}</div>)}</div>}
+              {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivos e observações, um por item não realizado</span>{item.motivos.map((reason, reasonIndex) => <div className={cx(styles, commonStyles, "detail-reason")} key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}><span>{reason.tipo_operacao === "COLETA" ? "Coleta" : "Entrega"} · {reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}</span>{reason.observacao && <small>Observação: {reason.observacao}</small>}</div>)}</div>}
               {item.observacao && <p className={cx(styles, commonStyles, "detail-observation")}><strong>Observação geral (registro antigo):</strong> {item.observacao}</p>}
             </article>
           ))}
@@ -296,8 +314,10 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         ["equipe", (row) => teamDescription(row.delivery)],
         ["operacao", (row) => operationName(row.delivery)],
         ["tipo_transporte", (row) => deliveryTypeDescription(row.delivery)],
-        ["realizadas", (row) => row.delivery.quantidade_realizada],
-        ["nao_realizadas", (row) => row.delivery.quantidade_nao_realizada],
+        ["entregas_realizadas", (row) => itemQuantities(row.delivery).entregasRealizadas],
+        ["entregas_nao_realizadas", (row) => itemQuantities(row.delivery).entregasNaoRealizadas],
+        ["coletas_realizadas", (row) => itemQuantities(row.delivery).coletasRealizadas],
+        ["coletas_nao_realizadas", (row) => itemQuantities(row.delivery).coletasNaoRealizadas],
         ["otif_percentual", (row) => { const value = otifValue(row.delivery); return value === null ? "" : rateText(value); }],
         ["lancamento", (row) => row.launch.codigo_lancamento],
         ["status", (row) => statusLabels[row.launch.estado]],
@@ -369,7 +389,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lançamentos...</div> : items.length === 0 ? (
           <div className={cx(styles, commonStyles, "history-empty")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌕</div><h3>Nenhum lançamento encontrado</h3><p>{canCreate ? "Ajuste os filtros ou crie um novo lançamento de Entregas." : "Ajuste os filtros para localizar outros lançamentos."}</p><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button></div>
         ) : (
-          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Operação</th><th>Loja</th><th>Equipe</th><th>Realizadas</th><th>Não realizadas</th><th><span title="Não realizadas ÷ total registrado nesta operação">OTIF</span></th><th>Lançamento</th><th>Motivos e observações</th><th>Observação geral (legado)</th><th>Ações</th></tr></thead><tbody>
+          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Operações</th><th>Loja</th><th>Equipe</th><th>Entregas R / NR</th><th>Coletas R / NR</th><th><span title="Entregas e coletas não realizadas ÷ total registrado nas duas operações">OTIF combinado</span></th><th>Lançamento</th><th>Motivos e observações</th><th>Observação geral (legado)</th><th>Ações</th></tr></thead><tbody>
           {items.flatMap((launch) => launch.itens.map((delivery) => {
               const driver = delivery.participantes.find((person) => person.papel_participante === "MOTORISTA");
               const helpers = delivery.participantes.filter((person) => person.papel_participante === "AJUDANTE");
@@ -383,8 +403,8 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
                   <span><b>Ajudantes</b>{helpers.length ? helpers.map((person) => person.nome_exibicao).join(", ") : "Nenhum"}</span>
                   <span><b>Tipo do transporte</b>{deliveryTypeDescription(delivery)}</span>
                 </div></td>
-                <td><span className={cx(styles, commonStyles, "table-count count-positive")}>{delivery.quantidade_realizada}</span></td>
-                <td><span className={cx(styles, commonStyles, `table-count${delivery.quantidade_nao_realizada > 0 ? " count-muted" : ""}`)}>{delivery.quantidade_nao_realizada}</span></td>
+                <td>{(() => { const q = itemQuantities(delivery); return <span className={cx(styles, commonStyles, "history-dual-counts")}><b className={cx(styles, commonStyles, "table-count count-positive")}>{q.entregasRealizadas}</b> / <b className={cx(styles, commonStyles, `table-count${q.entregasNaoRealizadas > 0 ? " count-muted" : ""}`)}>{q.entregasNaoRealizadas}</b></span>; })()}</td>
+                <td>{(() => { const q = itemQuantities(delivery); return <span className={cx(styles, commonStyles, "history-dual-counts")}><b className={cx(styles, commonStyles, "table-count count-positive")}>{q.coletasRealizadas}</b> / <b className={cx(styles, commonStyles, `table-count${q.coletasNaoRealizadas > 0 ? " count-muted" : ""}`)}>{q.coletasNaoRealizadas}</b></span>; })()}</td>
                 <td>{(() => { const otif = otifValue(delivery); return otif === null
                   ? <span className={cx(styles, commonStyles, "history-muted-cell")}>—</span>
                   : <span className={cx(styles, commonStyles, "history-otif-values")}>{rateText(otif)}</span>; })()}</td>
@@ -402,7 +422,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
             }))}
           </tbody></table></div>
         )}
-        <div className={cx(styles, commonStyles, "table-footer")}><span>{pageDeliveryCount} entregas em {items.length} lançamentos nesta página · {total} lançamentos no histórico</span><div className={cx(styles, commonStyles, "pagination-controls")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Anterior</button><span>Página {currentPage} de {pageCount}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset + items.length >= total} onClick={() => setOffset((value) => value + pageSize)}>Próxima</button></div><span className={cx(styles, commonStyles, "table-footer-note")}>A lista respeita seu escopo de acesso.</span></div>
+        <div className={cx(styles, commonStyles, "table-footer")}><span>{pageDeliveryCount} registros com entregas e coletas em {items.length} lançamentos nesta página · {total} lançamentos no histórico</span><div className={cx(styles, commonStyles, "pagination-controls")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Anterior</button><span>Página {currentPage} de {pageCount}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset + items.length >= total} onClick={() => setOffset((value) => value + pageSize)}>Próxima</button></div><span className={cx(styles, commonStyles, "table-footer-note")}>A lista respeita seu escopo de acesso.</span></div>
       </section>
       {selected && <DetailDialog detail={selected} events={selectedEvents} onClose={() => setSelected(null)} onEdit={canEditDraft && selected.estado === "RASCUNHO" ? () => onNavigate(`/entregas/${selected.codigo_lancamento}`) : undefined} onCorrect={canCorrect && (selected.estado === "ENVIADA" || selected.estado === "APROVADA") ? () => void startCorrection(selected) : undefined} onCancel={canCancel && ((selected.estado === "ENVIADA" || selected.estado === "APROVADA") || (selected.estado === "RASCUNHO" && selected.numero_revisao > 1)) ? () => void cancelConfirmed(selected) : undefined} />}
       {importOpen && <DeliveryCsvImportDialog onClose={() => setImportOpen(false)} onImported={() => { setImportOpen(false); setNotice("CSV importado como rascunho. O registro já aparece no histórico."); setOffset(0); setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setReloadVersion((value) => value + 1); }} />}

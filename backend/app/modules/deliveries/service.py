@@ -189,6 +189,7 @@ def _build_details(
             reasons_by_item[reason_link.id_entrega_diaria].append(
                 DeliveryReasonResponse(
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
+                    tipo_operacao=reason_link.tipo_operacao,
                     codigo_motivo=reason.codigo_motivo,
                     descricao_motivo=reason.descricao_motivo,
                     grupo_motivo=reason.grupo_motivo,
@@ -202,13 +203,14 @@ def _build_details(
         items_by_revision[delivery.id_lancamento_revisao].append(
             DeliveryItemResponse(
                 codigo_item_lancamento=UUID(delivery.codigo_item_lancamento),
-                tipo_operacao=delivery.tipo_operacao,
                 data_entrega=delivery.data_entrega,
                 id_localidade=locality.id_localidade,
                 codigo_localidade=locality.codigo_localidade,
                 nome_localidade=locality.nome_localidade,
                 quantidade_realizada=delivery.quantidade_realizada,
                 quantidade_nao_realizada=delivery.quantidade_nao_realizada,
+                quantidade_coleta_realizada=delivery.quantidade_coleta_realizada,
+                quantidade_coleta_nao_realizada=delivery.quantidade_coleta_nao_realizada,
                 observacao=delivery.observacao,
                 participantes=participants_by_item[delivery.id_entrega_diaria],
                 motivos=reasons_by_item[delivery.id_entrega_diaria],
@@ -240,11 +242,12 @@ def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
     for item in detail.itens:
         copied = DeliveryItemInput(
             codigo_item_lancamento=item.codigo_item_lancamento,
-            tipo_operacao=item.tipo_operacao,
             data_entrega=item.data_entrega,
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
             quantidade_nao_realizada=item.quantidade_nao_realizada,
+            quantidade_coleta_realizada=item.quantidade_coleta_realizada,
+            quantidade_coleta_nao_realizada=item.quantidade_coleta_nao_realizada,
             participantes=[
                 DeliveryParticipantInput(
                     id_pessoa=participant.id_pessoa,
@@ -255,6 +258,7 @@ def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
             motivos=[
                 DeliveryReasonInput(
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
+                    tipo_operacao=reason.tipo_operacao,
                     observacao=reason.observacao,
                 )
                 for reason in item.motivos
@@ -299,11 +303,13 @@ def _create_item_rows(
         delivery = EntregaDiaria(
             id_lancamento_revisao=revision.id_lancamento_revisao,
             codigo_item_lancamento=item_code,
-            tipo_operacao=item.tipo_operacao,
+            tipo_operacao="ENTREGA",
             data_entrega=item.data_entrega,
             id_localidade=item.id_localidade,
             quantidade_realizada=item.quantidade_realizada,
             quantidade_nao_realizada=item.quantidade_nao_realizada,
+            quantidade_coleta_realizada=item.quantidade_coleta_realizada,
+            quantidade_coleta_nao_realizada=item.quantidade_coleta_nao_realizada,
             observacao=item._legacy_observation,
             criado_em=now,
             atualizado_em=now,
@@ -324,6 +330,7 @@ def _create_item_rows(
                 EntregaMotivo(
                     id_entrega_diaria=delivery.id_entrega_diaria,
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
+                    tipo_operacao=reason.tipo_operacao,
                     quantidade=1,
                     observacao=reason.observacao,
                 )
@@ -473,12 +480,6 @@ def list_drafts(
         summaries = []
         for detail in details:
             dates = [item.data_entrega for item in detail.itens]
-            delivery_items = [
-                item for item in detail.itens if item.tipo_operacao == "ENTREGA"
-            ]
-            collection_items = [
-                item for item in detail.itens if item.tipo_operacao == "COLETA"
-            ]
             summaries.append(
                 DeliveryLaunchSummary(
                     codigo_lancamento=detail.codigo_lancamento,
@@ -495,22 +496,24 @@ def list_drafts(
                     data_final=max(dates),
                     quantidade_itens=len(detail.itens),
                     quantidade_realizada=sum(
-                        item.quantidade_realizada for item in detail.itens
+                        item.quantidade_realizada + item.quantidade_coleta_realizada
+                        for item in detail.itens
                     ),
                     quantidade_nao_realizada=sum(
-                        item.quantidade_nao_realizada for item in detail.itens
+                        item.quantidade_nao_realizada + item.quantidade_coleta_nao_realizada
+                        for item in detail.itens
                     ),
                     entregas_realizadas=sum(
-                        item.quantidade_realizada for item in delivery_items
+                        item.quantidade_realizada for item in detail.itens
                     ),
                     entregas_nao_realizadas=sum(
-                        item.quantidade_nao_realizada for item in delivery_items
+                        item.quantidade_nao_realizada for item in detail.itens
                     ),
                     coletas_realizadas=sum(
-                        item.quantidade_realizada for item in collection_items
+                        item.quantidade_coleta_realizada for item in detail.itens
                     ),
                     coletas_nao_realizadas=sum(
-                        item.quantidade_nao_realizada for item in collection_items
+                        item.quantidade_coleta_nao_realizada for item in detail.itens
                     ),
                     itens=detail.itens,
                 )

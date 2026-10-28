@@ -6,7 +6,29 @@ import type { DashboardFilters, DashboardResponse } from "./types";
 
 const percentage = (count: number, total: number): number | null =>
   total ? Math.round((count / total) * 10_000) / 100 : null;
-const operationOf = (item: { tipo_operacao?: "ENTREGA" | "COLETA" }): "ENTREGA" | "COLETA" => item.tipo_operacao ?? "ENTREGA";
+type Operation = "ENTREGA" | "COLETA";
+
+function operationRows(item: {
+  tipo_operacao?: Operation;
+  quantidade_realizada: number;
+  quantidade_nao_realizada: number;
+  quantidade_coleta_realizada?: number;
+  quantidade_coleta_nao_realizada?: number;
+}): Array<{ operation: Operation; completed: number; notCompleted: number }> {
+  const legacyCollection = item.tipo_operacao === "COLETA";
+  return [
+    {
+      operation: "ENTREGA" as const,
+      completed: legacyCollection ? 0 : item.quantidade_realizada,
+      notCompleted: legacyCollection ? 0 : item.quantidade_nao_realizada,
+    },
+    {
+      operation: "COLETA" as const,
+      completed: item.quantidade_coleta_realizada ?? (legacyCollection ? item.quantidade_realizada : 0),
+      notCompleted: item.quantidade_coleta_nao_realizada ?? (legacyCollection ? item.quantidade_nao_realizada : 0),
+    },
+  ].filter(({ completed, notCompleted }) => completed + notCompleted > 0);
+}
 
 export const demoAnalyticsApi = {
   async dashboard(filters: DashboardFilters = {}): Promise<DashboardResponse> {
@@ -20,6 +42,9 @@ export const demoAnalyticsApi = {
         && (!filters.data_ate || item.data_entrega <= filters.data_ate)
         && (!filters.id_localidade || item.id_localidade === filters.id_localidade)
         && (!filters.tipo_transporte_entrega || item.participantes.every((person) => person.tipo_transporte_entrega === filters.tipo_transporte_entrega)));
+    const registeredOperations = registered.flatMap(({ launch, item }) =>
+      operationRows(item).map((operationRow) => ({ launch, item, ...operationRow })),
+    );
 
     const itemByCode = new Map(registered.map(({ item }) => [item.codigo_item_lancamento, item]));
     const feedbackPage = await demoFeedbackApi.list({ limit: 500, offset: 0 });
@@ -50,26 +75,25 @@ export const demoAnalyticsApi = {
     }>();
     const days = new Map<string, { planned: number; completed: number; notCompleted: number }>();
 
-    for (const { launch, item } of registered) {
-      const planned = item.quantidade_realizada + item.quantidade_nao_realizada;
-      const operation = operationOf(item);
+    for (const { launch, item, operation, completed, notCompleted } of registeredOperations) {
+      const planned = completed + notCompleted;
       const locality = localities.get(item.id_localidade) ?? {
         name: item.nome_localidade, launches: new Set<string>(), planned: 0,
         completed: 0, notCompleted: 0, praise: 0, complaint: 0,
       };
       locality.launches.add(launch.codigo_lancamento);
       locality.planned += planned;
-      locality.completed += item.quantidade_realizada;
-      locality.notCompleted += item.quantidade_nao_realizada;
+      locality.completed += completed;
+      locality.notCompleted += notCompleted;
       localities.set(item.id_localidade, locality);
 
       const day = days.get(item.data_entrega) ?? { planned: 0, completed: 0, notCompleted: 0 };
       day.planned += planned;
-      day.completed += item.quantidade_realizada;
-      day.notCompleted += item.quantidade_nao_realizada;
+      day.completed += completed;
+      day.notCompleted += notCompleted;
       days.set(item.data_entrega, day);
 
-      for (const reason of item.motivos) {
+      for (const reason of item.motivos.filter((entry) => (entry.tipo_operacao ?? (item.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA")) === operation)) {
         const reasonKey = `${operation}:${reason.id_motivo_nao_entrega}`;
         const current = reasons.get(reasonKey) ?? {
           id: reason.id_motivo_nao_entrega, operation, name: reason.descricao_motivo, group: reason.grupo_motivo, quantity: 0,
@@ -95,18 +119,18 @@ export const demoAnalyticsApi = {
       };
       typeTotals.records += 1;
       typeTotals.planned += planned;
-      typeTotals.completed += item.quantidade_realizada;
-      typeTotals.notCompleted += item.quantidade_nao_realizada;
+      typeTotals.completed += completed;
+      typeTotals.notCompleted += notCompleted;
       if (operation === "ENTREGA") {
         typeTotals.deliveryRecords += 1;
         typeTotals.deliveryPlanned += planned;
-        typeTotals.deliveryCompleted += item.quantidade_realizada;
-        typeTotals.deliveryNotCompleted += item.quantidade_nao_realizada;
+        typeTotals.deliveryCompleted += completed;
+        typeTotals.deliveryNotCompleted += notCompleted;
       } else {
         typeTotals.collectionRecords += 1;
         typeTotals.collectionPlanned += planned;
-        typeTotals.collectionCompleted += item.quantidade_realizada;
-        typeTotals.collectionNotCompleted += item.quantidade_nao_realizada;
+        typeTotals.collectionCompleted += completed;
+        typeTotals.collectionNotCompleted += notCompleted;
       }
       deliveryTypes.set(deliveryType, typeTotals);
 
@@ -122,8 +146,8 @@ export const demoAnalyticsApi = {
       };
       team.launches.add(launch.codigo_lancamento);
       team.planned += planned;
-      team.completed += item.quantidade_realizada;
-      team.notCompleted += item.quantidade_nao_realizada;
+      team.completed += completed;
+      team.notCompleted += notCompleted;
       teams.set(teamKey, team);
 
       for (const participant of ordered) {
@@ -136,9 +160,9 @@ export const demoAnalyticsApi = {
         // O resultado é lançado por equipe. Cada integrante recebe o resultado
         // das equipes em que participou para poder compor o ranking conjunto.
         person.planned += planned;
-        person.completed += item.quantidade_realizada;
-        person.notCompleted += item.quantidade_nao_realizada;
-        for (const reason of item.motivos) {
+        person.completed += completed;
+        person.notCompleted += notCompleted;
+        for (const reason of item.motivos.filter((entry) => (entry.tipo_operacao ?? (item.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA")) === operation)) {
           const reasonKey = `${operation}:${reason.id_motivo_nao_entrega}`;
           const reasonTotal = person.reasons.get(reasonKey) ?? {
             id: reason.id_motivo_nao_entrega,
@@ -171,17 +195,16 @@ export const demoAnalyticsApi = {
       if (locality) locality[metric] += 1;
     }
 
-    const completed = registered.reduce((sum, { item }) => sum + item.quantidade_realizada, 0);
-    const notCompleted = registered.reduce((sum, { item }) => sum + item.quantidade_nao_realizada, 0);
+    const completed = registeredOperations.reduce((sum, item) => sum + item.completed, 0);
+    const notCompleted = registeredOperations.reduce((sum, item) => sum + item.notCompleted, 0);
     const planned = completed + notCompleted;
     const operationTotals = {
       ENTREGA: { completed: 0, notCompleted: 0 },
       COLETA: { completed: 0, notCompleted: 0 },
     };
-    for (const { item } of registered) {
-      const operation = operationOf(item);
-      operationTotals[operation].completed += item.quantidade_realizada;
-      operationTotals[operation].notCompleted += item.quantidade_nao_realizada;
+    for (const { operation, completed: operationCompleted, notCompleted: operationNotCompleted } of registeredOperations) {
+      operationTotals[operation].completed += operationCompleted;
+      operationTotals[operation].notCompleted += operationNotCompleted;
     }
     const reasonGroups = new Map<string, { operation: "ENTREGA" | "COLETA"; group: string | null; quantity: number }>();
     for (const reason of reasons.values()) {

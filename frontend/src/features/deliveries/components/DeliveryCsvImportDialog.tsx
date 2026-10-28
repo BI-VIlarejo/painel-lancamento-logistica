@@ -25,12 +25,13 @@ type CsvRecord = { line: number; cells: string[] };
 
 type CsvPreviewRow = {
   line: number;
-  operation: string;
   date: string;
   locality: string;
   driver: string;
-  completed: string;
-  notCompleted: string;
+  deliveryCompleted: string;
+  deliveryNotCompleted: string;
+  collectionCompleted: string;
+  collectionNotCompleted: string;
   errors: string[];
 };
 
@@ -41,7 +42,6 @@ type CsvPreview = {
 };
 
 const templateHeader = [
-  "tipo_operacao",
   "data_entrega",
   "loja",
   "motorista",
@@ -49,8 +49,12 @@ const templateHeader = [
   "ajudante_2",
   "quantidade_realizada",
   "quantidade_nao_realizada",
+  "quantidade_coleta_realizada",
+  "quantidade_coleta_nao_realizada",
   "motivos",
   "observacoes_motivos",
+  "motivos_coleta",
+  "observacoes_motivos_coleta",
 ];
 
 const acceptedSectorValues = new Set(["suporte", "entregas", "entregas diarias"]);
@@ -86,6 +90,10 @@ const headerAliases: Record<string, string> = {
   quantidade_de_nao_relizada_pelo_motorista: "quantidade_nao_realizada",
   quantidade_nao_realizadas_pelo_motorista: "quantidade_nao_realizada",
   quantidade_nao_realizada_pelo_motorista: "quantidade_nao_realizada",
+  quantidade_coleta_realizada: "quantidade_coleta_realizada",
+  coletas_realizadas: "quantidade_coleta_realizada",
+  quantidade_coleta_nao_realizada: "quantidade_coleta_nao_realizada",
+  coletas_nao_realizadas: "quantidade_coleta_nao_realizada",
   quantidade_entregas_no_prazo: "quantidade_entregas_no_prazo",
   entregas_no_prazo: "quantidade_entregas_no_prazo",
   quantidade_entregas_completas: "quantidade_entregas_completas",
@@ -95,6 +103,10 @@ const headerAliases: Record<string, string> = {
   observacoes_motivos: "observacoes_motivos",
   observacoes_dos_motivos: "observacoes_motivos",
   observacao_motivos: "observacoes_motivos",
+  motivos_coleta: "motivos_coleta",
+  motivo_coleta: "motivos_coleta",
+  observacoes_motivos_coleta: "observacoes_motivos_coleta",
+  observacoes_dos_motivos_coleta: "observacoes_motivos_coleta",
   observacao: "observacao",
   observacoes: "observacao",
 };
@@ -214,22 +226,30 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     return { rows: [], errors: [error instanceof Error ? error.message : "Não foi possível ler o arquivo CSV."] };
   }
 
-  if (records.length < 2) return { rows: [], errors: ["O arquivo precisa ter o cabeçalho e ao menos uma linha de entrega."] };
+  if (records.length < 2) return { rows: [], errors: ["O arquivo precisa ter o cabeçalho e ao menos uma linha de lançamento."] };
 
   const headers = records[0].cells.map(normalizeHeader);
-  const required = ["data_entrega", "motorista", "quantidade_realizada", "quantidade_nao_realizada"];
+  const required = ["data_entrega", "motorista"];
   const allowed = [
     ...required,
     "setor",
+    // Mantido para aceitar arquivos antigos; as duas operações viram campos
+    // do mesmo registro e compartilham data, localidade e equipe.
     "tipo_operacao",
     "codigo_localidade",
     "ajudante_1",
     "ajudante_2",
+    "quantidade_realizada",
+    "quantidade_nao_realizada",
+    "quantidade_coleta_realizada",
+    "quantidade_coleta_nao_realizada",
     // Aceita cabeçalhos antigos de importação, mas ignora essas contagens legadas.
     "quantidade_entregas_no_prazo",
     "quantidade_entregas_completas",
     "motivos",
     "observacoes_motivos",
+    "motivos_coleta",
+    "observacoes_motivos_coleta",
     "observacao",
   ];
   const missing = required.filter((header) => !headers.includes(header));
@@ -259,26 +279,37 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     const localityValue = get("codigo_localidade");
     const driverValue = get("motorista");
     const rawOperation = normalize(get("tipo_operacao"));
-    const operation = !rawOperation || ["entrega", "entregas"].includes(rawOperation)
+    const legacyOperation = !rawOperation || ["entrega", "entregas"].includes(rawOperation)
       ? "ENTREGA"
       : ["coleta", "coletas"].includes(rawOperation)
         ? "COLETA"
         : "";
-    const completedValue = get("quantidade_realizada");
-    const notCompletedValue = get("quantidade_nao_realizada");
+    const rawDeliveryCompleted = get("quantidade_realizada");
+    const rawDeliveryNotCompleted = get("quantidade_nao_realizada");
+    const rawCollectionCompleted = get("quantidade_coleta_realizada");
+    const rawCollectionNotCompleted = get("quantidade_coleta_nao_realizada");
+    const parsedDeliveryCompleted = rawDeliveryCompleted ? quantity(rawDeliveryCompleted) : 0;
+    const parsedDeliveryNotCompleted = rawDeliveryNotCompleted ? quantity(rawDeliveryNotCompleted) : 0;
+    const parsedCollectionCompleted = rawCollectionCompleted ? quantity(rawCollectionCompleted) : (legacyOperation === "COLETA" ? parsedDeliveryCompleted : 0);
+    const parsedCollectionNotCompleted = rawCollectionNotCompleted ? quantity(rawCollectionNotCompleted) : (legacyOperation === "COLETA" ? parsedDeliveryNotCompleted : 0);
+    const deliveryCompleted = legacyOperation === "COLETA" ? 0 : parsedDeliveryCompleted;
+    const deliveryNotCompleted = legacyOperation === "COLETA" ? 0 : parsedDeliveryNotCompleted;
+    const collectionCompleted = parsedCollectionCompleted;
+    const collectionNotCompleted = parsedCollectionNotCompleted;
     const previewRow: CsvPreviewRow = {
       line,
-      operation: operation || get("tipo_operacao") || "ENTREGA",
       date,
       locality: localityValue,
       driver: driverValue,
-      completed: completedValue,
-      notCompleted: notCompletedValue,
+      deliveryCompleted: String(deliveryCompleted ?? 0),
+      deliveryNotCompleted: String(deliveryNotCompleted ?? 0),
+      collectionCompleted: String(collectionCompleted ?? 0),
+      collectionNotCompleted: String(collectionNotCompleted ?? 0),
       errors: [],
     };
     rows.push(previewRow);
 
-    if (!operation) previewRow.errors.push(`tipo_operacao: "${get("tipo_operacao")}" inválido; use ENTREGA ou COLETA.`);
+    if (!legacyOperation) previewRow.errors.push(`tipo_operacao: "${get("tipo_operacao")}" inválido; use ENTREGA ou COLETA.`);
 
     const sectorValue = get("setor");
     if (sectorValue && !acceptedSectorValues.has(normalize(sectorValue))) {
@@ -305,64 +336,78 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
       previewRow.errors.push("motorista/ajudantes: a equipe precisa ter um único tipo de entrega.");
     }
 
-    const completed = quantity(completedValue);
-    const notCompleted = quantity(notCompletedValue);
-    if (completed === undefined) previewRow.errors.push("quantidade_realizada: informe um inteiro não negativo.");
-    if (notCompleted === undefined) previewRow.errors.push("quantidade_nao_realizada: informe um inteiro não negativo.");
-    if (completed !== undefined && notCompleted !== undefined && completed + notCompleted === 0) {
-      previewRow.errors.push(`quantidade_realizada/quantidade_nao_realizada: informe ao menos uma ${operation === "COLETA" ? "coleta" : "entrega"}.`);
+    if (parsedDeliveryCompleted === undefined) previewRow.errors.push("quantidade_realizada: informe um inteiro não negativo.");
+    if (parsedDeliveryNotCompleted === undefined) previewRow.errors.push("quantidade_nao_realizada: informe um inteiro não negativo.");
+    if (collectionCompleted === undefined) previewRow.errors.push("quantidade_coleta_realizada: informe um inteiro não negativo.");
+    if (collectionNotCompleted === undefined) previewRow.errors.push("quantidade_coleta_nao_realizada: informe um inteiro não negativo.");
+    const allQuantities = [deliveryCompleted, deliveryNotCompleted, collectionCompleted, collectionNotCompleted];
+    if (allQuantities.every((value) => value !== undefined) && allQuantities.reduce<number>((total, value) => total + (value ?? 0), 0) === 0) {
+      previewRow.errors.push("Informe ao menos uma entrega ou coleta realizada ou não realizada.");
     }
 
-    const reasonValue = get("motivos");
-    if (get("observacao")) previewRow.errors.push("observacao: informe o texto por motivo na coluna observacoes_motivos.");
-    const reasonObservationValue = get("observacoes_motivos");
+    if (get("observacao")) previewRow.errors.push("observacao: informe o texto por motivo nas colunas de observações correspondentes.");
     const reasons: DeliveryItemInput["motivos"] = [];
-    if (notCompleted !== undefined && notCompleted === 0 && reasonValue) {
-      previewRow.errors.push("motivos: remova os motivos quando quantidade_nao_realizada for zero.");
-    } else if (notCompleted !== undefined && notCompleted > 0 && !reasonValue) {
-      previewRow.errors.push("motivos: informe no formato descrição:quantidade; cada quantidade será expandida para um motivo por item.");
-    } else if (reasonValue) {
-      const reasonEntries = reasonValue.split("|").map((entry) => entry.trim()).filter(Boolean);
-      for (const entry of reasonEntries) {
-        const separator = entry.lastIndexOf(":");
-        const explicitAmount = separator >= 0 ? quantity(entry.slice(separator + 1).trim()) : undefined;
-        const useWholeReasonAsLabel = reasonEntries.length === 1 && notCompleted !== undefined && notCompleted > 0 && explicitAmount === undefined;
-        const amount = useWholeReasonAsLabel ? notCompleted : explicitAmount;
-        const resolvedReasonLabel = useWholeReasonAsLabel || separator < 0 ? entry : entry.slice(0, separator).trim();
-        const resolvedMatches = catalogs.reasons.filter((item) => normalize(item.descricao_motivo) === normalize(resolvedReasonLabel) || normalize(item.codigo_motivo) === normalize(resolvedReasonLabel));
-        if (!resolvedReasonLabel || amount === undefined || amount <= 0 || resolvedMatches.length !== 1) {
-          previewRow.errors.push(`motivos: "${entry}" inválido ou não encontrado; use código ou descrição:quantidade.`);
-          continue;
-        }
-        if (!resolvedMatches[0].grupo_motivo) {
-          previewRow.errors.push(`motivos: classifique o grupo de "${resolvedReasonLabel}" antes de importar.`);
-        }
-        if (amount > 10000) {
-          previewRow.errors.push(`motivos: "${entry}" excede 10.000 ocorrências por linha; divida os dados para importar.`);
-          continue;
-        }
-        for (let occurrence = 0; occurrence < amount; occurrence += 1) {
-          reasons.push({ id_motivo_nao_entrega: resolvedMatches[0].id_motivo_nao_entrega, observacao: null });
-        }
-      }
-    }
-    if (reasonObservationValue) {
-      const reasonObservations = reasonObservationValue.split("|").map((value) => value.trim());
-      if (reasonObservations.length !== reasons.length) {
-        previewRow.errors.push("observacoes_motivos: informe uma observação para cada ocorrência de motivo, na mesma ordem, separadas por |.");
-      } else {
-        reasonObservations.forEach((observation, index) => {
-          if (observation.length > 5000) {
-            previewRow.errors.push(`observacoes_motivos: a observação ${index + 1} não pode ultrapassar 5.000 caracteres.`);
-          } else if (reasons[index]) {
-            reasons[index].observacao = observation || null;
+    const parseReasons = (operation: "ENTREGA" | "COLETA", reasonValue: string, observationValue: string, expected: number | undefined, columnName: string) => {
+      const operationReasons: DeliveryItemInput["motivos"] = [];
+      if (expected !== undefined && expected === 0 && reasonValue) {
+        previewRow.errors.push(`${columnName}: remova os motivos quando não houver itens não realizados.`);
+      } else if (expected !== undefined && expected > 0 && !reasonValue) {
+        previewRow.errors.push(`${columnName}: informe código ou descrição:quantidade; cada unidade vira uma ocorrência individual.`);
+      } else if (reasonValue) {
+        const entries = reasonValue.split("|").map((entry) => entry.trim()).filter(Boolean);
+        for (const entry of entries) {
+          const separator = entry.lastIndexOf(":");
+          const explicitAmount = separator >= 0 ? quantity(entry.slice(separator + 1).trim()) : undefined;
+          const useWholeReasonAsLabel = entries.length === 1 && expected !== undefined && expected > 0 && explicitAmount === undefined;
+          const amount = useWholeReasonAsLabel ? expected : explicitAmount;
+          const reasonLabel = useWholeReasonAsLabel || separator < 0 ? entry : entry.slice(0, separator).trim();
+          const matches = catalogs.reasons.filter((item) => normalize(item.descricao_motivo) === normalize(reasonLabel) || normalize(item.codigo_motivo) === normalize(reasonLabel));
+          if (!reasonLabel || amount === undefined || amount <= 0 || matches.length !== 1) {
+            previewRow.errors.push(`${columnName}: "${entry}" inválido ou não encontrado; use código ou descrição:quantidade.`);
+            continue;
           }
-        });
+          if (!matches[0].grupo_motivo) previewRow.errors.push(`${columnName}: classifique o grupo de "${reasonLabel}" antes de importar.`);
+          if (amount > 10000) {
+            previewRow.errors.push(`${columnName}: "${entry}" excede 10.000 ocorrências; divida os dados para importar.`);
+            continue;
+          }
+          for (let occurrence = 0; occurrence < amount; occurrence += 1) {
+            operationReasons.push({ id_motivo_nao_entrega: matches[0].id_motivo_nao_entrega, tipo_operacao: operation, observacao: null });
+          }
+        }
       }
-    }
-    if (notCompleted !== undefined && reasons.length !== notCompleted) {
-      previewRow.errors.push("motivos: informe exatamente uma ocorrência por item não realizado.");
-    }
+      if (observationValue) {
+        const observations = observationValue.split("|").map((value) => value.trim());
+        if (observations.length !== operationReasons.length) {
+          previewRow.errors.push(`${columnName}: informe uma observação por ocorrência, na mesma ordem, separadas por |.`);
+        } else {
+          observations.forEach((observation, index) => {
+            if (observation.length > 5000) previewRow.errors.push(`${columnName}: a observação ${index + 1} não pode ultrapassar 5.000 caracteres.`);
+            else if (operationReasons[index]) operationReasons[index].observacao = observation || null;
+          });
+        }
+      }
+      if (expected !== undefined && operationReasons.length !== expected) {
+        previewRow.errors.push(`${columnName}: informe exatamente uma ocorrência por item não realizado.`);
+      }
+      return operationReasons;
+    };
+    const legacyReasons = get("motivos");
+    const legacyObservations = get("observacoes_motivos");
+    reasons.push(...parseReasons(
+      "ENTREGA",
+      legacyOperation === "ENTREGA" ? legacyReasons : "",
+      legacyOperation === "ENTREGA" ? legacyObservations : "",
+      deliveryNotCompleted,
+      "motivos",
+    ));
+    reasons.push(...parseReasons(
+      "COLETA",
+      [legacyOperation === "COLETA" ? legacyReasons : "", get("motivos_coleta")].filter(Boolean).join("|"),
+      [legacyOperation === "COLETA" ? legacyObservations : "", get("observacoes_motivos_coleta")].filter(Boolean).join("|"),
+      collectionNotCompleted,
+      "motivos_coleta",
+    ));
 
     const participants: DeliveryItemInput["participantes"] = [];
     if (driverMatch.person) participants.push({ id_pessoa: driverMatch.person.id_pessoa, papel_participante: "MOTORISTA" });
@@ -374,22 +419,23 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     }
 
     if (
-      (!sectorValue || acceptedSectorValues.has(normalize(sectorValue))) && locality && validDate(date) && completed !== undefined && notCompleted !== undefined &&
+      (!sectorValue || acceptedSectorValues.has(normalize(sectorValue))) && locality && validDate(date) && parsedDeliveryCompleted !== undefined && parsedDeliveryNotCompleted !== undefined && collectionCompleted !== undefined && collectionNotCompleted !== undefined &&
       driverMatch.person && helperMatches.every((match) => match.person) && previewRow.errors.length === 0
     ) {
       items.push({
-        tipo_operacao: operation as "ENTREGA" | "COLETA",
         data_entrega: date,
         id_localidade: locality.id_localidade,
-        quantidade_realizada: completed,
-        quantidade_nao_realizada: notCompleted,
+        quantidade_realizada: deliveryCompleted ?? 0,
+        quantidade_nao_realizada: deliveryNotCompleted ?? 0,
+        quantidade_coleta_realizada: collectionCompleted ?? 0,
+        quantidade_coleta_nao_realizada: collectionNotCompleted ?? 0,
         participantes: participants,
         motivos: reasons,
       });
     }
   });
 
-  if (rows.length > 100) globalErrors.push("O CSV pode ter no máximo 100 linhas de entrega por importação.");
+  if (rows.length > 100) globalErrors.push("O CSV pode ter no máximo 100 registros por importação.");
   if (rows.some((row) => row.errors.length > 0)) globalErrors.push("Corrija os erros indicados antes de importar; nenhuma linha foi gravada.");
 
   const canImport = rows.length > 0 && rows.length <= 100 && globalErrors.length === 0 && items.length === rows.length;
@@ -473,10 +519,10 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
           <div><p className={cx(styles, commonStyles, "eyebrow")}>HISTÓRICO DE ENTREGAS</p><h2 id="csv-import-title">Importar CSV como rascunho</h2></div>
           <button className={cx(styles, commonStyles, "icon-button dialog-close")} type="button" aria-label="Fechar importação" onClick={onClose}>×</button>
         </div>
-        <p className={cx(styles, commonStyles, "csv-import-description")}>O CSV histórico de Entregas pode ser validado antes de criar um rascunho. Importamos até 100 linhas por vez; nenhuma linha é gravada se houver erro.</p>
+        <p className={cx(styles, commonStyles, "csv-import-description")}>O CSV pode ser validado antes de registrar os lançamentos. Cada linha compartilha a data, localidade e equipe entre entregas e coletas. Importamos até 100 registros por vez; nenhum registro é gravado se houver erro.</p>
 
         <div className={cx(styles, commonStyles, "csv-template-help")}>
-          <div><strong>Prepare o arquivo</strong><span>Novos lançamentos ficam vinculados ao setor Suporte. Informe tipo_operacao como ENTREGA ou COLETA (se omitir, será ENTREGA). Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Para motivos repetidos, informe CODIGO_MOTIVO:QUANTIDADE e separe motivos diferentes com |; cada quantidade vira uma ocorrência individual. Se preencher observações, use uma por ocorrência na mesma ordem, separadas por | na coluna observacoes_motivos. A coluna antiga observacao não é aceita.</span></div>
+          <div><strong>Prepare o arquivo</strong><span>Uma linha representa a mesma data, localidade, motorista e equipe para as duas operações. Informe as quantidades de entrega e de coleta nas respectivas colunas. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Para motivos repetidos, use CODIGO_MOTIVO:QUANTIDADE e separe motivos diferentes com |; use motivos_coleta e observacoes_motivos_coleta para coletas. Arquivos antigos com tipo_operacao ainda são aceitos e convertidos para este formato. A coluna antiga observacao não é aceita.</span></div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={downloadTemplate}>Baixar modelo CSV</button>
         </div>
         <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Colunas:</strong> {templateHeader.join(" · ")}</p>
@@ -495,8 +541,8 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
             <span>{preview.payload ? "Será criado um rascunho para conferência; depois você confirma o lançamento." : `${preview.rows.length} linhas lidas; corrija os problemas antes de gravar.`}</span>
           </div>
           {preview.errors.map((error) => <p className={cx(styles, commonStyles, "csv-import-error")} key={error}>{error}</p>)}
-          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "csv-preview-scroll")}><table className={cx(styles, commonStyles, "csv-preview-table")}><thead><tr><th>Linha</th><th>Operação</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Realizadas</th><th>Não realizadas</th><th>Validação</th></tr></thead><tbody>
-            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.operation}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.completed || "0"}</td><td>{row.notCompleted || "0"}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
+          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "csv-preview-scroll")}><table className={cx(styles, commonStyles, "csv-preview-table")}><thead><tr><th>Linha</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Entregas R</th><th>Entregas NR</th><th>Coletas R</th><th>Coletas NR</th><th>Validação</th></tr></thead><tbody>
+            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.deliveryCompleted}</td><td>{row.deliveryNotCompleted}</td><td>{row.collectionCompleted}</td><td>{row.collectionNotCompleted}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
           </tbody></table>{preview.rows.length > 15 && <small>Exibindo as 15 primeiras de {preview.rows.length} linhas.</small>}</div>}
         </>}
 

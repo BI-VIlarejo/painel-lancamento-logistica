@@ -36,7 +36,38 @@ class DeliveryRequestTests(TestCase):
                 motivos=[DeliveryReasonInput(id_motivo_nao_entrega=5)],
             )
 
-    def test_collection_accepts_individual_repeated_reason_occurrences(self) -> None:
+    def test_same_item_accepts_delivery_and_collection_reason_occurrences(self) -> None:
+        item = DeliveryItemInput(
+            data_entrega=date(2026, 10, 20),
+            id_localidade=1,
+            quantidade_realizada=4,
+            quantidade_nao_realizada=2,
+            quantidade_coleta_realizada=1,
+            quantidade_coleta_nao_realizada=2,
+            participantes=[
+                DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
+            ],
+            motivos=[
+                DeliveryReasonInput(id_motivo_nao_entrega=5, tipo_operacao="ENTREGA", observacao="Entrega 1"),
+                DeliveryReasonInput(id_motivo_nao_entrega=5, tipo_operacao="ENTREGA", observacao="Entrega 2"),
+                DeliveryReasonInput(id_motivo_nao_entrega=5, tipo_operacao="COLETA", observacao="Coleta 1"),
+                DeliveryReasonInput(id_motivo_nao_entrega=5, tipo_operacao="COLETA", observacao="Coleta 2"),
+            ],
+        )
+
+        self.assertEqual(item.quantidade_realizada, 4)
+        self.assertEqual(item.quantidade_coleta_realizada, 1)
+        self.assertEqual(len(item.motivos), 4)
+        self.assertEqual(
+            [reason.tipo_operacao for reason in item.motivos],
+            ["ENTREGA", "ENTREGA", "COLETA", "COLETA"],
+        )
+        self.assertEqual(
+            [reason.observacao for reason in item.motivos],
+            ["Entrega 1", "Entrega 2", "Coleta 1", "Coleta 2"],
+        )
+
+    def test_legacy_collection_row_is_normalized_into_collection_fields(self) -> None:
         item = DeliveryItemInput(
             tipo_operacao="COLETA",
             data_entrega=date(2026, 10, 20),
@@ -47,15 +78,15 @@ class DeliveryRequestTests(TestCase):
                 DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
             ],
             motivos=[
-                DeliveryReasonInput(id_motivo_nao_entrega=5, observacao="Item 1"),
-                DeliveryReasonInput(id_motivo_nao_entrega=5, observacao="Item 2"),
+                DeliveryReasonInput(id_motivo_nao_entrega=5, observacao="Coleta 1"),
+                DeliveryReasonInput(id_motivo_nao_entrega=5, observacao="Coleta 2"),
             ],
         )
 
-        self.assertEqual(item.tipo_operacao, "COLETA")
-        self.assertEqual(len(item.motivos), 2)
-        self.assertEqual(item.motivos[0].id_motivo_nao_entrega, item.motivos[1].id_motivo_nao_entrega)
-        self.assertEqual([reason.observacao for reason in item.motivos], ["Item 1", "Item 2"])
+        self.assertEqual(item.tipo_operacao, "ENTREGA")
+        self.assertEqual((item.quantidade_realizada, item.quantidade_nao_realizada), (0, 0))
+        self.assertEqual((item.quantidade_coleta_realizada, item.quantidade_coleta_nao_realizada), (1, 2))
+        self.assertEqual([reason.tipo_operacao for reason in item.motivos], ["COLETA", "COLETA"])
 
     def test_item_code_is_preserved_for_revision_lineage(self) -> None:
         item_code = uuid4()

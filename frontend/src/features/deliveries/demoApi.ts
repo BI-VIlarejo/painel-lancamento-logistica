@@ -87,6 +87,8 @@ function makeItem(
     nome_localidade: locality.nome_localidade,
     quantidade_realizada: completed,
     quantidade_nao_realizada: notCompleted,
+    quantidade_coleta_realizada: 0,
+    quantidade_coleta_nao_realizada: 0,
     observacao: null,
     participantes: [
       { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1, tipo_transporte_entrega: people.find((person) => person.id_pessoa === driverId)?.tipo_transporte_entrega ?? null },
@@ -94,6 +96,7 @@ function makeItem(
     ],
     motivos: Array.from({ length: notCompleted }, () => ({
       id_motivo_nao_entrega: reasonId,
+      tipo_operacao: "ENTREGA",
       quantidade: 1,
       observacao: null,
       codigo_motivo: reason.codigo_motivo,
@@ -196,22 +199,27 @@ function summarize(launch: DeliveryLaunchDetail): DeliveryLaunchSummary {
     data_inicial: dates[0] ?? launch.criado_em.slice(0, 10),
     data_final: dates.at(-1) ?? launch.criado_em.slice(0, 10),
     quantidade_itens: launch.itens.length,
-    quantidade_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_realizada, 0),
-    quantidade_nao_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_nao_realizada, 0),
-    entregas_realizadas: launch.itens.filter((item) => (item.tipo_operacao ?? "ENTREGA") === "ENTREGA").reduce((sum, item) => sum + item.quantidade_realizada, 0),
-    entregas_nao_realizadas: launch.itens.filter((item) => (item.tipo_operacao ?? "ENTREGA") === "ENTREGA").reduce((sum, item) => sum + item.quantidade_nao_realizada, 0),
-    coletas_realizadas: launch.itens.filter((item) => item.tipo_operacao === "COLETA").reduce((sum, item) => sum + item.quantidade_realizada, 0),
-    coletas_nao_realizadas: launch.itens.filter((item) => item.tipo_operacao === "COLETA").reduce((sum, item) => sum + item.quantidade_nao_realizada, 0),
+    quantidade_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_realizada + (item.quantidade_coleta_realizada ?? 0), 0),
+    quantidade_nao_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_nao_realizada + (item.quantidade_coleta_nao_realizada ?? 0), 0),
+    entregas_realizadas: launch.itens.reduce((sum, item) => sum + (item.tipo_operacao === "COLETA" ? 0 : item.quantidade_realizada), 0),
+    entregas_nao_realizadas: launch.itens.reduce((sum, item) => sum + (item.tipo_operacao === "COLETA" ? 0 : item.quantidade_nao_realizada), 0),
+    coletas_realizadas: launch.itens.reduce((sum, item) => sum + (item.quantidade_coleta_realizada ?? (item.tipo_operacao === "COLETA" ? item.quantidade_realizada : 0)), 0),
+    coletas_nao_realizadas: launch.itens.reduce((sum, item) => sum + (item.quantidade_coleta_nao_realizada ?? (item.tipo_operacao === "COLETA" ? item.quantidade_nao_realizada : 0)), 0),
     itens: launch.itens,
   };
 }
 
 function toResponseItem(item: DeliveryDraftRequest["itens"][number]): DeliveryItemResponse {
   const locality = localities.find((entry) => entry.id_localidade === item.id_localidade) ?? localities[0];
+  const legacyCollection = item.tipo_operacao === "COLETA";
   return {
     ...item,
     codigo_item_lancamento: item.codigo_item_lancamento ?? uuid(),
-    tipo_operacao: item.tipo_operacao ?? "ENTREGA",
+    tipo_operacao: "ENTREGA",
+    quantidade_realizada: legacyCollection ? 0 : item.quantidade_realizada,
+    quantidade_nao_realizada: legacyCollection ? 0 : item.quantidade_nao_realizada,
+    quantidade_coleta_realizada: item.quantidade_coleta_realizada ?? (legacyCollection ? item.quantidade_realizada : 0),
+    quantidade_coleta_nao_realizada: item.quantidade_coleta_nao_realizada ?? (legacyCollection ? item.quantidade_nao_realizada : 0),
     codigo_localidade: locality.codigo_localidade,
     nome_localidade: locality.nome_localidade,
     observacao: null,
@@ -224,7 +232,7 @@ function toResponseItem(item: DeliveryDraftRequest["itens"][number]): DeliveryIt
     })),
     motivos: item.motivos.map((entry) => {
       const reason = reasons.find((candidate) => candidate.id_motivo_nao_entrega === entry.id_motivo_nao_entrega) ?? reasons[0];
-      return { ...entry, quantidade: 1, observacao: entry.observacao ?? null, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo, grupo_motivo: reason.grupo_motivo };
+      return { ...entry, tipo_operacao: entry.tipo_operacao ?? (legacyCollection ? "COLETA" : "ENTREGA"), quantidade: 1, observacao: entry.observacao ?? null, codigo_motivo: reason.codigo_motivo, descricao_motivo: reason.descricao_motivo, grupo_motivo: reason.grupo_motivo };
     }),
   };
 }

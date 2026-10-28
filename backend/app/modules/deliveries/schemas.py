@@ -1,7 +1,7 @@
 """Contratos de gravação e consulta dos rascunhos de Entregas."""
 
 from datetime import date, datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator, model_validator
@@ -18,6 +18,7 @@ class DeliveryReasonInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id_motivo_nao_entrega: int = Field(ge=1)
+    tipo_operacao: Literal["ENTREGA", "COLETA"] = "ENTREGA"
     observacao: str | None = Field(default=None, max_length=5000)
 
     @field_validator("observacao")
@@ -37,11 +38,15 @@ class DeliveryItemInput(BaseModel):
     _legacy_observation: str | None = PrivateAttr(default=None)
 
     codigo_item_lancamento: UUID | None = None
-    tipo_operacao: Literal["ENTREGA", "COLETA"] = "ENTREGA"
+    # Accepted only to translate requests from a previously open form. A
+    # collection is stored on the same item as its delivery.
+    tipo_operacao: Literal["ENTREGA", "COLETA"] | None = None
     data_entrega: date
     id_localidade: int = Field(ge=1)
     quantidade_realizada: int = Field(ge=0, le=2_147_483_647)
     quantidade_nao_realizada: int = Field(ge=0, le=2_147_483_647)
+    quantidade_coleta_realizada: int = Field(default=0, ge=0, le=2_147_483_647)
+    quantidade_coleta_nao_realizada: int = Field(default=0, ge=0, le=2_147_483_647)
     # Empty values are tolerated for the currently deployed frontend; a new
     # non-empty delivery-level observation is rejected below.
     observacao: str | None = Field(
@@ -51,6 +56,31 @@ class DeliveryItemInput(BaseModel):
     )
     participantes: list[DeliveryParticipantInput] = Field(min_length=1, max_length=3)
     motivos: list[DeliveryReasonInput] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_collection_item(cls, value: Any) -> Any:
+        if not isinstance(value, dict) or value.get("tipo_operacao") != "COLETA":
+            return value
+        normalized = dict(value)
+        normalized["quantidade_coleta_realizada"] = normalized.get(
+            "quantidade_coleta_realizada", 0
+        ) or normalized.get("quantidade_realizada", 0)
+        normalized["quantidade_coleta_nao_realizada"] = normalized.get(
+            "quantidade_coleta_nao_realizada", 0
+        ) or normalized.get("quantidade_nao_realizada", 0)
+        normalized["quantidade_realizada"] = 0
+        normalized["quantidade_nao_realizada"] = 0
+        normalized["tipo_operacao"] = "ENTREGA"
+        normalized["motivos"] = [
+            (
+                {**reason, "tipo_operacao": "COLETA"}
+                if isinstance(reason, dict) and not reason.get("tipo_operacao")
+                else reason
+            )
+            for reason in normalized.get("motivos", [])
+        ]
+        return normalized
 
     @field_validator("observacao")
     @classmethod
@@ -64,9 +94,14 @@ class DeliveryItemInput(BaseModel):
     def validate_item(self) -> "DeliveryItemInput":
         if self.observacao is not None:
             raise ValueError("Informe cada observação na linha do motivo correspondente.")
-        if self.quantidade_realizada + self.quantidade_nao_realizada == 0:
-            operation = "coleta" if self.tipo_operacao == "COLETA" else "entrega"
-            raise ValueError(f"Informe ao menos uma {operation} realizada ou não realizada.")
+        if (
+            self.quantidade_realizada
+            + self.quantidade_nao_realizada
+            + self.quantidade_coleta_realizada
+            + self.quantidade_coleta_nao_realizada
+            == 0
+        ):
+            raise ValueError("Informe ao menos uma entrega ou coleta realizada ou não realizada.")
         drivers = [
             item for item in self.participantes
             if item.papel_participante == "MOTORISTA"
@@ -83,12 +118,21 @@ class DeliveryItemInput(BaseModel):
         if len(person_ids) != len(set(person_ids)):
             raise ValueError("Uma pessoa não pode ocupar dois papéis no mesmo item.")
 
-        if self.quantidade_nao_realizada == 0 and self.motivos:
-            raise ValueError("Não informe motivos quando não houver itens não realizados.")
-        if len(self.motivos) != self.quantidade_nao_realizada:
-            raise ValueError(
-                "Informe exatamente um motivo para cada item não realizado."
-            )
+        for operation, quantity in (
+            ("ENTREGA", self.quantidade_nao_realizada),
+            ("COLETA", self.quantidade_coleta_nao_realizada),
+        ):
+            operation_reasons = [
+                reason for reason in self.motivos if reason.tipo_operacao == operation
+            ]
+            if quantity == 0 and operation_reasons:
+                label = "entrega" if operation == "ENTREGA" else "coleta"
+                raise ValueError(f"Não informe motivos sem {label} não realizada.")
+            if len(operation_reasons) != quantity:
+                label = "entrega" if operation == "ENTREGA" else "coleta"
+                raise ValueError(
+                    f"Informe exatamente um motivo para cada {label} não realizada."
+                )
         return self
 
 
@@ -143,6 +187,7 @@ class DeliveryParticipantResponse(BaseModel):
 
 class DeliveryReasonResponse(BaseModel):
     id_motivo_nao_entrega: int
+    tipo_operacao: Literal["ENTREGA", "COLETA"]
     codigo_motivo: str
     descricao_motivo: str
     grupo_motivo: str | None
@@ -152,13 +197,14 @@ class DeliveryReasonResponse(BaseModel):
 
 class DeliveryItemResponse(BaseModel):
     codigo_item_lancamento: UUID
-    tipo_operacao: Literal["ENTREGA", "COLETA"]
     data_entrega: date
     id_localidade: int
     codigo_localidade: str
     nome_localidade: str
     quantidade_realizada: int
     quantidade_nao_realizada: int
+    quantidade_coleta_realizada: int
+    quantidade_coleta_nao_realizada: int
     observacao: str | None
     participantes: list[DeliveryParticipantResponse]
     motivos: list[DeliveryReasonResponse]

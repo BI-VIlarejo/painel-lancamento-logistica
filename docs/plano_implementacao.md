@@ -1,9 +1,9 @@
 # Plano de implementação do portal de lançamento de dados
 
 **Atualizado em:** 27/10/2026
-**Status em 27/10/2026:** o Portal de coletas e motivos por ocorrência foi publicado em `staging` no commit `2af9da7`; o CI passou e a prévia Vercel reportou deployment concluído. A migration `a640c9e2f7b1` foi publicada na branch `logistica` do VilarejoBI (`c11e36e`), mas ainda não foi aplicada ao banco. Staging está em `e31f9a7c2b64`; antes do upgrade falta snapshot RDS. Depois da migration, ainda faltam o deploy manual da API e o aceite funcional. Produção fica para depois do piloto.
+**Status em 27/10/2026:** staging está na revisão `a640c9e2f7b1`; o snapshot anterior já foi confirmado. A correção para que a coleta fique dentro do mesmo registro da entrega está em trabalho local e exige novo CI e a migration `b17d4e82c906`. O deploy corrigido em staging está planejado para amanhã, 28/10/2026: primeiro CI e migration, depois o workflow manual da API e o aceite funcional. Produção fica para depois do piloto.
 
-**Atualização de escopo em 27/10/2026:** a migration `e31f9a7c2b64` foi confirmada como `head` em staging. Para incluir coletas e motivos por ocorrência, foi criada a migration dependente `a640c9e2f7b1`; ela e as alterações do Portal ainda precisam de revisão, CI, publicação e aplicação em staging. Detalhes e critérios de aceite: [entregas, coletas e indicadores](./alteracoes-coletas-edicao-indicadores.md).
+**Atualização de escopo em 27/10/2026:** `a640c9e2f7b1` já está aplicada em staging. A nova `b17d4e82c906` grava as quantidades de coleta no mesmo item da entrega e marca a operação dos motivos. O deploy está planejado para 28/10/2026, seguindo CI verde → migration → workflow manual da API → validação. Detalhes e critérios de aceite: [entregas, coletas e indicadores](./alteracoes-coletas-edicao-indicadores.md).
 
 Este documento organiza o trabalho do `LancamentoLogistica` em ordem de implementação. A [especificação do portal](./especificacao_portal_lancamento_logistica.md) continua sendo a referência para campos, regras, arquitetura, segurança e modelo de dados. O [DBML operacional](./modelo_operacional_lancamento_logistica.dbml) é uma proposta, ainda não é uma migration aplicada.
 
@@ -11,7 +11,7 @@ Escopo detalhado da edição no mesmo registro, autoria das ações, gráficos d
 
 ### Atualização de escopo solicitada — 27/10/2026
 
-- O staging operacional está publicado e a cadeia Alembic `logistica` está em `e31f9a7c2b64 (head)`. As migrations `d2a8f6c1b904` e `e31f9a7c2b64` já estão aplicadas; Vyctor e a gerente do setor de Suporte estão preenchendo os cadastros. A migration `a640c9e2f7b1` para coletas e motivos por ocorrência permanece pendente.
+- O staging operacional está publicado e a cadeia Alembic `logistica` está em `a640c9e2f7b1 (head)`. As pessoas responsáveis pelo cadastro estão preenchendo os catálogos. `b17d4e82c906` está pendente para armazenar coletas no item compartilhado da entrega.
 - Cada motivo exige um grupo controlado: `TRANSPORTE_PROPRIO`, `TRANSPORTE_TERCEIRIZADO`, `LOJA` ou `LOGISTICA`. Cada pessoa exige tipo `PROPRIA` ou `TERCEIRIZADA`; novas equipes precisam ser homogêneas. Valores históricos sem classificação ficam nulos até revisão.
 - A observação é gravada por motivo; novos lançamentos não aceitam observação geral. A coluna geral continua preservada para histórico. A migration `d2a8f6c1b904` inclui observação, grupo e tipo como nullable, após `c9b61a2f4d80`.
 - O painel por motivo/grupo exibe participação entre não realizadas e incidência sobre o total. O painel também compara Entregas Próprias e Terceirizadas. O ranking mostra motivos associados às equipes como contexto; não aplica peso/penalidade por motivo sem regra aprovada.
@@ -19,8 +19,8 @@ Escopo detalhado da edição no mesmo registro, autoria das ações, gráficos d
 
 ### Ordem de publicação desta alteração
 
-1. As migrations `d2a8f6c1b904` e `e31f9a7c2b64` já foram aplicadas em staging. Antes de publicar o novo código de entregas/coletas, revisar e aplicar `a640c9e2f7b1`, que acrescenta a operação `COLETA` e motivos por ocorrência.
-2. CI do commit `2af9da7` passou; repetir após qualquer commit de acompanhamento.
+1. `a640c9e2f7b1` já foi aplicada em staging. Publicar e aplicar `b17d4e82c906` após o CI verde do código corrigido; ela acrescenta os campos de coleta ao mesmo item da entrega.
+2. O CI do commit anterior não cobre esta correção. Reexecutar CI e confirmar Preview antes da migration/deploy.
 3. Reclassificar os cadastros oficiais de pessoas e motivos; a API não permitirá novos lançamentos com itens sem classificação nem equipe mista.
 4. Publicar a API real e o frontend no staging conectado ao banco operacional. Fazer aceite com contas/escopos e cadastros do piloto.
 5. Usar o portal no piloto mantendo a fonte atual em paralelo; registrar erros e corrigir antes de liberar para toda a operação.

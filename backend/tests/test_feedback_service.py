@@ -364,11 +364,15 @@ class FeedbackServiceTests(unittest.TestCase):
         )
         self.assertEqual(dashboard.resumo.otif_percentual, 0.0)
 
-    def test_dashboard_separates_collection_totals_and_repeated_reason_occurrences(self) -> None:
+    def test_dashboard_splits_operation_totals_from_one_shared_route_item(self) -> None:
         for person_id in (4, 5):
             person = self.db.get(Pessoa, person_id)
             assert person is not None
             person.tipo_transporte_entrega = "PROPRIA"
+        delivery = self.db.get(EntregaDiaria, 9)
+        assert delivery is not None
+        delivery.quantidade_coleta_realizada = 5
+        delivery.quantidade_coleta_nao_realizada = 2
         self.db.add_all(
             [
                 MotivoNaoEntrega(
@@ -383,44 +387,19 @@ class FeedbackServiceTests(unittest.TestCase):
                     criado_em=self.now,
                     atualizado_em=self.now,
                 ),
-                EntregaDiaria(
-                    id_entrega_diaria=10,
-                    id_lancamento_revisao=8,
-                    codigo_item_lancamento=str(uuid4()),
-                    tipo_operacao="COLETA",
-                    data_entrega=self.delivery_date,
-                    id_localidade=3,
-                    quantidade_realizada=5,
-                    quantidade_nao_realizada=2,
-                    quantidade_entregas_no_prazo=None,
-                    quantidade_entregas_completas=None,
-                    observacao=None,
-                    criado_em=self.now,
-                    atualizado_em=self.now,
-                ),
-                EntregaParticipante(
-                    id_entrega_diaria=10,
-                    id_pessoa=4,
-                    papel_participante="MOTORISTA",
-                    ordem=1,
-                ),
-                EntregaParticipante(
-                    id_entrega_diaria=10,
-                    id_pessoa=5,
-                    papel_participante="AJUDANTE",
-                    ordem=1,
-                ),
                 EntregaMotivo(
                     id_entrega_motivo=21,
-                    id_entrega_diaria=10,
+                    id_entrega_diaria=9,
                     id_motivo_nao_entrega=11,
+                    tipo_operacao="COLETA",
                     quantidade=1,
                     observacao="Primeiro item",
                 ),
                 EntregaMotivo(
                     id_entrega_motivo=22,
-                    id_entrega_diaria=10,
+                    id_entrega_diaria=9,
                     id_motivo_nao_entrega=11,
+                    tipo_operacao="COLETA",
                     quantidade=1,
                     observacao="Segundo item",
                 ),

@@ -6,7 +6,7 @@ import logging
 from datetime import date
 from time import perf_counter
 
-from sqlalchemy import and_, case, exists, false, func, inspect, or_, select
+from sqlalchemy import and_, case, exists, false, func, inspect, literal, or_, select, union_all
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, aliased
 
@@ -136,18 +136,19 @@ def get_dashboard(
     if id_localidade is not None:
         predicates.append(EntregaDiaria.id_localidade == id_localidade)
 
-    registered_items = (
+    base_registered_items = (
         select(
             EntregaDiaria.id_entrega_diaria.label("id_entrega_diaria"),
             EntregaDiaria.id_lancamento_revisao.label("id_lancamento_revisao"),
             EntregaDiaria.codigo_item_lancamento.label("codigo_item_lancamento"),
             Lancamento.id_lancamento.label("id_lancamento"),
             EntregaDiaria.data_entrega.label("data_entrega"),
-            EntregaDiaria.tipo_operacao.label("tipo_operacao"),
             EntregaDiaria.id_localidade.label("id_localidade"),
             Localidade.nome_localidade.label("nome_localidade"),
-            EntregaDiaria.quantidade_realizada.label("realizadas"),
-            EntregaDiaria.quantidade_nao_realizada.label("nao_realizadas"),
+            EntregaDiaria.quantidade_realizada.label("entregas_realizadas"),
+            EntregaDiaria.quantidade_nao_realizada.label("entregas_nao_realizadas"),
+            EntregaDiaria.quantidade_coleta_realizada.label("coletas_realizadas"),
+            EntregaDiaria.quantidade_coleta_nao_realizada.label("coletas_nao_realizadas"),
         )
         .select_from(EntregaDiaria)
         .join(
@@ -165,47 +166,87 @@ def get_dashboard(
         )
         .join(Localidade, Localidade.id_localidade == EntregaDiaria.id_localidade)
         .where(*predicates)
-        .subquery("entregas_registradas_no_escopo")
+        .subquery("registros_registrados_no_escopo")
     )
 
     team_transport_types = (
         select(
-            registered_items.c.id_entrega_diaria.label("id_entrega_diaria"),
+            base_registered_items.c.id_entrega_diaria.label("id_entrega_diaria"),
             func.count(func.distinct(Pessoa.tipo_transporte_entrega)).label("type_count"),
             func.sum(case((Pessoa.tipo_transporte_entrega.is_(None), 1), else_=0)).label("unclassified_count"),
             func.min(Pessoa.tipo_transporte_entrega).label("single_type"),
         )
-        .select_from(registered_items)
+        .select_from(base_registered_items)
         .outerjoin(
             EntregaParticipante,
-            EntregaParticipante.id_entrega_diaria == registered_items.c.id_entrega_diaria,
+            EntregaParticipante.id_entrega_diaria == base_registered_items.c.id_entrega_diaria,
         )
         .outerjoin(Pessoa, Pessoa.id_pessoa == EntregaParticipante.id_pessoa)
-        .group_by(registered_items.c.id_entrega_diaria)
+        .group_by(base_registered_items.c.id_entrega_diaria)
         .subquery("tipo_transporte_por_entrega")
     )
+
+    delivery_operations = select(
+        base_registered_items.c.id_entrega_diaria,
+        base_registered_items.c.id_lancamento_revisao,
+        base_registered_items.c.codigo_item_lancamento,
+        base_registered_items.c.id_lancamento,
+        base_registered_items.c.data_entrega,
+        literal("ENTREGA").label("tipo_operacao"),
+        base_registered_items.c.id_localidade,
+        base_registered_items.c.nome_localidade,
+        base_registered_items.c.entregas_realizadas.label("realizadas"),
+        base_registered_items.c.entregas_nao_realizadas.label("nao_realizadas"),
+    ).where(
+        or_(
+            base_registered_items.c.entregas_realizadas > 0,
+            base_registered_items.c.entregas_nao_realizadas > 0,
+        )
+    )
+    collection_operations = select(
+        base_registered_items.c.id_entrega_diaria,
+        base_registered_items.c.id_lancamento_revisao,
+        base_registered_items.c.codigo_item_lancamento,
+        base_registered_items.c.id_lancamento,
+        base_registered_items.c.data_entrega,
+        literal("COLETA").label("tipo_operacao"),
+        base_registered_items.c.id_localidade,
+        base_registered_items.c.nome_localidade,
+        base_registered_items.c.coletas_realizadas.label("realizadas"),
+        base_registered_items.c.coletas_nao_realizadas.label("nao_realizadas"),
+    ).where(
+        or_(
+            base_registered_items.c.coletas_realizadas > 0,
+            base_registered_items.c.coletas_nao_realizadas > 0,
+        )
+    )
+    registered_operations = union_all(
+        delivery_operations,
+        collection_operations,
+    ).subquery("operacoes_registradas_no_escopo")
+
     registered_items = (
         select(
-            registered_items.c.id_entrega_diaria,
-            registered_items.c.id_lancamento_revisao,
-            registered_items.c.codigo_item_lancamento,
-            registered_items.c.id_lancamento,
-            registered_items.c.data_entrega,
-            registered_items.c.tipo_operacao,
-            registered_items.c.id_localidade,
-            registered_items.c.nome_localidade,
-            registered_items.c.realizadas,
-            registered_items.c.nao_realizadas,
+            registered_operations.c.id_entrega_diaria,
+            registered_operations.c.id_lancamento_revisao,
+            registered_operations.c.codigo_item_lancamento,
+            registered_operations.c.id_lancamento,
+            registered_operations.c.data_entrega,
+            registered_operations.c.tipo_operacao,
+            registered_operations.c.id_localidade,
+            registered_operations.c.nome_localidade,
+            registered_operations.c.realizadas,
+            registered_operations.c.nao_realizadas,
             case(
                 (team_transport_types.c.type_count > 1, "MISTO"),
                 (team_transport_types.c.unclassified_count > 0, None),
                 else_=team_transport_types.c.single_type,
             ).label("tipo_transporte_entrega"),
         )
-        .select_from(registered_items)
+        .select_from(registered_operations)
         .join(
             team_transport_types,
-            team_transport_types.c.id_entrega_diaria == registered_items.c.id_entrega_diaria,
+            team_transport_types.c.id_entrega_diaria == registered_operations.c.id_entrega_diaria,
         )
         .subquery("entregas_classificadas_por_transporte")
     )
@@ -304,12 +345,17 @@ def get_dashboard(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
-                registered_items.c.tipo_operacao,
+                EntregaMotivo.tipo_operacao.label("tipo_operacao"),
                 func.sum(EntregaMotivo.quantidade).label("quantity"),
             )
+            .select_from(EntregaMotivo)
             .join(
                 registered_items,
-                registered_items.c.id_entrega_diaria == EntregaMotivo.id_entrega_diaria,
+                and_(
+                    registered_items.c.id_entrega_diaria
+                    == EntregaMotivo.id_entrega_diaria,
+                    registered_items.c.tipo_operacao == EntregaMotivo.tipo_operacao,
+                ),
             )
             .join(
                 MotivoNaoEntrega,
@@ -320,11 +366,11 @@ def get_dashboard(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
-                registered_items.c.tipo_operacao,
+                EntregaMotivo.tipo_operacao,
             )
             .order_by(
                 func.sum(EntregaMotivo.quantidade).desc(),
-                registered_items.c.tipo_operacao,
+                EntregaMotivo.tipo_operacao,
                 MotivoNaoEntrega.grupo_motivo,
                 MotivoNaoEntrega.descricao_motivo,
             )
@@ -337,7 +383,12 @@ def get_dashboard(
             select(
                 classified_items.c.tipo_transporte_entrega,
                 func.count(
-                    func.distinct(classified_items.c.id_entrega_diaria)
+                    func.distinct(
+                        case(
+                            (classified_items.c.tipo_operacao == "ENTREGA", classified_items.c.id_entrega_diaria),
+                            else_=None,
+                        )
+                    )
                 ).label("delivery_count"),
                 func.sum(classified_items.c.realizadas).label("completed"),
                 func.sum(classified_items.c.nao_realizadas).label("not_completed"),
@@ -460,19 +511,22 @@ def get_dashboard(
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
-                registered_items.c.tipo_operacao,
+                EntregaMotivo.tipo_operacao.label("tipo_operacao"),
                 func.sum(EntregaMotivo.quantidade).label("quantity"),
             )
             .select_from(EntregaParticipante)
             .join(
-                registered_items,
-                registered_items.c.id_entrega_diaria
-                == EntregaParticipante.id_entrega_diaria,
-            )
-            .join(
                 EntregaMotivo,
                 EntregaMotivo.id_entrega_diaria
                 == EntregaParticipante.id_entrega_diaria,
+            )
+            .join(
+                registered_items,
+                and_(
+                    registered_items.c.id_entrega_diaria
+                    == EntregaMotivo.id_entrega_diaria,
+                    registered_items.c.tipo_operacao == EntregaMotivo.tipo_operacao,
+                ),
             )
             .join(
                 MotivoNaoEntrega,
@@ -481,7 +535,7 @@ def get_dashboard(
             )
             .group_by(
                 EntregaParticipante.id_pessoa,
-                registered_items.c.tipo_operacao,
+                EntregaMotivo.tipo_operacao,
                 MotivoNaoEntrega.id_motivo_nao_entrega,
                 MotivoNaoEntrega.descricao_motivo,
                 MotivoNaoEntrega.grupo_motivo,
@@ -893,7 +947,7 @@ def get_dashboard(
         by_delivery_type = [
             DeliveryTypePerformance(
                 tipo_transporte_entrega=row.tipo_transporte_entrega,
-                registros_entrega=int(row.delivery_count) - int(row.collection_count),
+                registros_entrega=int(row.delivery_count),
                 registros_coleta=int(row.collection_count),
                 itens_planejados=int(row.completed) + int(row.not_completed),
                 realizadas=int(row.completed),
