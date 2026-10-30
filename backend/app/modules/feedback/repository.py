@@ -108,13 +108,25 @@ def list_localities(
     *,
     scope_pairs: tuple[ScopePair, ...],
 ) -> list[tuple[int, str]]:
-    statement = (
-        _delivery_statement()
-        .with_only_columns(Localidade.id_localidade, Localidade.nome_localidade)
-        .where(Localidade.ativo.is_(True), _scope_condition(scope_pairs))
-        .distinct()
-        .order_by(Localidade.nome_localidade)
+    if not scope_pairs:
+        return []
+    has_unrestricted_locality_scope = any(
+        id_localidade is None for _id_setor, id_localidade in scope_pairs
     )
+    allowed_localities = {
+        id_localidade
+        for _id_setor, id_localidade in scope_pairs
+        if id_localidade is not None
+    }
+    if not has_unrestricted_locality_scope and not allowed_localities:
+        return []
+
+    statement = select(Localidade.id_localidade, Localidade.nome_localidade).where(
+        Localidade.ativo.is_(True)
+    )
+    if not has_unrestricted_locality_scope:
+        statement = statement.where(Localidade.id_localidade.in_(allowed_localities))
+    statement = statement.order_by(Localidade.nome_localidade)
     return [(row.id_localidade, row.nome_localidade) for row in db.execute(statement)]
 
 

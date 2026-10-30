@@ -278,11 +278,16 @@ export const demoApi = {
     const offset = filters.offset ?? 0;
     const all = getHistory()
       .filter((launch) => filters.criado_por === undefined || launch.criado_por === filters.criado_por)
-      .filter((launch) => filters.id_localidade === undefined || launch.itens.some((item) => item.id_localidade === filters.id_localidade))
+      .filter((launch) => launch.itens.some((item) =>
+        (filters.id_localidade === undefined || item.id_localidade === filters.id_localidade) &&
+        (filters.id_motorista === undefined || item.participantes.some((participant) => participant.papel_participante === "MOTORISTA" && participant.id_pessoa === filters.id_motorista)) &&
+        (filters.id_motivo_nao_entrega === undefined || item.motivos.some((reason) => reason.id_motivo_nao_entrega === filters.id_motivo_nao_entrega && (!filters.tipo_operacao || reason.tipo_operacao === filters.tipo_operacao))) &&
+        (!filters.tipo_operacao || (filters.tipo_operacao === "ENTREGA" ? item.quantidade_realizada + item.quantidade_nao_realizada > 0 : (item.quantidade_coleta_realizada ?? 0) + (item.quantidade_coleta_nao_realizada ?? 0) > 0)) &&
+        (!filters.data_de || item.data_entrega >= filters.data_de) &&
+        (!filters.data_ate || item.data_entrega <= filters.data_ate)
+      ))
       .map(summarize)
-      .filter((item) => !filters.estado || filters.estado === "TODOS" || item.estado === filters.estado)
-      .filter((item) => !filters.data_de || item.data_inicial >= filters.data_de)
-      .filter((item) => !filters.data_ate || item.data_final <= filters.data_ate)
+      .filter((item) => !filters.estado || filters.estado === "TODOS" || (filters.estado === "LANÇADO" ? item.estado === "ENVIADA" || item.estado === "APROVADA" : item.estado === filters.estado))
       .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
     return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
   },

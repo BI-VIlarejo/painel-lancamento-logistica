@@ -89,7 +89,7 @@ function PortalApp() {
           : path === "/historico" && canView
           ? <DeliveryHistoryPage onNavigate={navigate} canCreate={canCreate} canEditDraft={canEditDraft} canCorrect={canCorrect} canCancel={canCancelDelivery} currentUserId={user.id_usuario} />
           : (path === "/entregas" && canCreate) || (editMatch && canEditDraft && canView)
-            ? <DeliveryLaunchPage onNavigate={navigate} responsibleName={user.nome_completo} canLaunch={canCreate} canManageCatalogs={canManageCatalogs} editId={editMatch?.[1]} />
+            ? <DeliveryLaunchPage onNavigate={navigate} canLaunch={canCreate} canManageCatalogs={canManageCatalogs} editId={editMatch?.[1]} />
             : (
               <div className={cx(styles, commonStyles, "access-denied-card")}>
                 <div className={cx(styles, commonStyles, "empty-state-icon")}>⌑</div>

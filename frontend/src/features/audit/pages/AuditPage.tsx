@@ -106,8 +106,24 @@ function auditValue(value: string | null): string {
   return values[value] ?? value;
 }
 
+function AuditChangesCell({ changes }: { changes: AuditEvent["alteracoes"] }) {
+  if (!changes.length) return <>—</>;
+
+  const shouldCollapse = changes.length > 2 || changes.some((change) =>
+    [change.anterior, change.novo].some((value) => (value?.length ?? 0) > 70),
+  );
+  const changeList = <ul className={cx(styles, commonStyles, "audit-changes")}>{changes.map((change, index) => <li key={`${change.campo}-${index}`}><strong>{fieldLabels[change.campo] ?? change.campo}</strong>: {auditValue(change.anterior)} → {auditValue(change.novo)}</li>)}</ul>;
+
+  if (!shouldCollapse) return changeList;
+
+  return <details className={cx(styles, commonStyles, "audit-changes-disclosure")}>
+    <summary><span>{changes.length} alterações</span><span className={cx(styles, commonStyles, "audit-changes-chevron")} aria-hidden="true" /></summary>
+    {changeList}
+  </details>;
+}
+
 function AuditTable({ items }: { items: AuditEvent[] }) {
-  return <div className={cx(styles, commonStyles, "audit-table-wrap")}><table className={cx(styles, commonStyles, "audit-table")}>
+  return <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela de auditoria" tabIndex={0}><table className={cx(styles, commonStyles, "data-table audit-table")}>
     <thead><tr><th>Quando</th><th>Origem</th><th>Ação</th><th>Quem fez</th><th>Alvo</th><th>Alterações</th></tr></thead>
     <tbody>{items.map((event) => <tr key={`${event.origem}-${event.id_evento}`}>
       <td><time dateTime={event.ocorrido_em}>{formatDateTime(event.ocorrido_em)}</time></td>
@@ -115,7 +131,7 @@ function AuditTable({ items }: { items: AuditEvent[] }) {
       <td><strong>{eventLabel(event.tipo_evento)}</strong></td>
       <td><span className={cx(styles, commonStyles, "audit-actor")}>{event.ator_nome ?? (event.ator_usuario_id === null ? "—" : `Usuário #${event.ator_usuario_id}`)}</span>{event.ator_username && <small className={cx(styles, commonStyles, "audit-actor-username")}>@{event.ator_username}</small>}{event.ator_nome && event.ator_usuario_id !== null && <small className={cx(styles, commonStyles, "audit-actor-id")}>ID {event.ator_usuario_id}</small>}</td>
       <td>{event.alvo ?? (event.referencia_id === null ? "—" : event.origem === "FEEDBACK" ? `Feedback #${event.referencia_id}` : `Lançamento #${event.referencia_id}`)}</td>
-      <td>{event.alteracoes.length ? <ul className={cx(styles, commonStyles, "audit-changes")}>{event.alteracoes.map((change, index) => <li key={`${change.campo}-${index}`}><strong>{fieldLabels[change.campo] ?? change.campo}</strong>: {auditValue(change.anterior)} → {auditValue(change.novo)}</li>)}</ul> : "—"}</td>
+      <td><AuditChangesCell changes={event.alteracoes} /></td>
     </tr>)}</tbody>
   </table></div>;
 }
@@ -161,7 +177,7 @@ export function AuditPage() {
   const currentPage = Math.floor(offset / pageSize) + 1;
   const resetOffset = () => setOffset(0);
 
-  return <div className={cx(styles, commonStyles, "audit-page")}>
+  return <div className={cx(styles, commonStyles, "portal-page page-stack audit-page")}>
     <header className={cx(styles, commonStyles, "page-heading-row")}>
       <div><p className={cx(styles, commonStyles, "eyebrow")}>CONTROLE INTERNO</p><h1>Auditoria</h1><p className={cx(styles, commonStyles, "page-lead")}>Veja quem executou cada ação e qual cadastro, acesso ou lançamento foi afetado.</p></div>
     </header>

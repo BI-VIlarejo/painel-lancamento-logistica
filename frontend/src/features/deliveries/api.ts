@@ -15,6 +15,9 @@ function queryFrom(filters: DeliveryHistoryFilters): string {
   if (filters.data_de) params.set("data_de", filters.data_de);
   if (filters.data_ate) params.set("data_ate", filters.data_ate);
   if (filters.id_localidade) params.set("id_localidade", String(filters.id_localidade));
+  if (filters.id_motorista) params.set("id_motorista", String(filters.id_motorista));
+  if (filters.id_motivo_nao_entrega) params.set("id_motivo_nao_entrega", String(filters.id_motivo_nao_entrega));
+  if (filters.tipo_operacao) params.set("tipo_operacao", filters.tipo_operacao);
   if (filters.criado_por) params.set("criado_por", String(filters.criado_por));
   params.set("limit", String(filters.limit ?? 50));
   params.set("offset", String(filters.offset ?? 0));

@@ -13,9 +13,9 @@ import type {
   PersonCatalogItem,
 } from "../types";
 
-type DeliveryLaunchPageProps = { onNavigate: (path: string) => void; responsibleName: string; canLaunch: boolean; canManageCatalogs: boolean; editId?: string };
+type DeliveryLaunchPageProps = { onNavigate: (path: string) => void; canLaunch: boolean; canManageCatalogs: boolean; editId?: string };
 
-export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, canManageCatalogs, editId }: DeliveryLaunchPageProps) {
+export function DeliveryLaunchPage({ onNavigate, canLaunch, canManageCatalogs, editId }: DeliveryLaunchPageProps) {
   const [localities, setLocalities] = useState<LocalityCatalogItem[]>([]);
   const [drivers, setDrivers] = useState<PersonCatalogItem[]>([]);
   const [helpers, setHelpers] = useState<PersonCatalogItem[]>([]);
@@ -91,7 +91,7 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, can
   const needsCatalogSetup = !isEdit && !catalogsLoading && (requiredCatalogs.length > 0 || reasons.length === 0);
 
   return (
-    <div className={cx(styles, commonStyles, "page-stack")}>
+    <div className={cx(styles, commonStyles, "portal-page", "page-stack")}>
       <div className={cx(styles, commonStyles, "page-heading-row")}>
         <div>
           <h1>{isEdit ? "Editar lançamento" : "Lançamento de entregas e coletas"}</h1>
@@ -123,7 +123,6 @@ export function DeliveryLaunchPage({ onNavigate, responsibleName, canLaunch, can
             drivers={drivers}
             helpers={helpers}
             reasons={reasons}
-            responsibleName={responsibleName}
             canLaunch={canLaunch}
             initialLaunch={initialLaunch}
             onSaved={(launch) => {

@@ -22,6 +22,7 @@ function initials(name: string): string {
 
 export function AppShell({ user, permissions, path, onNavigate, onSignOut, children }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const activeSection = path === "/painel" || path === "/indicadores/pessoas" ? "indicators" : path === "/cadastros" || path === "/auditoria" ? "administration" : path === "/feedback" ? "relationships" : path === "/trocar-senha" ? "account" : "operation";
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => ({
     operation: path !== "/painel",
@@ -157,8 +158,13 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
 
   return (
     <div className={cx(styles, commonStyles, "app-layout")}>
-      <aside className={cx(styles, commonStyles, `app-sidebar${menuOpen ? " app-sidebar-open" : ""}`)}>
-        <div className={cx(styles, commonStyles, "sidebar-brand")}><BrandMark light /></div>
+      <aside id="portal-sidebar" className={cx(styles, commonStyles, `app-sidebar${menuOpen ? " app-sidebar-open" : ""}${sidebarCollapsed ? " app-sidebar-collapsed" : ""}`)}>
+        <div className={cx(styles, commonStyles, "sidebar-brand")}>
+          <BrandMark light />
+          <button className={cx(styles, commonStyles, "sidebar-collapse-button")} type="button" aria-label="Recolher menu lateral" aria-controls="portal-sidebar" aria-expanded={!sidebarCollapsed} title="Recolher menu lateral" onClick={() => setSidebarCollapsed(true)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9 5v14m7-7h-5m0 0 2.5-2.5M11 12l2.5 2.5" /></svg>
+          </button>
+        </div>
         <div className={cx(styles, commonStyles, "sidebar-rule")} />
         <div className={cx(styles, commonStyles, "sidebar-navigation")}>
           <p className={cx(styles, commonStyles, "sidebar-caption")}>MENU PRINCIPAL</p>
@@ -216,9 +222,13 @@ export function AppShell({ user, permissions, path, onNavigate, onSignOut, child
         </div>
       </aside>
 
+      {sidebarCollapsed && <button className={cx(styles, commonStyles, "sidebar-reopen-button")} type="button" aria-label="Abrir menu lateral" aria-controls="portal-sidebar" aria-expanded={false} title="Abrir menu lateral" onClick={() => setSidebarCollapsed(false)}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9 5v14m2-7h5m0 0-2.5-2.5M16 12l-2.5 2.5" /></svg>
+      </button>}
+
       <button className={cx(styles, commonStyles, `sidebar-scrim${menuOpen ? " sidebar-scrim-visible" : ""}`)} aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />
 
-      <div className={cx(styles, commonStyles, "workspace")}>
+      <div className={cx(styles, commonStyles, `workspace${sidebarCollapsed ? " workspace-sidebar-collapsed" : ""}`)}>
         <header className={cx(styles, commonStyles, "topbar")}>
           <button className={cx(styles, commonStyles, "mobile-menu-button")} type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><span /><span /><span /></button>
           <div className={cx(styles, commonStyles, "topbar-context")}><span className={cx(styles, commonStyles, "topbar-context-mark")} /> <span>{pageSection}</span><span className={cx(styles, commonStyles, "topbar-context-slash")}>/</span><strong>{pageTitle}</strong></div>

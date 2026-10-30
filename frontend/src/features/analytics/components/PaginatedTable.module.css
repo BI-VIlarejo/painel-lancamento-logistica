@@ -1,0 +1,14 @@
+.table-pagination { display: flex; min-height: 46px; align-items: center; justify-content: flex-end; gap: 18px; padding: 7px 14px; border-top: 1px solid #edf0ed; color: #63748a; font-size: 12px; }
+.page-size-control { display: inline-flex; align-items: center; gap: 7px; color: #63748a; font-size: 12px; font-weight: 600; }
+.page-size-control select { height: 34px; min-width: 64px; padding: 0 8px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-control-radius); color: #344b66; background: #fff; font: inherit; }
+.table-page-summary { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table-page-controls { display: inline-flex; align-items: center; gap: 8px; }
+.table-page-controls button { display: grid; width: 34px; height: 34px; place-items: center; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-control-radius); color: #344b66; background: #fff; cursor: pointer; font-size: 20px; line-height: 1; }
+.table-page-controls button:hover:not(:disabled) { border-color: #bcc9d4; background: #f5f8f6; }
+.table-page-controls button:disabled { color: #aab4ae; background: #f7f8f7; cursor: default; }
+.table-page-controls span { min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+
+@container workspace (max-width: 640px) {
+  .table-pagination { justify-content: space-between; gap: 8px; padding-right: 11px; padding-left: 11px; }
+  .page-size-control { gap: 5px; }
+}

@@ -42,6 +42,16 @@
   --info: var(--brand-blue);
   --info-soft: var(--primary-soft);
   --shadow: 0 14px 40px rgba(32, 51, 81, .09);
+  --ui-space-page: 16px;
+  --ui-control-height: 40px;
+  --ui-control-radius: 8px;
+  --ui-card-radius: 12px;
+  --ui-nested-radius: 10px;
+  --ui-border: #e2e9e2;
+  --ui-border-strong: #d7e1d7;
+  --ui-card-shadow: 0 3px 12px rgba(32, 51, 81, .045);
+  --ui-dialog-radius: 14px;
+  --ui-dialog-shadow: 0 24px 80px rgba(32, 51, 81, .24);
 }
 
 * { box-sizing: border-box; }
@@ -50,7 +60,7 @@ body { min-width: 320px; min-height: 100vh; margin: 0; line-height: 1.5; }
 button, input, select, textarea { font: inherit; }
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; text-align: center; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid rgba(32, 51, 81, .28); outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid rgba(43, 163, 213, .48); outline-offset: 2px; }
 a { color: inherit; }
 h1, h2, h3, p { margin-top: 0; }
 h1, h2, h3 { font-family: var(--font-sans); }

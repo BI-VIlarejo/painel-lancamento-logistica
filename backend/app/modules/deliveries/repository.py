@@ -280,6 +280,9 @@ def list_visible_launches(
     data_de: date | None,
     data_ate: date | None,
     id_localidade: int | None,
+    id_motorista: int | None,
+    id_motivo_nao_entrega: int | None,
+    tipo_operacao: str | None,
     criado_por: int | None,
     limit: int,
     offset: int,
@@ -290,7 +293,10 @@ def list_visible_launches(
         _all_items_visible_condition(scope_pairs, revision=current_revision),
     ]
     if estado is not None:
-        conditions.append(current_revision.estado == estado)
+        if estado == "LANÇADO":
+            conditions.append(current_revision.estado.in_(("ENVIADA", "APROVADA")))
+        else:
+            conditions.append(current_revision.estado == estado)
     if criado_por is not None:
         conditions.append(Lancamento.criado_por == criado_por)
 
@@ -303,6 +309,39 @@ def list_visible_launches(
         item_conditions.append(EntregaDiaria.data_entrega <= data_ate)
     if id_localidade is not None:
         item_conditions.append(EntregaDiaria.id_localidade == id_localidade)
+    if id_motorista is not None:
+        item_conditions.append(
+            exists(
+                select(EntregaParticipante.id_entrega_diaria).where(
+                    EntregaParticipante.id_entrega_diaria == EntregaDiaria.id_entrega_diaria,
+                    EntregaParticipante.id_pessoa == id_motorista,
+                    EntregaParticipante.papel_participante == "MOTORISTA",
+                )
+            )
+        )
+    if id_motivo_nao_entrega is not None:
+        reason_conditions = [
+            EntregaMotivo.id_entrega_diaria == EntregaDiaria.id_entrega_diaria,
+            EntregaMotivo.id_motivo_nao_entrega == id_motivo_nao_entrega,
+        ]
+        if tipo_operacao is not None:
+            reason_conditions.append(EntregaMotivo.tipo_operacao == tipo_operacao)
+        item_conditions.append(
+            exists(
+                select(EntregaMotivo.id_entrega_motivo).where(*reason_conditions)
+            )
+        )
+    if tipo_operacao == "ENTREGA":
+        item_conditions.append(
+            or_(EntregaDiaria.quantidade_realizada > 0, EntregaDiaria.quantidade_nao_realizada > 0)
+        )
+    elif tipo_operacao == "COLETA":
+        item_conditions.append(
+            or_(
+                EntregaDiaria.quantidade_coleta_realizada > 0,
+                EntregaDiaria.quantidade_coleta_nao_realizada > 0,
+            )
+        )
     if len(item_conditions) > 1:
         conditions.append(
             exists(select(EntregaDiaria.id_entrega_diaria).where(*item_conditions))

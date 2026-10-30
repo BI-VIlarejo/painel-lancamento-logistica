@@ -140,10 +140,13 @@ export type DeliveryEvent = {
 };
 
 export type DeliveryHistoryFilters = {
-  estado?: DeliveryStatus | "TODOS";
+  estado?: DeliveryStatus | "TODOS" | "LANÇADO";
   data_de?: string;
   data_ate?: string;
   id_localidade?: number;
+  id_motorista?: number;
+  id_motivo_nao_entrega?: number;
+  tipo_operacao?: "ENTREGA" | "COLETA";
   criado_por?: number;
   limit?: number;
   offset?: number;

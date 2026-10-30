@@ -36,7 +36,6 @@ type DeliveryFormProps = {
   drivers: PersonCatalogItem[];
   helpers: PersonCatalogItem[];
   reasons: NonDeliveryReasonCatalogItem[];
-  responsibleName: string;
   canLaunch: boolean;
   initialLaunch?: DeliveryLaunchDetail;
   onSaved: (launch: DeliveryLaunchDetail) => void;
@@ -216,7 +215,7 @@ function toPayloadLine(line: DeliveryDraftLine): DeliveryItemInput {
   };
 }
 
-export function DeliveryForm({ localities, drivers, helpers, reasons, responsibleName, canLaunch, initialLaunch, onSaved }: DeliveryFormProps) {
+export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch, initialLaunch, onSaved }: DeliveryFormProps) {
   const [lines, setLines] = useState<DeliveryDraftLine[]>(() => initialLaunch ? linesFromLaunch(initialLaunch) : [newLine()]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [requestError, setRequestError] = useState("");
@@ -428,14 +427,6 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, responsibl
     <fieldset className={cx(styles, commonStyles, "form-fieldset")} disabled={saving} aria-label="Formulário de lançamentos de entregas e coletas">
       {requestError && <div className={cx(styles, commonStyles, "notice notice-error form-error-summary")} data-form-error role="alert">{requestError}</div>}
       {Object.keys(errors).length > 0 && <div className={cx(styles, commonStyles, "notice notice-error form-error-summary")} data-form-error role="alert">Revise os campos destacados antes de lançar.</div>}
-
-      <section className={cx(styles, commonStyles, "form-section form-section-basic")}>
-        <div className={cx(styles, commonStyles, "section-heading")}><div><h2>Identificação do lançamento</h2><p>Setor definido automaticamente para Suporte. Confira quem está registrando.</p></div></div>
-        <div className={cx(styles, commonStyles, "field-grid field-grid-basic")}>
-          <div className={cx(styles, commonStyles, "form-field form-field-readonly")}><span>Setor responsável</span><div className={cx(styles, commonStyles, "readonly-value")}>{initialLaunch?.nome_setor ?? "Suporte"}</div></div>
-          <div className={cx(styles, commonStyles, "form-field form-field-readonly")}><span>Responsável pelo registro</span><div className={cx(styles, commonStyles, "readonly-value")}><span className={cx(styles, commonStyles, "mini-avatar")}>{responsibleName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span> {responsibleName} <span className={cx(styles, commonStyles, "field-hint")}>Preenchido automaticamente</span></div></div>
-        </div>
-      </section>
 
       <section className={cx(styles, commonStyles, "form-section")}>
         <div className={cx(styles, commonStyles, "section-heading section-heading-between")}>

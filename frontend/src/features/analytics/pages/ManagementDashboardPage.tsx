@@ -3,12 +3,13 @@ import styles from "./ManagementDashboardPage.module.css";
 import commonStyles from "../../../shared/styles/common.module.css";
 import { cx } from "../../../shared/styles/classNames";
 import { analyticsApi } from "../api";
-import type { DashboardResponse, DashboardTrendPoint } from "../types";
+import type { DashboardLocality, DashboardResponse, DashboardTrendPoint } from "../types";
 import { catalogsApi } from "../../catalogs/api";
 import type { LocalityCatalogItem } from "../../deliveries/types";
 import { deliveryTransportLabel, nonDeliveryReasonGroupLabel } from "../../deliveries/classifications";
 import type { DeliveryTransportType, NonDeliveryReasonGroup } from "../../deliveries/classifications";
 import { messageFromApiError } from "../../../shared/api/apiError";
+import { PaginatedTable } from "../components/PaginatedTable";
 
 const countFormat = new Intl.NumberFormat("pt-BR");
 const percentageFormat = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
@@ -199,19 +200,21 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
   const [localityId, setLocalityId] = useState("");
   const [transportType, setTransportType] = useState<"" | DeliveryTransportType>("");
   const [localities, setLocalities] = useState<LocalityCatalogItem[]>([]);
+  const [localitiesLoading, setLocalitiesLoading] = useState(true);
   const [data, setData] = useState<DashboardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [catalogError, setCatalogError] = useState("");
   const [reloadVersion, setReloadVersion] = useState(0);
   const [catalogReloadVersion, setCatalogReloadVersion] = useState(0);
-  const [showAllTeams, setShowAllTeams] = useState(false);
 
   useEffect(() => {
     let active = true;
+    setLocalitiesLoading(true);
     void catalogsApi.localities()
       .then((page) => { if (active) { setLocalities(page.items); setCatalogError(""); } })
-      .catch((loadError: unknown) => { if (active) setCatalogError(messageFromApiError(loadError)); });
+      .catch((loadError: unknown) => { if (active) setCatalogError(messageFromApiError(loadError)); })
+      .finally(() => { if (active) setLocalitiesLoading(false); });
     return () => { active = false; };
   }, [catalogReloadVersion]);
 
@@ -241,7 +244,24 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
   const summary = data?.resumo;
   const feedback = data?.feedback;
   const feedbackAvailable = feedback?.disponivel ?? false;
-  const shownTeams = showAllTeams ? data?.por_equipe ?? [] : (data?.por_equipe ?? []).slice(0, 8);
+  const localityPerformance = useMemo<DashboardLocality[]>(() => {
+    const totalsByLocality = new Map((data?.por_localidade ?? []).map((item) => [item.id_localidade, item]));
+    const visibleLocalities = localityId
+      ? localities.filter((locality) => locality.id_localidade === Number(localityId))
+      : localities;
+    return visibleLocalities.map((locality) => totalsByLocality.get(locality.id_localidade) ?? {
+      id_localidade: locality.id_localidade,
+      nome: locality.nome_localidade,
+      lancamentos: 0,
+      itens_planejados: 0,
+      realizadas: 0,
+      nao_realizadas: 0,
+      taxa_realizacao: null,
+      otif_percentual: null,
+      elogios: feedbackAvailable ? 0 : null,
+      reclamacoes: feedbackAvailable ? 0 : null,
+    });
+  }, [data, feedbackAvailable, localities, localityId]);
   function resetFilters() {
     setFromDate(firstDayOfCurrentMonth());
     setToDate(localDate(new Date()));
@@ -250,7 +270,7 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
   }
 
   return (
-    <div className={cx(styles, commonStyles, "page-stack", "manager-dashboard-page")}>
+    <div className={cx(styles, commonStyles, "portal-page", "page-stack", "manager-dashboard-page")}>
       <div className={cx(styles, commonStyles, "page-heading-row", "manager-heading")}>
         <div>
           <h1>Painel gerencial</h1>
@@ -261,12 +281,12 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
         </div>
       </div>
 
-      <section className={cx(styles, commonStyles, "manager-filter-card")} aria-label="Filtros do painel">
+      <section className={cx(styles, commonStyles, "manager-filter-card manager-dashboard-filter-card")} aria-label="Filtros do painel">
         <label className={cx(styles, commonStyles, "filter-control")}><span>Data inicial</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} /></label>
         <label className={cx(styles, commonStyles, "filter-control")}><span>Data final</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label>
-        <label className={cx(styles, commonStyles, "filter-control")}><span>Loja / localidade</span><select value={localityId} onChange={(event) => setLocalityId(event.target.value)}><option value="">Todas as localidades permitidas</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
+        <label className={cx(styles, commonStyles, "filter-control")}><span>Loja / localidade</span><select value={localityId} disabled={localitiesLoading || Boolean(catalogError)} onChange={(event) => setLocalityId(event.target.value)}><option value="">{localitiesLoading ? "Carregando localidades..." : "Todas as localidades ativas"}</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
         <label className={cx(styles, commonStyles, "filter-control")}><span>Tipo de entrega</span><select value={transportType} onChange={(event) => setTransportType(event.target.value as "" | DeliveryTransportType)}><option value="">Próprias e terceirizadas</option><option value="PROPRIA">Entregas próprias</option><option value="TERCEIRIZADA">Entregas terceirizadas</option></select></label>
-        <button className={cx(styles, commonStyles, "button button-secondary", "manager-reset-button")} type="button" onClick={resetFilters}>Limpar filtros</button>
+        <button className={cx(styles, commonStyles, "manager-reset-button")} type="button" onClick={resetFilters}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6.5A6.5 6.5 0 1 1 3.6 11" /><path d="M4 3.8v3.5h3.5" /></svg><span>Limpar filtros</span></button>
         <span className={cx(styles, commonStyles, "manager-filter-note")}>O tipo da equipe filtra todos os indicadores junto com o período e a localidade.</span>
       </section>
 
@@ -319,11 +339,11 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
       </div>
 
       <section className={cx(styles, commonStyles, "manager-panel")}>
-        <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Performance por loja</h2><p>Volume, resultado e relacionamento com clientes no mesmo período</p></div><span>{loading ? "—" : `${data?.por_localidade.length ?? 0} lojas`}</span></div>
-        {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lojas...</div> : !data?.por_localidade.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há lançamentos registrados para os filtros selecionados.</div> : <>
+        <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Performance por loja</h2><p>Volume, resultado e relacionamento com clientes no mesmo período</p></div><span>{loading || localitiesLoading ? "Carregando..." : `${localityPerformance.length} localidades`}</span></div>
+        {loading || localitiesLoading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lojas ativas...</div> : !localityPerformance.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há localidades ativas disponíveis para os filtros selecionados.</div> : <>
           <p className={cx(styles, commonStyles, "insight-chart-caption")}>Taxa de realização de entregas e coletas por loja; as menores taxas aparecem primeiro. O volume ao lado ajuda a contextualizar a comparação.</p>
-          <HorizontalBarChart items={[...data.por_localidade].sort((a, b) => (a.taxa_realizacao ?? -1) - (b.taxa_realizacao ?? -1) || b.itens_planejados - a.itens_planejados).map((item) => ({ key: String(item.id_localidade), label: item.nome, value: item.taxa_realizacao, valueLabel: rateLabel(item.taxa_realizacao), detail: `${countFormat.format(item.itens_planejados)} entregas e coletas · ${countFormat.format(item.lancamentos)} lançamentos · ${rateLabel(item.otif_percentual)} OTIF` }))} scaleMax={100} valueName="Taxa de realização por loja" tone="success" />
-          <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table")}><thead><tr><th>Loja</th><th>Lançamentos</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{data.por_localidade.map((item) => <tr key={item.id_localidade}><th scope="row">{item.nome}</th><td>{countFormat.format(item.lancamentos)}</td><td>{countFormat.format(item.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(item.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(item.nao_realizadas)}</td><td><PerformanceRate value={item.taxa_realizacao} /></td><td><PerformanceRate value={item.otif_percentual} label="OTIF" neutral /></td><td>{item.elogios === null ? "—" : countFormat.format(item.elogios)}</td><td>{item.reclamacoes === null ? "—" : countFormat.format(item.reclamacoes)}</td></tr>)}</tbody></table></div>
+          <HorizontalBarChart items={[...localityPerformance].sort((a, b) => (a.taxa_realizacao ?? -1) - (b.taxa_realizacao ?? -1) || b.itens_planejados - a.itens_planejados).map((item) => ({ key: String(item.id_localidade), label: item.nome, value: item.taxa_realizacao, valueLabel: rateLabel(item.taxa_realizacao), detail: `${countFormat.format(item.itens_planejados)} entregas e coletas · ${countFormat.format(item.lancamentos)} lançamentos · ${rateLabel(item.otif_percentual)} OTIF` }))} scaleMax={100} valueName="Taxa de realização por loja" tone="success" />
+          <PaginatedTable items={localityPerformance} label="Performance por loja">{(pageRows) => <table className={cx(styles, commonStyles, "data-table manager-table")}><thead><tr><th>Loja</th><th>Lançamentos</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Elogios</th><th>Reclamações</th></tr></thead><tbody>{pageRows.map((item) => <tr key={item.id_localidade}><th scope="row">{item.nome}</th><td>{countFormat.format(item.lancamentos)}</td><td>{countFormat.format(item.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(item.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(item.nao_realizadas)}</td><td><PerformanceRate value={item.taxa_realizacao} /></td><td><PerformanceRate value={item.otif_percentual} label="OTIF" neutral /></td><td>{item.elogios === null ? "—" : countFormat.format(item.elogios)}</td><td>{item.reclamacoes === null ? "—" : countFormat.format(item.reclamacoes)}</td></tr>)}</tbody></table>}</PaginatedTable>
         </>}
       </section>
 
@@ -332,14 +352,14 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
           <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Não realizadas por grupo de motivo</h2><p>Percentual das não realizadas e incidência no total</p></div><span>{loading ? "—" : `${data?.por_grupo_motivo.length ?? 0} grupos`}</span></div>
           {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando grupos...</div> : !data?.por_grupo_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <>
             <HorizontalBarChart items={[...data.por_grupo_motivo].sort((a, b) => b.quantidade - a.quantidade).map((group) => ({ key: `${group.tipo_operacao}:${group.grupo_motivo ?? "unclassified"}`, label: `${operationLabel(group.tipo_operacao)} · ${reasonGroupLabel(group.grupo_motivo)}`, value: group.quantidade, valueLabel: countFormat.format(group.quantidade), detail: `${rateLabel(group.percentual_das_nao_realizadas)} das ${operationLabel(group.tipo_operacao).toLowerCase()}s não realizadas · ${rateLabel(group.incidencia_sobre_total)} do total dessa operação` }))} scaleMax={Math.max(1, ...data.por_grupo_motivo.map((group) => group.quantidade))} valueName="Quantidade de não realizadas por grupo de motivo e operação" />
-            <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Operação</th><th>Grupo do motivo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_grupo_motivo.map((group) => <tr key={`${group.tipo_operacao}:${group.grupo_motivo ?? "unclassified"}`}><td>{operationLabel(group.tipo_operacao)}</td><th scope="row">{reasonGroupLabel(group.grupo_motivo)}</th><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(group.quantidade)}</td><td>{rateLabel(group.percentual_das_nao_realizadas)}</td><td>{rateLabel(group.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>
+            <PaginatedTable items={data.por_grupo_motivo} label="Motivos por grupo">{(pageRows) => <table className={cx(styles, commonStyles, "data-table manager-table", "manager-compact-table")}><thead><tr><th>Operação</th><th>Grupo do motivo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{pageRows.map((group) => <tr key={`${group.tipo_operacao}:${group.grupo_motivo ?? "unclassified"}`}><td>{operationLabel(group.tipo_operacao)}</td><th scope="row">{reasonGroupLabel(group.grupo_motivo)}</th><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(group.quantidade)}</td><td>{rateLabel(group.percentual_das_nao_realizadas)}</td><td>{rateLabel(group.incidencia_sobre_total)}</td></tr>)}</tbody></table>}</PaginatedTable>
           </>}
         </section>
         <section className={cx(styles, commonStyles, "manager-panel")}>
           <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Entregas próprias e terceirizadas</h2><p>Resultado por tipo informado no cadastro da equipe</p></div><span>{loading ? "—" : `${data?.por_tipo_entrega.length ?? 0} tipos`}</span></div>
           {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando tipos...</div> : !data?.por_tipo_entrega.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há entregas no período.</div> : <>
             <DeliveryTypeChart items={data.por_tipo_entrega} />
-            <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Tipo</th><th>Registros de entrega</th><th>Entregas R / NR</th><th>Registros de coleta</th><th>Coletas R / NR</th><th>Taxa combinada</th><th>OTIF combinado</th></tr></thead><tbody>{data.por_tipo_entrega.map((type) => <tr key={type.tipo_transporte_entrega ?? "unclassified"}><th scope="row">{deliveryTypeLabel(type.tipo_transporte_entrega)}</th><td>{countFormat.format(type.registros_entrega)}</td><td>{countFormat.format(type.entregas_realizadas)} / {countFormat.format(type.entregas_nao_realizadas)}</td><td>{countFormat.format(type.registros_coleta)}</td><td>{countFormat.format(type.coletas_realizadas)} / {countFormat.format(type.coletas_nao_realizadas)}</td><td><PerformanceRate value={type.taxa_realizacao} /></td><td><PerformanceRate value={type.otif_percentual} label="OTIF combinado" neutral /></td></tr>)}</tbody></table></div>
+            <PaginatedTable items={data.por_tipo_entrega} label="Tipos de transporte">{(pageRows) => <table className={cx(styles, commonStyles, "data-table manager-table", "manager-compact-table")}><thead><tr><th>Tipo</th><th>Registros de entrega</th><th>Entregas R / NR</th><th>Registros de coleta</th><th>Coletas R / NR</th><th>Taxa combinada</th><th>OTIF combinado</th></tr></thead><tbody>{pageRows.map((type) => <tr key={type.tipo_transporte_entrega ?? "unclassified"}><th scope="row">{deliveryTypeLabel(type.tipo_transporte_entrega)}</th><td>{countFormat.format(type.registros_entrega)}</td><td>{countFormat.format(type.entregas_realizadas)} / {countFormat.format(type.entregas_nao_realizadas)}</td><td>{countFormat.format(type.registros_coleta)}</td><td>{countFormat.format(type.coletas_realizadas)} / {countFormat.format(type.coletas_nao_realizadas)}</td><td><PerformanceRate value={type.taxa_realizacao} /></td><td><PerformanceRate value={type.otif_percentual} label="OTIF combinado" neutral /></td></tr>)}</tbody></table>}</PaginatedTable>
           </>}
         </section>
       </div>
@@ -348,7 +368,7 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
         <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Não realizadas por motivo</h2><p>Quantidade, grupo associado e participação nas entregas do período</p></div><span>{loading ? "—" : `${data?.por_motivo.length ?? 0} motivos`}</span></div>
         {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando motivos...</div> : !data?.por_motivo.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma ocorrência de não realização.</div> : <>
           <HorizontalBarChart items={[...data.por_motivo].sort((a, b) => b.quantidade - a.quantidade || a.motivo.localeCompare(b.motivo, "pt-BR")).map((reason) => ({ key: `${reason.tipo_operacao}:${reason.id_motivo}`, label: `${operationLabel(reason.tipo_operacao)} · ${reason.motivo}`, value: reason.quantidade, valueLabel: countFormat.format(reason.quantidade), detail: `${reasonGroupLabel(reason.grupo_motivo)} · ${rateLabel(reason.percentual_das_nao_realizadas)} das ${operationLabel(reason.tipo_operacao).toLowerCase()}s não realizadas · ${rateLabel(reason.incidencia_sobre_total)} do total dessa operação` }))} scaleMax={Math.max(1, ...data.por_motivo.map((reason) => reason.quantidade))} valueName="Quantidade de não realizadas por motivo e operação" />
-          <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Operação</th><th>Motivo</th><th>Grupo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{data.por_motivo.map((reason) => <tr key={`${reason.tipo_operacao}:${reason.id_motivo}`}><td>{operationLabel(reason.tipo_operacao)}</td><th scope="row">{reason.motivo}</th><td>{reasonGroupLabel(reason.grupo_motivo)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(reason.quantidade)}</td><td>{rateLabel(reason.percentual_das_nao_realizadas)}</td><td>{rateLabel(reason.incidencia_sobre_total)}</td></tr>)}</tbody></table></div>
+          <PaginatedTable items={data.por_motivo} label="Motivos de não realização">{(pageRows) => <table className={cx(styles, commonStyles, "data-table manager-table", "manager-compact-table")}><thead><tr><th>Operação</th><th>Motivo</th><th>Grupo</th><th>Quantidade</th><th>% das não realizadas</th><th>Incidência no total</th></tr></thead><tbody>{pageRows.map((reason) => <tr key={`${reason.tipo_operacao}:${reason.id_motivo}`}><td>{operationLabel(reason.tipo_operacao)}</td><th scope="row">{reason.motivo}</th><td>{reasonGroupLabel(reason.grupo_motivo)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(reason.quantidade)}</td><td>{rateLabel(reason.percentual_das_nao_realizadas)}</td><td>{rateLabel(reason.incidencia_sobre_total)}</td></tr>)}</tbody></table>}</PaginatedTable>
         </>}
       </section>
 
@@ -358,15 +378,13 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
           {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando equipes...</div> : !data?.por_equipe.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há equipes com lançamentos registrados.</div> : <>
             <p className={cx(styles, commonStyles, "insight-chart-caption")}>Todas as equipes; as menores taxas aparecem primeiro. Volume e OTIF incluem entregas e coletas.</p>
             <HorizontalBarChart items={[...data.por_equipe].sort((a, b) => (a.taxa_realizacao ?? -1) - (b.taxa_realizacao ?? -1) || b.itens_planejados - a.itens_planejados || a.equipe.localeCompare(b.equipe, "pt-BR")).map((team) => ({ key: team.chave, label: team.equipe, value: team.taxa_realizacao, valueLabel: rateLabel(team.taxa_realizacao), detail: `${countFormat.format(team.realizadas)} realizadas de ${countFormat.format(team.itens_planejados)} entregas e coletas · ${rateLabel(team.otif_percentual)} OTIF` }))} scaleMax={100} valueName="Taxa de realização por equipe" tone="success" />
-            <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}><thead><tr><th>Equipe</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{shownTeams.map((team) => <tr key={team.chave}><th scope="row">{team.equipe}</th><td>{countFormat.format(team.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(team.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(team.nao_realizadas)}</td><td><PerformanceRate value={team.taxa_realizacao} /></td><td><PerformanceRate value={team.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table></div>{data.por_equipe.length > 8 && <button className={cx(styles, commonStyles, "table-more-button")} type="button" onClick={() => setShowAllTeams((value) => !value)}>{showAllTeams ? "Mostrar menos" : `Ver todas as ${data.por_equipe.length} equipes`}</button>}
+            <PaginatedTable items={data.por_equipe} label="Performance por equipe">{(pageRows) => <table className={cx(styles, commonStyles, "data-table manager-table", "manager-compact-table")}><thead><tr><th>Equipe</th><th>Total registrado</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th></tr></thead><tbody>{pageRows.map((team) => <tr key={team.chave}><th scope="row">{team.equipe}</th><td>{countFormat.format(team.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{countFormat.format(team.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{countFormat.format(team.nao_realizadas)}</td><td><PerformanceRate value={team.taxa_realizacao} /></td><td><PerformanceRate value={team.otif_percentual} label="OTIF" neutral /></td></tr>)}</tbody></table>}</PaginatedTable>
           </>}
         </section>
-
-
-      </div>
-      <section className={cx(styles, commonStyles, "manager-panel")}>
+        <section className={cx(styles, commonStyles, "manager-panel")}>
         <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Indicadores por pessoa</h2><p>Ranking completo com filtros por período, localidade, transporte, nome, função e situação cadastral.</p></div><button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => onNavigate("/indicadores/pessoas")}>Abrir ranking</button></div>
       </section>
+      </div>
     </div>
   );
 }

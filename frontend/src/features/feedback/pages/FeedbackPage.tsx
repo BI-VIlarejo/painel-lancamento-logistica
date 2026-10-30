@@ -345,12 +345,12 @@ export function FeedbackPage({ permissions }: Props) {
     resetOffset();
   };
 
-  return <div className={cx(styles, commonStyles, "feedback-page")}>
-    <header className={cx(styles, commonStyles, "feedback-heading")}>
+  return <div className={cx(styles, commonStyles, "portal-page page-stack feedback-page")}>
+    <header className={cx(styles, commonStyles, "page-heading-row feedback-heading")}>
       <div>
-        <p className={cx(styles, commonStyles, "feedback-eyebrow")}>EXPERIÊNCIA DO CLIENTE</p>
+        <p className={cx(styles, commonStyles, "feedback-eyebrow eyebrow")}>EXPERIÊNCIA DO CLIENTE</p>
         <h1>Reclamações e elogios</h1>
-        <p className={cx(styles, commonStyles, "feedback-lead")}>Registre manifestações vinculadas a uma entrega confirmada e consulte o histórico por loja e equipe.</p>
+        <p className={cx(styles, commonStyles, "feedback-lead page-lead")}>Registre manifestações vinculadas a uma entrega confirmada e consulte o histórico por loja e equipe.</p>
       </div>
       <div className={cx(styles, commonStyles, "heading-actions")}>
         {isDemoMode && <span className={cx(styles, commonStyles, "preview-label")}><i /> Prévia interativa</span>}
@@ -376,13 +376,13 @@ export function FeedbackPage({ permissions }: Props) {
         <div className={cx(styles, commonStyles, "feedback-filters")}>
           <label className={cx(styles, commonStyles, "search-field")}><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => onFilterChange(() => setSearch(event.target.value))} placeholder="Buscar cliente, loja, pessoa ou relato" aria-label="Buscar manifestações" /></label>
           <label className={cx(styles, commonStyles, "filter-control")}>Tipo<select value={typeFilter} onChange={(event) => onFilterChange(() => setTypeFilter(event.target.value as FeedbackType | "TODOS"))}><option value="TODOS">Todos</option><option value="RECLAMACAO">Reclamação</option><option value="ELOGIO">Elogio</option></select></label>
-          <label className={cx(styles, commonStyles, "filter-control")}>Loja<select value={localityFilter} onChange={(event) => onFilterChange(() => setLocalityFilter(event.target.value))}><option value="">Todas</option>{localities.map((locality) => <option value={locality.id_localidade} key={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
+          <label className={cx(styles, commonStyles, "filter-control")}>Loja<select value={localityFilter} onChange={(event) => onFilterChange(() => setLocalityFilter(event.target.value))}><option value="">Todas as localidades ativas</option>{localities.map((locality) => <option value={locality.id_localidade} key={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
           <label className={cx(styles, commonStyles, "filter-control")}>De<input type="date" max={toDate || undefined} value={fromDate} onChange={(event) => onFilterChange(() => setFromDate(event.target.value))} /></label>
           <label className={cx(styles, commonStyles, "filter-control")}>Até<input type="date" min={fromDate || undefined} value={toDate} onChange={(event) => onFilterChange(() => setToDate(event.target.value))} /></label>
         </div>
         {error && <div className={cx(styles, commonStyles, "notice notice-error page-notice")} role="alert">{error}</div>}
         {loading ? <div className={cx(styles, commonStyles, "feedback-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando manifestações...</div>
-          : items.length ? <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "feedback-table")}><thead><tr><th>Data</th><th>Tipo</th><th>Cliente</th><th>Loja</th><th>Entrega</th><th>Equipe</th><th>Relato</th><th aria-label="Ações" /></tr></thead><tbody>
+          : items.length ? <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela de manifestações" tabIndex={0}><table className={cx(styles, commonStyles, "data-table feedback-table")}><thead><tr><th>Data</th><th>Tipo</th><th>Cliente</th><th>Loja</th><th>Entrega</th><th>Equipe</th><th>Relato</th><th aria-label="Ações" /></tr></thead><tbody>
             {items.map((item) => <tr key={item.id_feedback}>
               <td><time dateTime={item.data_feedback}>{dateLabel(item.data_feedback)}</time></td>
               <td><FeedbackTypeBadge type={item.tipo} /></td>
@@ -425,12 +425,12 @@ export function FeedbackPage({ permissions }: Props) {
           </div>
         </fieldset>
         {!hasDeliverySearchCriteria && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Selecione a data da entrega e a loja para carregar a equipe das entregas confirmadas.</div>}
-        <label>Entrega confirmada relacionada<select required value={form.codigo_item_lancamento} onChange={(event) => setForm((current) => ({ ...current, codigo_item_lancamento: event.target.value }))} disabled={!form.data_entrega || !form.id_localidade || !form.id_motorista || deliveriesLoading || !matchingDeliveryItems.length}><option value="">{deliveriesLoading ? "Buscando entregas..." : "Selecione a entrega da equipe"}</option>{matchingDeliveryItems.map((item) => <option key={item.codigo_item_lancamento} value={item.codigo_item_lancamento}>{item.participantes.map((person) => person.nome_exibicao).join(", ") || "Equipe sem nome"} · {item.quantidade_realizada} realizadas / {item.quantidade_nao_realizada} não realizadas</option>)}</select></label>
+        <label className={cx(styles, commonStyles, "form-grid-full")}>Entrega confirmada relacionada<select required value={form.codigo_item_lancamento} onChange={(event) => setForm((current) => ({ ...current, codigo_item_lancamento: event.target.value }))} disabled={!form.data_entrega || !form.id_localidade || !form.id_motorista || deliveriesLoading || !matchingDeliveryItems.length}><option value="">{deliveriesLoading ? "Buscando entregas..." : "Selecione a entrega da equipe"}</option>{matchingDeliveryItems.map((item) => <option key={item.codigo_item_lancamento} value={item.codigo_item_lancamento}>{item.participantes.map((person) => person.nome_exibicao).join(", ") || "Equipe sem nome"} · {item.quantidade_realizada} realizadas / {item.quantidade_nao_realizada} não realizadas</option>)}</select></label>
         {deliveryError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{deliveryError}</div>}
         {!deliveriesLoading && hasDeliverySearchCriteria && !deliveryError && !deliveryItems.length && <div className={cx(styles, commonStyles, "notice notice-error")} role="status">Não há entrega confirmada para essa loja e data. Escolha uma combinação que tenha uma entrega confirmada para carregar motorista e ajudantes.</div>}
         {!deliveriesLoading && form.data_entrega && form.id_localidade && form.id_motorista && deliveryItems.length > 0 && !matchingDeliveryItems.length && <div className={cx(styles, commonStyles, "notice notice-error")} role="status">Não há entrega confirmada para a equipe selecionada nessa loja e data. Confira o motorista e os ajudantes.</div>}
         {selectedDelivery && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Equipe selecionada: {teamLabel(selectedDelivery)}. A manifestação ficará vinculada a essa equipe e à entrega confirmada.</div>}
-        <label>Relato<textarea required minLength={5} maxLength={5000} rows={5} value={form.relato} onChange={(event) => setForm((current) => ({ ...current, relato: event.target.value }))} placeholder="Descreva com clareza o que aconteceu ou o que o cliente elogiou." /></label>
+        <label className={cx(styles, commonStyles, "form-grid-full")}>Relato<textarea required minLength={5} maxLength={5000} rows={5} value={form.relato} onChange={(event) => setForm((current) => ({ ...current, relato: event.target.value }))} placeholder="Descreva com clareza o que aconteceu ou o que o cliente elogiou." /></label>
         {error && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{error}</div>}
         <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Informe o nome do cliente. Não registre telefone, documento ou outro identificador. Evite incluir dados pessoais no relato livre.</div>
         {isDemoMode && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Na prévia, os registros ficam salvos apenas neste navegador. Não use dados reais de clientes.</div>}

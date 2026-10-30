@@ -9,6 +9,7 @@ import type { LocalityCatalogItem } from "../../deliveries/types";
 import { deliveryTransportLabel, nonDeliveryReasonGroupLabel } from "../../deliveries/classifications";
 import type { DeliveryTransportType, NonDeliveryReasonGroup } from "../../deliveries/classifications";
 import { messageFromApiError } from "../../../shared/api/apiError";
+import { PaginatedTable } from "../components/PaginatedTable";
 
 const formatCount = new Intl.NumberFormat("pt-BR");
 const formatPercent = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
@@ -105,7 +106,7 @@ export function PeopleRankingPage() {
     setStatusFilter("TODOS");
   }
 
-  return <div className={cx(styles, commonStyles, "page-stack", "manager-dashboard-page")}>
+  return <div className={cx(styles, commonStyles, "portal-page", "page-stack", "manager-dashboard-page")}>
     <div className={cx(styles, commonStyles, "page-heading-row", "manager-heading")}>
       <div><h1>Indicadores por pessoa</h1><p className={cx(styles, commonStyles, "page-lead")}>Ranking de motoristas e ajudantes com o mesmo recorte aplicado a todos os dados.</p></div>
       <div className={cx(styles, commonStyles, "manager-heading-status")}><span className={cx(styles, commonStyles, "registered-status-dot")} />{loading ? "Atualizando" : `${formatCount.format(people.length)} pessoas`}</div>
@@ -114,12 +115,12 @@ export function PeopleRankingPage() {
     <section className={cx(styles, commonStyles, "manager-filter-card")} aria-label="Filtros do ranking por pessoa">
       <label className={cx(styles, commonStyles, "filter-control")}><span>Data inicial</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} /></label>
       <label className={cx(styles, commonStyles, "filter-control")}><span>Data final</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label>
-      <label className={cx(styles, commonStyles, "filter-control")}><span>Loja / localidade</span><select value={localityId} onChange={(event) => setLocalityId(event.target.value)}><option value="">Todas as localidades</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
+      <label className={cx(styles, commonStyles, "filter-control")}><span>Loja / localidade</span><select value={localityId} onChange={(event) => setLocalityId(event.target.value)}><option value="">Todas as localidades ativas</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
       <label className={cx(styles, commonStyles, "filter-control")}><span>Tipo de entrega</span><select value={transportType} onChange={(event) => setTransportType(event.target.value as "" | DeliveryTransportType)}><option value="">Próprias e terceirizadas</option><option value="PROPRIA">Entregas próprias</option><option value="TERCEIRIZADA">Entregas terceirizadas</option></select></label>
       <label className={cx(styles, commonStyles, "filter-control")}><span>Buscar pessoa</span><input type="search" value={nameFilter} onChange={(event) => setNameFilter(event.target.value)} placeholder="Nome" /></label>
       <label className={cx(styles, commonStyles, "filter-control")}><span>Função</span><select value={functionFilter} onChange={(event) => setFunctionFilter(event.target.value as typeof functionFilter)}><option value="TODOS">Motoristas e ajudantes</option><option value="MOTORISTA">Motoristas</option><option value="AJUDANTE">Ajudantes</option></select></label>
       <label className={cx(styles, commonStyles, "filter-control")}><span>Situação cadastral</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as typeof statusFilter)}><option value="TODOS">Todas as situações</option><option value="ATIVO">Ativos</option><option value="INATIVO">Inativos</option></select></label>
-      <button className={cx(styles, commonStyles, "button button-secondary", "manager-reset-button")} type="button" onClick={clearFilters}>Limpar filtros</button>
+      <button className={cx(styles, commonStyles, "manager-reset-button")} type="button" onClick={clearFilters}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6.5A6.5 6.5 0 1 1 3.6 11" /><path d="M4 3.8v3.5h3.5" /></svg><span>Limpar filtros</span></button>
       <span className={cx(styles, commonStyles, "manager-filter-note")}>Os motivos são atribuídos às equipes e aparecem como contexto do trabalho da pessoa, sem indicar responsabilidade individual. O tipo selecionado considera a classificação da equipe.</span>
     </section>
 
@@ -128,10 +129,10 @@ export function PeopleRankingPage() {
       <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Ranking</h2><p>Taxa de realização, score de atendimento, volume, motivos das equipes e situação cadastral.</p></div><span>{loading ? "—" : `${formatCount.format(people.length)} resultados`}</span></div>
       {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando indicadores por pessoa...</div>
         : !people.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma pessoa corresponde aos filtros selecionados.</div>
-          : <div className={cx(styles, commonStyles, "manager-table-wrap")}><table className={cx(styles, commonStyles, "manager-table", "manager-compact-table")}>
+          : <PaginatedTable items={people} label="Ranking por pessoa">{(pagePeople, startIndex) => <table className={cx(styles, commonStyles, "data-table manager-table", "manager-compact-table")}>
             <thead><tr><th>Posição</th><th>Pessoa</th><th>Tipo filtrado</th><th>Equipes</th><th>Planejadas</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Motivos das equipes</th><th>Score atendimento</th><th>Elogios</th><th>Reclamações</th><th>Status</th></tr></thead>
-            <tbody>{people.map((person: DashboardPerson, index) => <tr key={person.id_pessoa}>
-              <td className={cx(styles, commonStyles, "ranking-position")}>{index + 1}</td>
+            <tbody>{pagePeople.map((person: DashboardPerson, index) => <tr key={person.id_pessoa}>
+              <td className={cx(styles, commonStyles, "ranking-position")}>{startIndex + index + 1}</td>
               <th scope="row"><span className={cx(styles, commonStyles, "person-cell-name")}>{person.nome}</span><small>{person.funcao === "MOTORISTA" ? "Motorista" : "Ajudante"}</small></th>
               <td>{transportName(data?.tipo_transporte_entrega ?? null)}</td><td>{formatCount.format(person.equipes)}</td>
               <td>{formatCount.format(person.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{formatCount.format(person.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{formatCount.format(person.nao_realizadas)}</td>
@@ -140,7 +141,7 @@ export function PeopleRankingPage() {
               <td>{person.score_atendimento > 0 ? `+${person.score_atendimento}` : person.score_atendimento}</td><td>{person.elogios === null ? "—" : formatCount.format(person.elogios)}</td><td>{person.reclamacoes === null ? "—" : formatCount.format(person.reclamacoes)}</td>
               <td><span className={cx(styles, commonStyles, person.ativo ? "ranking-status ranking-status-active" : "ranking-status ranking-status-inactive")}>{person.ativo ? "Ativo" : "Inativo"}</span></td>
             </tr>)}</tbody>
-          </table></div>}
+          </table>}</PaginatedTable>}
     </section>
   </div>;
 }

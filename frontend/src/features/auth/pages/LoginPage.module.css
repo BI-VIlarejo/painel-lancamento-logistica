@@ -27,8 +27,8 @@
 .login-form { display: flex; flex-direction: column; }
 .field-label { display: block; margin-bottom: 9px; color: #344b66; font-size: 14px; font-weight: 700; }
 .input-with-icon { position: relative; margin-bottom: 22px; }
-.input-with-icon input { width: 100%; height: 48px; padding: 0 14px 0 43px; border: 1px solid var(--line); border-radius: 8px; outline: none; color: var(--ink); background: #fbfcfe; font-size: 15px; transition: border-color .18s, box-shadow .18s, background .18s; }
-.input-with-icon input:focus { border-color: #8da3bd; background: #fff; box-shadow: 0 0 0 3px rgba(32,51,81,.10); }
+.input-with-icon input { width: 100%; height: 48px; padding: 0 14px 0 43px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-control-radius); outline: none; color: var(--ink); background: #fbfcfe; font-size: 15px; transition: border-color .18s, box-shadow .18s, background .18s; }
+.input-with-icon input:focus { border-color: var(--brand-blue); background: #fff; box-shadow: 0 0 0 3px rgba(43, 163, 213, .14); }
 .input-with-icon input::placeholder { color: #63748a; }
 .field-icon { position: absolute; top: 12px; left: 15px; color: #63748a; font-size: 19px; }
 .field-label-row { display: flex; align-items: center; justify-content: space-between; }
@@ -36,7 +36,7 @@
 .login-security { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 17px 0 0; color: #63748a; font-size: 13px; }
 .login-reset-link { display: block; margin: 14px auto 0; color: var(--brand-navy); font-size: 13px; font-weight: 700; text-align: center; text-decoration: underline; text-underline-offset: 3px; }
 .login-reset-link:hover { color: var(--primary); }
-.login-help { display: flex; align-items: flex-start; gap: 10px; margin-top: 40px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+.login-help { display: flex; align-items: flex-start; gap: 10px; margin-top: 40px; padding: 15px 16px; border: 1px solid var(--ui-border); border-radius: var(--ui-card-radius); background: #f8fafc; }
 .help-mark { display: grid; width: 21px; height: 21px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: var(--primary); background: var(--primary-soft); font-size: 14px; font-weight: 700; }
 .login-help p { margin: 0; color: #63748a; font-size: 14px; line-height: 1.55; }
 .demo-access-card { padding: 23px; border: 1px solid var(--line); border-radius: 13px; background: linear-gradient(145deg, var(--surface-subtle), var(--surface-subtle)); }

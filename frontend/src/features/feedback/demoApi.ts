@@ -38,12 +38,8 @@ function writeItems(items: FeedbackItem[]): void {
 
 export const demoFeedbackApi = {
   async localities(): Promise<FeedbackLocality[]> {
-    const page = await demoApi.listDeliveries({ estado: "ENVIADA", limit: 100, offset: 0 });
-    const localities = new Map<number, string>();
-    for (const launch of page.items) {
-      for (const item of launch.itens) localities.set(item.id_localidade, item.nome_localidade);
-    }
-    return Array.from(localities, ([id_localidade, nome_localidade]) => ({ id_localidade, nome_localidade }));
+    const page = await demoApi.listLocalities();
+    return page.items.map(({ id_localidade, nome_localidade }) => ({ id_localidade, nome_localidade }));
   },
 
   async deliveryItems(dataEntrega: string, idLocalidade: number): Promise<FeedbackDeliveryItem[]> {

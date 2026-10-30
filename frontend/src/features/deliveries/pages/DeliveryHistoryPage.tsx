@@ -8,10 +8,10 @@ import { DeliveryCsvImportDialog } from "../components/DeliveryCsvImportDialog";
 import { messageFromApiError } from "../../../shared/api/apiError";
 import { deliveryTransportLabel, nonDeliveryReasonGroupLabel } from "../classifications";
 import type { DeliveryTransportType } from "../classifications";
-import type { DeliveryEvent, DeliveryHistoryFilters, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem } from "../types";
+import type { DeliveryEvent, DeliveryHistoryFilters, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem, NonDeliveryReasonCatalogItem, PersonCatalogItem } from "../types";
 
 type DeliveryHistoryPageProps = { onNavigate: (path: string) => void; canCreate: boolean; canEditDraft: boolean; canCorrect: boolean; canCancel: boolean; currentUserId: number };
-const pageSize = 25;
+const pageSizeOptions = [10, 25, 50, 100] as const;
 const percentageFormat = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 
 const statusLabels: Record<DeliveryStatus, string> = {
@@ -90,6 +90,21 @@ function operationName(item: DeliveryItemResponse): string {
   return hasDelivery && hasCollection ? "Entrega + coleta" : hasCollection ? "Coleta" : "Entrega";
 }
 
+function itemMatchesFilters(
+  item: DeliveryItemResponse,
+  filters: Pick<DeliveryHistoryFilters, "id_localidade" | "id_motorista" | "id_motivo_nao_entrega" | "tipo_operacao" | "data_de" | "data_ate">,
+): boolean {
+  if (filters.id_localidade !== undefined && item.id_localidade !== filters.id_localidade) return false;
+  if (filters.data_de && item.data_entrega < filters.data_de) return false;
+  if (filters.data_ate && item.data_entrega > filters.data_ate) return false;
+  if (filters.id_motorista !== undefined && !item.participantes.some((person) => person.papel_participante === "MOTORISTA" && person.id_pessoa === filters.id_motorista)) return false;
+  if (filters.id_motivo_nao_entrega !== undefined && !item.motivos.some((reason) => reason.id_motivo_nao_entrega === filters.id_motivo_nao_entrega && (!filters.tipo_operacao || reason.tipo_operacao === filters.tipo_operacao))) return false;
+  const quantities = itemQuantities(item);
+  if (filters.tipo_operacao === "ENTREGA" && quantities.entregasRealizadas + quantities.entregasNaoRealizadas === 0) return false;
+  if (filters.tipo_operacao === "COLETA" && quantities.coletasRealizadas + quantities.coletasNaoRealizadas === 0) return false;
+  return true;
+}
+
 function reasonObservationDescription(item: DeliveryItemResponse): string {
   return item.motivos
     .flatMap((reason) => {
@@ -97,6 +112,28 @@ function reasonObservationDescription(item: DeliveryItemResponse): string {
       return observation ? [`${reason.tipo_operacao === "COLETA" ? "Coleta" : "Entrega"} · ${reason.descricao_motivo}: ${observation}`] : [];
     })
     .join("; ");
+}
+
+function HistoryReasonCell({ reasons }: { reasons: DeliveryItemResponse["motivos"] }) {
+  if (!reasons.length) return <span className={cx(styles, commonStyles, "history-muted-cell")}>Sem ocorrências</span>;
+
+  const shouldCollapse = reasons.length > 1 || reasons.some((reason) =>
+    reason.descricao_motivo.length > 84 || (reason.observacao?.trim().length ?? 0) > 84,
+  );
+  const reasonList = <ul className={cx(styles, commonStyles, "history-reasons")}>{reasons.map((reason, reasonIndex) => <li key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}>{reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}{reason.observacao && <small>Observação: {reason.observacao}</small>}</li>)}</ul>;
+
+  if (!shouldCollapse) return reasonList;
+
+  const firstReason = reasons[0];
+  const preview = `${firstReason.descricao_motivo} · ${nonDeliveryReasonGroupLabel(firstReason.grupo_motivo)}${firstReason.observacao ? ` · ${firstReason.observacao}` : ""}`;
+  return <details className={cx(styles, commonStyles, "history-reasons-disclosure")}>
+    <summary>
+      <span className={cx(styles, commonStyles, "history-reason-preview")}>{preview}</span>
+      <span className={cx(styles, commonStyles, "history-reason-count")}>{reasons.length > 1 ? `${reasons.length} motivos` : "Ver detalhes"}</span>
+      <span className={cx(styles, commonStyles, "history-reason-chevron")} aria-hidden="true" />
+    </summary>
+    {reasonList}
+  </details>;
 }
 
 function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: { detail: DeliveryLaunchDetail; events: DeliveryEvent[]; onClose: () => void; onEdit?: () => void; onCorrect?: () => void; onCancel?: () => void }) {
@@ -117,7 +154,7 @@ function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: 
           <div><p className={cx(styles, commonStyles, "eyebrow")}>DETALHES DO LANÇAMENTO</p><h2 id="detail-title">{detail.nome_setor} <span>· Versão {detail.numero_revisao}</span></h2></div>
           <button ref={closeButton} className={cx(styles, commonStyles, "icon-button dialog-close")} type="button" aria-label="Fechar detalhes" onClick={onClose}>×</button>
         </div>
-        <div className={cx(styles, commonStyles, "dialog-meta")}><span className={cx(styles, commonStyles, statusClass(detail.estado))}><i />{statusLabels[detail.estado]}</span><span>Criado em {formatDateTime(detail.criado_em)}</span></div>
+        <div className={cx(styles, commonStyles, "dialog-meta")}><span className={cx(styles, commonStyles, statusClass(detail.estado))}><i />{statusLabels[detail.estado]}</span><span className={cx(styles, commonStyles, "detail-launch-code")}>Código · {detail.codigo_lancamento}</span><span>Criado em {formatDateTime(detail.criado_em)}</span></div>
         <section className={cx(styles, commonStyles, "detail-audit")} aria-label="Histórico de alterações">
           <h3>Histórico de alterações</h3>
           {events.length ? <ol>{events.map((event) => <li key={event.id_evento}>
@@ -147,13 +184,19 @@ function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: 
 export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCorrect, canCancel, currentUserId }: DeliveryHistoryPageProps) {
   const [items, setItems] = useState<DeliveryLaunchSummary[]>([]);
   const [localities, setLocalities] = useState<LocalityCatalogItem[]>([]);
+  const [drivers, setDrivers] = useState<PersonCatalogItem[]>([]);
+  const [reasons, setReasons] = useState<NonDeliveryReasonCatalogItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [status, setStatus] = useState<DeliveryStatus | "TODOS">("TODOS");
+  const [status, setStatus] = useState<DeliveryStatus | "TODOS" | "LANÇADO">("TODOS");
   const [localityId, setLocalityId] = useState("");
+  const [driverId, setDriverId] = useState("");
+  const [reasonId, setReasonId] = useState("");
+  const [operation, setOperation] = useState<"" | "ENTREGA" | "COLETA">("");
   const [mineOnly, setMineOnly] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [error, setError] = useState("");
@@ -165,6 +208,8 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
   const [notice, setNotice] = useState("");
   const [localitiesLoading, setLocalitiesLoading] = useState(true);
   const [localitiesError, setLocalitiesError] = useState("");
+  const [filterCatalogsLoading, setFilterCatalogsLoading] = useState(true);
+  const [filterCatalogsError, setFilterCatalogsError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const [importOpen, setImportOpen] = useState(false);
@@ -189,10 +234,24 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
 
   useEffect(() => {
     let active = true;
+    void Promise.all([catalogsApi.people("MOTORISTA"), catalogsApi.reasons()])
+      .then(([driverPage, reasonPage]) => {
+        if (!active) return;
+        setDrivers(driverPage.items);
+        setReasons(reasonPage.items);
+        setFilterCatalogsError("");
+      })
+      .catch((loadError: unknown) => { if (active) setFilterCatalogsError(messageFromApiError(loadError)); })
+      .finally(() => { if (active) setFilterCatalogsLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
     setLoading(true);
     setError("");
     setFailedDetail(null);
-    void deliveriesApi.list({ estado: status, id_localidade: localityId ? Number(localityId) : undefined, criado_por: mineOnly ? currentUserId : undefined, data_de: fromDate || undefined, data_ate: toDate || undefined, limit: pageSize, offset })
+    void deliveriesApi.list({ estado: status, id_localidade: localityId ? Number(localityId) : undefined, id_motorista: driverId ? Number(driverId) : undefined, id_motivo_nao_entrega: reasonId ? Number(reasonId) : undefined, tipo_operacao: operation || undefined, criado_por: mineOnly ? currentUserId : undefined, data_de: fromDate || undefined, data_ate: toDate || undefined, limit: pageSize, offset })
       .then((page) => {
         if (!active) return;
         setItems(page.items);
@@ -203,12 +262,23 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [status, localityId, mineOnly, currentUserId, fromDate, toDate, offset, reloadVersion]);
+  }, [status, localityId, driverId, reasonId, operation, mineOnly, currentUserId, fromDate, toDate, pageSize, offset, reloadVersion]);
 
-  const activeFilterCount = [localityId, mineOnly, fromDate, toDate].filter(Boolean).length;
+  const activeFilterCount = [localityId, driverId, reasonId, operation, mineOnly, fromDate, toDate].filter(Boolean).length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.floor(offset / pageSize) + 1;
-  const pageDeliveryCount = items.reduce((sum, launch) => sum + launch.itens.length, 0);
+  const selectedItemFilters = {
+    id_localidade: localityId ? Number(localityId) : undefined,
+    id_motorista: driverId ? Number(driverId) : undefined,
+    id_motivo_nao_entrega: reasonId ? Number(reasonId) : undefined,
+    tipo_operacao: operation || undefined,
+    data_de: fromDate || undefined,
+    data_ate: toDate || undefined,
+  } as const;
+  const visibleRows = items.flatMap((launch) => launch.itens
+    .filter((delivery) => itemMatchesFilters(delivery, selectedItemFilters))
+    .map((delivery) => ({ launch, delivery })));
+  const pageDeliveryCount = visibleRows.length;
 
   async function openDetail(item: DeliveryLaunchSummary) {
     setDetailLoading(true);
@@ -290,6 +360,9 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
       const filters: DeliveryHistoryFilters = {
         estado: status,
         id_localidade: localityId ? Number(localityId) : undefined,
+        id_motorista: driverId ? Number(driverId) : undefined,
+        id_motivo_nao_entrega: reasonId ? Number(reasonId) : undefined,
+        tipo_operacao: operation || undefined,
         criado_por: mineOnly ? currentUserId : undefined,
         data_de: fromDate || undefined,
         data_ate: toDate || undefined,
@@ -307,7 +380,9 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
       }
 
       type ExportRow = { launch: DeliveryLaunchSummary; delivery: DeliveryItemResponse };
-      const exportRows: ExportRow[] = allItems.flatMap((launch) => launch.itens.map((delivery) => ({ launch, delivery })));
+      const exportRows: ExportRow[] = allItems.flatMap((launch) => launch.itens
+        .filter((delivery) => itemMatchesFilters(delivery, selectedItemFilters))
+        .map((delivery) => ({ launch, delivery })));
       const columns: Array<[string, (row: ExportRow) => string | number]> = [
         ["data", (row) => row.delivery.data_entrega],
         ["loja", (row) => row.delivery.nome_localidade],
@@ -349,7 +424,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
   }
 
   return (
-    <div className={cx(styles, commonStyles, "page-stack")}>
+    <div className={cx(styles, commonStyles, "portal-page", "page-stack")}>
       <div className={cx(styles, commonStyles, "page-heading-row history-heading-row")}>
         <div><h1>Histórico de entregas</h1><p className={cx(styles, commonStyles, "page-lead")}>Consulte, filtre e exporte os lançamentos.</p></div>
         <div className={cx(styles, commonStyles, "history-heading-actions")}>
@@ -365,7 +440,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         <div className={cx(styles, commonStyles, "history-toolbar")}>
           <div className={cx(styles, commonStyles, "history-toolbar-heading")}><h2>Lançamentos</h2><span>{total} {total === 1 ? "lançamento" : "lançamentos"}</span></div>
           <div className={cx(styles, commonStyles, "history-filters")}>
-            <label className={cx(styles, commonStyles, "filter-control")}><span>Status</span><select value={status} onChange={(event) => { setStatus(event.target.value as DeliveryStatus | "TODOS"); setOffset(0); }}><option value="TODOS">Todos os status</option>{Object.entries(statusLabels).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
+            <label className={cx(styles, commonStyles, "filter-control")}><span>Status</span><select value={status} onChange={(event) => { setStatus(event.target.value as DeliveryStatus | "TODOS" | "LANÇADO"); setOffset(0); }}><option value="TODOS">Todos</option><option value="LANÇADO">Lançado</option><option value="CANCELADA">Cancelado</option></select></label>
             <button className={cx(styles, commonStyles, "button button-secondary filter-toggle")} type="button" aria-expanded={advancedFiltersOpen} aria-controls="history-advanced-filters" onClick={() => setAdvancedFiltersOpen((open) => !open)}>
               Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}<span aria-hidden="true">{advancedFiltersOpen ? "−" : "+"}</span>
             </button>
@@ -373,11 +448,14 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         </div>
 
         {advancedFiltersOpen && <div className={cx(styles, commonStyles, "advanced-filters")} id="history-advanced-filters">
-          <label className={cx(styles, commonStyles, "filter-control")}><span>Loja / localidade</span><select value={localityId} disabled={localitiesLoading || Boolean(localitiesError)} onChange={(event) => { setLocalityId(event.target.value); setOffset(0); }}><option value="">Todas</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select>{localitiesError && <small className={cx(styles, commonStyles, "field-hint")}>Filtro indisponível: {localitiesError}</small>}</label>
+          <label className={cx(styles, commonStyles, "filter-control")}><span>Loja / localidade</span><select value={localityId} disabled={localitiesLoading || Boolean(localitiesError)} onChange={(event) => { setLocalityId(event.target.value); setOffset(0); }}><option value="">Todas as localidades ativas</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select>{localitiesError && <small className={cx(styles, commonStyles, "field-hint")}>Filtro indisponível: {localitiesError}</small>}</label>
+          <label className={cx(styles, commonStyles, "filter-control")}><span>Equipe (motorista)</span><select value={driverId} disabled={filterCatalogsLoading || Boolean(filterCatalogsError)} onChange={(event) => { setDriverId(event.target.value); setOffset(0); }}><option value="">Todas</option>{drivers.map((driver) => <option key={driver.id_pessoa} value={driver.id_pessoa}>{driver.nome_exibicao}</option>)}</select>{filterCatalogsError && <small className={cx(styles, commonStyles, "field-hint")}>Filtros de equipe e motivo indisponíveis: {filterCatalogsError}</small>}</label>
+          <label className={cx(styles, commonStyles, "filter-control")}><span>Motivo</span><select value={reasonId} disabled={filterCatalogsLoading || Boolean(filterCatalogsError)} onChange={(event) => { setReasonId(event.target.value); setOffset(0); }}><option value="">Todos</option>{reasons.map((reason) => <option key={reason.id_motivo_nao_entrega} value={reason.id_motivo_nao_entrega}>{reason.descricao_motivo}</option>)}</select></label>
+          <label className={cx(styles, commonStyles, "filter-control")}><span>Operação</span><select value={operation} onChange={(event) => { setOperation(event.target.value as "" | "ENTREGA" | "COLETA"); setOffset(0); }}><option value="">Todas</option><option value="ENTREGA">Entrega</option><option value="COLETA">Coleta</option></select></label>
           <label className={cx(styles, commonStyles, "filter-control")}><span>Autor</span><select value={mineOnly ? "meus" : "todos"} onChange={(event) => { setMineOnly(event.target.value === "meus"); setOffset(0); }}><option value="todos">Todos</option><option value="meus">Meus lançamentos</option></select></label>
           <label className={cx(styles, commonStyles, "filter-control")}><span>Data inicial</span><input type="date" value={fromDate} max={toDate || undefined} onChange={(event) => { setFromDate(event.target.value); setOffset(0); }} /></label>
           <label className={cx(styles, commonStyles, "filter-control")}><span>Data final</span><input type="date" value={toDate} min={fromDate || undefined} onChange={(event) => { setToDate(event.target.value); setOffset(0); }} /></label>
-          {activeFilterCount > 0 && <button className={cx(styles, commonStyles, "text-button clear-filters")} type="button" onClick={() => { setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button>}
+          {activeFilterCount > 0 && <button className={cx(styles, commonStyles, "clear-filters")} type="button" onClick={() => { setLocalityId(""); setDriverId(""); setReasonId(""); setOperation(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}><svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4 6.5A6.5 6.5 0 1 1 3.6 11" /><path d="M4 3.8v3.5h3.5" /></svg><span>Limpar filtros</span></button>}
         </div>}
 
         <div className={cx(styles, commonStyles, "notice notice-info history-otif-note")} role="note">
@@ -386,46 +464,51 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         </div>
 
         {error && <div className={cx(styles, commonStyles, "notice notice-error history-error")} role="alert">{error}<button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => failedDetail ? void openDetail(failedDetail) : setReloadVersion((value) => value + 1)}>Tentar novamente</button></div>}
-        {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lançamentos...</div> : items.length === 0 ? (
-          <div className={cx(styles, commonStyles, "history-empty")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌕</div><h3>Nenhum lançamento encontrado</h3><p>{canCreate ? "Ajuste os filtros ou crie um novo lançamento de Entregas." : "Ajuste os filtros para localizar outros lançamentos."}</p><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button></div>
+        {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lançamentos...</div> : visibleRows.length === 0 ? (
+          <div className={cx(styles, commonStyles, "history-empty")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌕</div><h3>Nenhum lançamento encontrado</h3><p>{canCreate ? "Ajuste os filtros ou crie um novo lançamento de Entregas." : "Ajuste os filtros para localizar outros lançamentos."}</p><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { setStatus("TODOS"); setLocalityId(""); setDriverId(""); setReasonId(""); setOperation(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button></div>
         ) : (
-          <div className={cx(styles, commonStyles, "table-scroll")}><table className={cx(styles, commonStyles, "history-table")}><thead><tr><th>Data</th><th>Operações</th><th>Loja</th><th>Equipe</th><th>Entregas R / NR</th><th>Coletas R / NR</th><th><span title="Entregas e coletas não realizadas ÷ total registrado nas duas operações">OTIF combinado</span></th><th>Lançamento</th><th>Motivos e observações</th><th>Observação geral (legado)</th><th>Ações</th></tr></thead><tbody>
-          {items.flatMap((launch) => launch.itens.map((delivery) => {
+          <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela do histórico de entregas" tabIndex={0}><table className={cx(styles, commonStyles, "data-table history-table")}><thead><tr><th>Data / operação</th><th>Loja</th><th>Equipe</th><th>Transporte</th><th>Entregas R/NR</th><th>Coletas R/NR</th><th><span title="Entregas e coletas não realizadas ÷ total registrado nas duas operações">OTIF</span></th><th>Motivos e observações</th><th>Ações</th></tr></thead><tbody>
+          {visibleRows.map(({ launch, delivery }) => {
               const driver = delivery.participantes.find((person) => person.papel_participante === "MOTORISTA");
               const helpers = delivery.participantes.filter((person) => person.papel_participante === "AJUDANTE");
               const canEdit = canEditDraft && launch.estado === "RASCUNHO";
+              const canCorrectLaunch = canCorrect && (launch.estado === "ENVIADA" || launch.estado === "APROVADA");
+              const canCancelLaunch = canCancel && ((launch.estado === "ENVIADA" || launch.estado === "APROVADA") || (launch.estado === "RASCUNHO" && launch.numero_revisao > 1));
               return <tr key={`${launch.codigo_lancamento}-${delivery.codigo_item_lancamento}`}>
-                <td><strong>{formatDate(delivery.data_entrega)}</strong></td>
-                <td>{operationName(delivery)}</td>
+                <td><div className={cx(styles, commonStyles, "history-date-operation")}><strong>{formatDate(delivery.data_entrega)}</strong><span className={cx(styles, commonStyles, "history-operation-badge")}>{operationName(delivery)}</span></div></td>
                 <td><strong>{delivery.nome_localidade}</strong><small>{launch.nome_setor}</small></td>
                 <td><div className={cx(styles, commonStyles, "history-team-cell")}>
                   <span><b>Motorista</b>{driver?.nome_exibicao ?? "Não informado"}</span>
                   <span><b>Ajudantes</b>{helpers.length ? helpers.map((person) => person.nome_exibicao).join(", ") : "Nenhum"}</span>
-                  <span><b>Tipo do transporte</b>{deliveryTypeDescription(delivery)}</span>
                 </div></td>
-                <td>{(() => { const q = itemQuantities(delivery); return <span className={cx(styles, commonStyles, "history-dual-counts")}><b className={cx(styles, commonStyles, "table-count count-positive")}>{q.entregasRealizadas}</b> / <b className={cx(styles, commonStyles, `table-count${q.entregasNaoRealizadas > 0 ? " count-muted" : ""}`)}>{q.entregasNaoRealizadas}</b></span>; })()}</td>
-                <td>{(() => { const q = itemQuantities(delivery); return <span className={cx(styles, commonStyles, "history-dual-counts")}><b className={cx(styles, commonStyles, "table-count count-positive")}>{q.coletasRealizadas}</b> / <b className={cx(styles, commonStyles, `table-count${q.coletasNaoRealizadas > 0 ? " count-muted" : ""}`)}>{q.coletasNaoRealizadas}</b></span>; })()}</td>
-                <td>{(() => { const otif = otifValue(delivery); return otif === null
+                <td className={cx(styles, commonStyles, "history-transport-cell")}><span className={cx(styles, commonStyles, "history-transport-badge")}>{deliveryTypeDescription(delivery)}</span></td>
+                <td className={cx(styles, commonStyles, "history-metric-cell")}>{(() => { const q = itemQuantities(delivery); return <span className={cx(styles, commonStyles, "history-dual-counts")}><b className={cx(styles, commonStyles, "table-count count-positive")}>{q.entregasRealizadas}</b> / <b className={cx(styles, commonStyles, `table-count${q.entregasNaoRealizadas > 0 ? " count-muted" : ""}`)}>{q.entregasNaoRealizadas}</b></span>; })()}</td>
+                <td className={cx(styles, commonStyles, "history-metric-cell")}>{(() => { const q = itemQuantities(delivery); return <span className={cx(styles, commonStyles, "history-dual-counts")}><b className={cx(styles, commonStyles, "table-count count-positive")}>{q.coletasRealizadas}</b> / <b className={cx(styles, commonStyles, `table-count${q.coletasNaoRealizadas > 0 ? " count-muted" : ""}`)}>{q.coletasNaoRealizadas}</b></span>; })()}</td>
+                <td className={cx(styles, commonStyles, "history-metric-cell")}>{(() => { const otif = otifValue(delivery); return otif === null
                   ? <span className={cx(styles, commonStyles, "history-muted-cell")}>—</span>
                   : <span className={cx(styles, commonStyles, "history-otif-values")}>{rateText(otif)}</span>; })()}</td>
-                <td><div className={cx(styles, commonStyles, "history-launch-cell")}><strong title={launch.codigo_lancamento}>{launch.codigo_lancamento.slice(0, 8).toUpperCase()}</strong><span className={cx(styles, commonStyles, statusClass(launch.estado))}><i />{statusLabels[launch.estado]}</span><small>Versão {launch.numero_revisao}</small></div></td>
-                <td>{delivery.motivos.length ? <ul className={cx(styles, commonStyles, "history-reasons")}>{delivery.motivos.map((reason, reasonIndex) => <li key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}>{reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}{reason.observacao && <small>Observação: {reason.observacao}</small>}</li>)}</ul> : <span className={cx(styles, commonStyles, "history-muted-cell")}>Sem ocorrências</span>}</td>
-                <td><span className={cx(styles, commonStyles, "history-observation")}>{delivery.observacao || "Sem observações"}</span></td>
+                <td><HistoryReasonCell reasons={delivery.motivos} /></td>
                 <td><div className={cx(styles, commonStyles, "history-row-actions")}>
+                  <span className={cx(styles, commonStyles, "history-main-actions")}>
                   <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={() => void openDetail(launch)} disabled={detailLoading || discardingId === launch.codigo_lancamento}>{detailLoading ? "Abrindo..." : "Detalhes"}</button>
-                  {canEdit && <button className={cx(styles, commonStyles, "table-action")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => onNavigate(`/entregas/${launch.codigo_lancamento}`)}>Editar lançamento</button>}
-                  {canEdit && <button className={cx(styles, commonStyles, "table-action table-action-danger")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void discardDraft(launch)}>{discardingId === launch.codigo_lancamento ? "Excluindo..." : "Excluir rascunho"}</button>}
-                  {canCorrect && (launch.estado === "ENVIADA" || launch.estado === "APROVADA") && <button className={cx(styles, commonStyles, "table-action")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void startCorrection(launch)}>Editar lançamento</button>}
-                  {canCancel && ((launch.estado === "ENVIADA" || launch.estado === "APROVADA") || (launch.estado === "RASCUNHO" && launch.numero_revisao > 1)) && <button className={cx(styles, commonStyles, "table-action table-action-danger")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void cancelConfirmed(launch)}>Cancelar lançamento</button>}
+                  {(canEdit || canCorrectLaunch) && <button className={cx(styles, commonStyles, "table-action")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => canEdit ? onNavigate(`/entregas/${launch.codigo_lancamento}`) : void startCorrection(launch)}>Editar</button>}
+                  {canCancelLaunch && <button className={cx(styles, commonStyles, "table-action table-action-danger")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void cancelConfirmed(launch)}>Cancelar</button>}
+                  </span>
+                  {canEdit && <button className={cx(styles, commonStyles, "table-action table-action-danger history-delete-action")} type="button" disabled={discardingId === launch.codigo_lancamento} onClick={() => void discardDraft(launch)}>{discardingId === launch.codigo_lancamento ? "Excluindo..." : "Excluir rascunho"}</button>}
                 </div></td>
               </tr>;
-            }))}
+            })}
           </tbody></table></div>
         )}
-        <div className={cx(styles, commonStyles, "table-footer")}><span>{pageDeliveryCount} registros com entregas e coletas em {items.length} lançamentos nesta página · {total} lançamentos no histórico</span><div className={cx(styles, commonStyles, "pagination-controls")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Anterior</button><span>Página {currentPage} de {pageCount}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset + items.length >= total} onClick={() => setOffset((value) => value + pageSize)}>Próxima</button></div><span className={cx(styles, commonStyles, "table-footer-note")}>A lista respeita seu escopo de acesso.</span></div>
+        <div className={cx(styles, commonStyles, "table-footer")}>
+          <span>{pageDeliveryCount} registros com entregas e coletas em {items.length} lançamentos nesta página · {total} lançamentos no histórico</span>
+          <label className={cx(styles, commonStyles, "page-size-control")}><span>Lançamentos</span><select aria-label="Lançamentos por página" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setOffset(0); }}>{pageSizeOptions.map((size) => <option key={size} value={size}>{size}</option>)}</select></label>
+          <div className={cx(styles, commonStyles, "pagination-controls")} role="group" aria-label="Paginação do histórico"><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Anterior</button><span>Página {currentPage} de {pageCount}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset + items.length >= total} onClick={() => setOffset((value) => value + pageSize)}>Próxima</button></div>
+          <span className={cx(styles, commonStyles, "table-footer-note")}>A lista respeita seu escopo de acesso.</span>
+        </div>
       </section>
       {selected && <DetailDialog detail={selected} events={selectedEvents} onClose={() => setSelected(null)} onEdit={canEditDraft && selected.estado === "RASCUNHO" ? () => onNavigate(`/entregas/${selected.codigo_lancamento}`) : undefined} onCorrect={canCorrect && (selected.estado === "ENVIADA" || selected.estado === "APROVADA") ? () => void startCorrection(selected) : undefined} onCancel={canCancel && ((selected.estado === "ENVIADA" || selected.estado === "APROVADA") || (selected.estado === "RASCUNHO" && selected.numero_revisao > 1)) ? () => void cancelConfirmed(selected) : undefined} />}
-      {importOpen && <DeliveryCsvImportDialog onClose={() => setImportOpen(false)} onImported={() => { setImportOpen(false); setNotice("CSV importado como rascunho. O registro já aparece no histórico."); setOffset(0); setStatus("TODOS"); setLocalityId(""); setMineOnly(false); setFromDate(""); setToDate(""); setReloadVersion((value) => value + 1); }} />}
+      {importOpen && <DeliveryCsvImportDialog onClose={() => setImportOpen(false)} onImported={() => { setImportOpen(false); setNotice("CSV importado como rascunho. O registro já aparece no histórico."); setOffset(0); setStatus("TODOS"); setLocalityId(""); setDriverId(""); setReasonId(""); setOperation(""); setMineOnly(false); setFromDate(""); setToDate(""); setReloadVersion((value) => value + 1); }} />}
     </div>
   );
 }

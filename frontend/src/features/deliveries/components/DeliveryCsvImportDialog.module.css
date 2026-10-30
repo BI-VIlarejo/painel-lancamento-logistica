@@ -18,9 +18,7 @@
 .csv-import-error { margin: 10px 22px 0; color: var(--brand-red); font-size: 13px; font-weight: 600; }
 .csv-preview-scroll { max-height: 270px; overflow: auto; margin: 12px 22px 0; border: 1px solid #e3e8e4; border-radius: 7px; }
 .csv-preview-scroll > small { display: block; padding: 8px 10px; color: #63748a; font-size: 12px; }
-.csv-preview-table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
-.csv-preview-table th { position: sticky; top: 0; padding: 8px; color: #52675b; background: var(--surface-subtle); }
-.csv-preview-table td { padding: 8px; border-top: 1px solid #edf0ed; color: #5b6c80; vertical-align: top; }
+.csv-preview-table.csv-preview-table { min-width: 920px; }
 .csv-preview-table td:last-child { min-width: 220px; color: var(--brand-navy); }
 .csv-preview-table .csv-row-error td:last-child { color: var(--brand-red); }
 .csv-import-dialog > .history-loading, .csv-import-dialog > .notice { margin: 14px 22px 0; }

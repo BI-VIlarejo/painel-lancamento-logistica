@@ -306,7 +306,7 @@ export function FeedbackCsvImportDialog({ onClose, onImported }: { onClose: () =
             <span>{preview.rows.length} linhas lidas; nomes e relatos não são exibidos na prévia.</span>
           </div>
           {preview.errors.map((error) => <p className={cx(styles, commonStyles, "feedback-import-error")} key={error}>{error}</p>)}
-          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "feedback-import-table-scroll")}><table className={cx(styles, commonStyles, "feedback-import-table")}><thead><tr><th>Linha</th><th>Data</th><th>Tipo</th><th>Vínculo</th><th>Validação</th></tr></thead><tbody>
+          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "data-table-scroll data-table-scroll-compact feedback-import-table-scroll")} role="region" aria-label="Prévia de importação de manifestações" tabIndex={0}><table className={cx(styles, commonStyles, "data-table feedback-import-table")}><thead><tr><th>Linha</th><th>Data</th><th>Tipo</th><th>Vínculo</th><th>Validação</th></tr></thead><tbody>
             {preview.rows.slice(0, 20).map((row) => <tr key={row.line} className={row.errors.length ? cx(styles, commonStyles, "feedback-import-row-error") : undefined}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.type || "—"}</td><td>{row.itemCode || "—"}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
           </tbody></table>{preview.rows.length > 20 && <small>Exibindo as 20 primeiras de {preview.rows.length} linhas.</small>}</div>}
         </>}
