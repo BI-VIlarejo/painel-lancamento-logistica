@@ -1,7 +1,56 @@
 # Pendências para retomada — Portal de Logística
 
-**Atualizado:** 27/10/2026
+**Atualizado:** 30/10/2026
 **Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
+
+## Feedback da gerente Mônica e do diretor Vyctor — 30/10/2026
+
+O trabalho de Fretes foi pausado para priorizar estes pontos. Implementação iniciada em 30/10/2026; itens concluídos ainda precisam de revisão no navegador.
+
+### Navegação e densidade das páginas
+
+- [x] Permitir recolher e reabrir a barra lateral no desktop para ampliar a área útil da página; no celular o menu continua como gaveta.
+- [x] Ajustar a densidade visual: ampliar a largura útil, reduzir um pouco os intervalos entre blocos, colocar Entrega e Coleta lado a lado quando houver largura e organizar o formulário de feedback em duas colunas no desktop; os controles empilham em telas estreitas.
+- [ ] Revisar no navegador a densidade visual e o tamanho dos elementos com Mônica e Vyctor; os ajustes ainda não passaram por validação visual.
+
+### Lojas/localidades
+
+- [x] Fazer o painel gerencial exibir todas as localidades ativas do catálogo, inclusive as sem lançamentos no período (com métricas zeradas).
+- [x] Fazer o seletor de Reclamações e Elogios consultar todas as localidades ativas permitidas pelo escopo, não apenas as que aparecem em lançamentos confirmados. No modo de demonstração, usar o catálogo completo.
+- [ ] Confirmar que o conjunto completo de lojas exibido corresponde aos escopos desejados.
+
+### Painel gerencial
+
+- [x] Colocar o cartão de Indicadores por pessoa ao lado do bloco de taxa por equipe, em duas colunas que se empilham em telas menores.
+- [ ] Separar os conjuntos de dados que hoje estão apresentados juntos, mas deveriam ficar separados.
+- [ ] **Aguardando detalhes do usuário:** quais dados/blocos estão agrupados incorretamente e como devem ser separados. Não decidir essa regra por inferência; o usuário enviará um prompt com o detalhamento.
+
+### Lançamento de entregas
+
+- [x] Conferir o formulário atual: não existe subaba nem campo para digitar código de cliente no lançamento de entregas. Nenhum campo foi removido; a tela de Reclamações e Elogios mantém o campo próprio de nome do cliente.
+
+### Histórico de entregas
+
+- [x] Limitar o filtro de status a **Todos**, **Lançado** (inclui `ENVIADA` e `APROVADA`) e **Cancelado** (`CANCELADA`).
+- [x] Acrescentar filtros por equipe (motorista responsável), motivo e operação (**Entrega** ou **Coleta**) e aplicá-los também ao CSV.
+- [x] Adicionar os parâmetros desses filtros à API/consulta do histórico, mantendo paginação por lançamento e exibindo somente os itens correspondentes.
+
+### Critérios para retomar
+
+- [ ] Receber do usuário o detalhamento dos dados do painel antes de alterar agrupamentos ou indicadores.
+- [ ] Revisar os fluxos com a gerente Mônica e o diretor Vyctor, incluindo visualização em telas menores, catálogo de lojas, lançamento de entregas e filtros do histórico.
+
+**Decisões e limites desta rodada:** “Equipe” no histórico é filtrada pelo motorista responsável pela equipe; se a reunião definir outra regra, ajustar. A separação dos dados do painel permanece aguardando o detalhamento do usuário. A implementação ainda não foi revisada no navegador.
+
+**Bloco de densidade autorizado pelo usuário:** implementado localmente em 30/10/2026; aguarda revisão visual antes de iniciar outro bloco.
+
+### Protocolo de trabalho definido pelo usuário — 30/10/2026
+
+- **Não alterar código por iniciativa própria.** Antes de implementar qualquer correção, apresentar ao usuário o plano do próximo bloco e aguardar autorização explícita para aquele bloco.
+- Trabalhar um bloco por vez. Após concluir o bloco autorizado, resumir as mudanças e os arquivos afetados; só então apresentar o próximo bloco para validação.
+- Perguntas como “o que devemos fazer?” ou “vamos começar” pedem planejamento e não autorizam, por si só, a implementação.
+- Enquanto aguarda validação, limitar o trabalho a leitura, diagnóstico e apresentação do plano. Alterar documentação somente quando o usuário pedir ou autorizar essa alteração.
+- Aplicar este protocolo às pendências deste documento e às próximas tarefas do Portal.
 
 ## Atualização de escopo: coletas e motivos por unidade — 27/10/2026
 
