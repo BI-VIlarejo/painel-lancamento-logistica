@@ -127,17 +127,6 @@ function DeliveryComposition({ completed, notCompleted }: { completed: number; n
   );
 }
 
-function PerformanceRate({ value, label = "Taxa de realização", neutral = false }: { value: number | null; label?: string; neutral?: boolean }) {
-  if (value === null) return <span className={cx(styles, commonStyles, "rate-empty")}>—</span>;
-  const width = Math.min(100, Math.max(0, value));
-  return (
-    <div className={cx(styles, commonStyles, "rate-cell")} role="meter" aria-valuemin={0} aria-valuemax={100} aria-valuenow={value} aria-label={`${label}: ${rateLabel(value)}`}>
-      <span className={cx(styles, commonStyles, neutral ? "rate-meter-track-neutral" : "rate-meter-track")}><i style={{ width: `${width}%` }} /></span>
-      <strong className={cx(styles, commonStyles, "rate-value")}>{rateLabel(value)}</strong>
-    </div>
-  );
-}
-
 type HorizontalBarItem = {
   key: string;
   label: string;
