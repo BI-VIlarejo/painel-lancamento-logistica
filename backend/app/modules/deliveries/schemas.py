@@ -19,7 +19,16 @@ class DeliveryReasonInput(BaseModel):
 
     id_motivo_nao_entrega: int = Field(ge=1)
     tipo_operacao: Literal["ENTREGA", "COLETA"] = "ENTREGA"
+    codigo_cliente: str | None = Field(default=None, max_length=100)
     observacao: str | None = Field(default=None, max_length=5000)
+
+    @field_validator("codigo_cliente")
+    @classmethod
+    def normalize_customer_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
 
     @field_validator("observacao")
     @classmethod
@@ -147,11 +156,35 @@ class DeliveryDraftCreateRequest(BaseModel):
 
     itens: list[DeliveryItemInput] = Field(min_length=1, max_length=100)
 
+    @model_validator(mode="after")
+    def validate_customer_codes(self) -> "DeliveryDraftCreateRequest":
+        if any(
+            not reason.codigo_cliente
+            for item in self.itens
+            for reason in item.motivos
+        ):
+            raise ValueError(
+                "Informe o código do cliente para cada entrega ou coleta não realizada."
+            )
+        return self
+
 
 class DeliveryDraftUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     itens: list[DeliveryItemInput] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_customer_codes(self) -> "DeliveryDraftUpdateRequest":
+        if any(
+            not reason.codigo_cliente
+            for item in self.itens
+            for reason in item.motivos
+        ):
+            raise ValueError(
+                "Informe o código do cliente para cada entrega ou coleta não realizada."
+            )
+        return self
 
 
 class DeliveryLifecycleReasonRequest(BaseModel):
@@ -198,6 +231,7 @@ class DeliveryReasonResponse(BaseModel):
     descricao_motivo: str
     grupo_motivo: str | None
     quantidade: int
+    codigo_cliente: str | None
     observacao: str | None
 
 

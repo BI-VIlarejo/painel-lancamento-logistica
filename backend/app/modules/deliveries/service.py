@@ -194,6 +194,7 @@ def _build_details(
                     descricao_motivo=reason.descricao_motivo,
                     grupo_motivo=reason.grupo_motivo,
                     quantidade=1,
+                    codigo_cliente=reason_link.codigo_cliente,
                     observacao=reason_link.observacao,
                 )
             )
@@ -259,6 +260,7 @@ def _copy_detail_items(detail: DeliveryLaunchDetail) -> list[DeliveryItemInput]:
                 DeliveryReasonInput(
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
                     tipo_operacao=reason.tipo_operacao,
+                    codigo_cliente=reason.codigo_cliente,
                     observacao=reason.observacao,
                 )
                 for reason in item.motivos
@@ -332,6 +334,7 @@ def _create_item_rows(
                     id_motivo_nao_entrega=reason.id_motivo_nao_entrega,
                     tipo_operacao=reason.tipo_operacao,
                     quantidade=1,
+                    codigo_cliente=reason.codigo_cliente,
                     observacao=reason.observacao,
                 )
             )
@@ -938,6 +941,14 @@ def confirm_draft(
             )
 
         detail = _build_details(db, launch_rows=[(launch, revision, sector)])[0]
+        if any(
+            not reason.codigo_cliente
+            for item in detail.itens
+            for reason in item.motivos
+        ):
+            raise ConflictError(
+                "Informe o código do cliente em cada ocorrência antes de confirmar o lançamento."
+            )
         canonical_content = json.dumps(
             detail.model_dump(mode="json", include={"id_setor", "itens"}),
             sort_keys=True,

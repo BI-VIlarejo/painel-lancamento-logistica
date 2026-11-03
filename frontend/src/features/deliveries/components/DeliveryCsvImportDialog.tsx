@@ -52,8 +52,10 @@ const templateHeader = [
   "quantidade_coleta_realizada",
   "quantidade_coleta_nao_realizada",
   "motivos",
+  "codigos_clientes",
   "observacoes_motivos",
   "motivos_coleta",
+  "codigos_clientes_coleta",
   "observacoes_motivos_coleta",
 ];
 
@@ -100,11 +102,17 @@ const headerAliases: Record<string, string> = {
   entregas_completas: "quantidade_entregas_completas",
   motivos: "motivos",
   motivo: "motivos",
+  codigos_clientes: "codigos_clientes",
+  codigo_cliente: "codigos_clientes",
+  codigos_dos_clientes: "codigos_clientes",
   observacoes_motivos: "observacoes_motivos",
   observacoes_dos_motivos: "observacoes_motivos",
   observacao_motivos: "observacoes_motivos",
   motivos_coleta: "motivos_coleta",
   motivo_coleta: "motivos_coleta",
+  codigos_clientes_coleta: "codigos_clientes_coleta",
+  codigo_cliente_coleta: "codigos_clientes_coleta",
+  codigos_dos_clientes_coleta: "codigos_clientes_coleta",
   observacoes_motivos_coleta: "observacoes_motivos_coleta",
   observacoes_dos_motivos_coleta: "observacoes_motivos_coleta",
   observacao: "observacao",
@@ -247,8 +255,10 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     "quantidade_entregas_no_prazo",
     "quantidade_entregas_completas",
     "motivos",
+    "codigos_clientes",
     "observacoes_motivos",
     "motivos_coleta",
+    "codigos_clientes_coleta",
     "observacoes_motivos_coleta",
     "observacao",
   ];
@@ -347,7 +357,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
 
     if (get("observacao")) previewRow.errors.push("observacao: informe o texto por motivo nas colunas de observações correspondentes.");
     const reasons: DeliveryItemInput["motivos"] = [];
-    const parseReasons = (operation: "ENTREGA" | "COLETA", reasonValue: string, observationValue: string, expected: number | undefined, columnName: string) => {
+    const parseReasons = (operation: "ENTREGA" | "COLETA", reasonValue: string, observationValue: string, customerCodeValue: string, expected: number | undefined, columnName: string, customerCodeColumn: string) => {
       const operationReasons: DeliveryItemInput["motivos"] = [];
       if (expected !== undefined && expected === 0 && reasonValue) {
         previewRow.errors.push(`${columnName}: remova os motivos quando não houver itens não realizados.`);
@@ -372,7 +382,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
             continue;
           }
           for (let occurrence = 0; occurrence < amount; occurrence += 1) {
-            operationReasons.push({ id_motivo_nao_entrega: matches[0].id_motivo_nao_entrega, tipo_operacao: operation, observacao: null });
+            operationReasons.push({ id_motivo_nao_entrega: matches[0].id_motivo_nao_entrega, tipo_operacao: operation, codigo_cliente: "", observacao: null });
           }
         }
       }
@@ -387,26 +397,47 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
           });
         }
       }
+      if (customerCodeValue && operationReasons.length === 0) {
+        previewRow.errors.push(`${customerCodeColumn}: remova os códigos quando não houver itens não realizados.`);
+      } else if (operationReasons.length > 0 && !customerCodeValue) {
+        previewRow.errors.push(`${customerCodeColumn}: informe um código do cliente por ocorrência, separados por |.`);
+      } else if (customerCodeValue) {
+        const customerCodes = customerCodeValue.split("|").map((value) => value.trim());
+        if (customerCodes.length !== operationReasons.length) {
+          previewRow.errors.push(`${customerCodeColumn}: informe um código do cliente por ocorrência, na mesma ordem, separados por |.`);
+        } else {
+          customerCodes.forEach((customerCode, index) => {
+            if (!customerCode) previewRow.errors.push(`${customerCodeColumn}: o código do cliente ${index + 1} está vazio.`);
+            else if (customerCode.length > 100) previewRow.errors.push(`${customerCodeColumn}: o código do cliente ${index + 1} ultrapassa 100 caracteres.`);
+            else if (operationReasons[index]) operationReasons[index].codigo_cliente = customerCode;
+          });
+        }
+      }
       if (expected !== undefined && operationReasons.length !== expected) {
         previewRow.errors.push(`${columnName}: informe exatamente uma ocorrência por item não realizado.`);
       }
       return operationReasons;
     };
     const legacyReasons = get("motivos");
+    const legacyCustomerCodes = get("codigos_clientes");
     const legacyObservations = get("observacoes_motivos");
     reasons.push(...parseReasons(
       "ENTREGA",
       legacyOperation === "ENTREGA" ? legacyReasons : "",
       legacyOperation === "ENTREGA" ? legacyObservations : "",
+      legacyOperation === "ENTREGA" ? legacyCustomerCodes : "",
       deliveryNotCompleted,
       "motivos",
+      "codigos_clientes",
     ));
     reasons.push(...parseReasons(
       "COLETA",
       [legacyOperation === "COLETA" ? legacyReasons : "", get("motivos_coleta")].filter(Boolean).join("|"),
       [legacyOperation === "COLETA" ? legacyObservations : "", get("observacoes_motivos_coleta")].filter(Boolean).join("|"),
+      [legacyOperation === "COLETA" ? legacyCustomerCodes : "", get("codigos_clientes_coleta")].filter(Boolean).join("|"),
       collectionNotCompleted,
       "motivos_coleta",
+      "codigos_clientes_coleta",
     ));
 
     const participants: DeliveryItemInput["participantes"] = [];
@@ -522,7 +553,7 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
         <p className={cx(styles, commonStyles, "csv-import-description")}>O CSV pode ser validado antes de registrar os lançamentos. Cada linha compartilha a data, localidade e equipe entre entregas e coletas. Importamos até 100 registros por vez; nenhum registro é gravado se houver erro.</p>
 
         <div className={cx(styles, commonStyles, "csv-template-help")}>
-          <div><strong>Prepare o arquivo</strong><span>Uma linha representa a mesma data, localidade, motorista e equipe para as duas operações. Informe as quantidades de entrega e de coleta nas respectivas colunas. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Para motivos repetidos, use CODIGO_MOTIVO:QUANTIDADE e separe motivos diferentes com |; use motivos_coleta e observacoes_motivos_coleta para coletas. Arquivos antigos com tipo_operacao ainda são aceitos e convertidos para este formato. A coluna antiga observacao não é aceita.</span></div>
+          <div><strong>Prepare o arquivo</strong><span>Uma linha representa a mesma data, localidade, motorista e equipe para as duas operações. Informe as quantidades de entrega e de coleta nas respectivas colunas. Para cada item não realizado, informe um código do cliente na mesma ordem dos motivos, separado por |. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Para motivos repetidos, use CODIGO_MOTIVO:QUANTIDADE e separe motivos diferentes com |; use motivos_coleta, codigos_clientes_coleta e observacoes_motivos_coleta para coletas. Arquivos antigos com tipo_operacao ainda são aceitos e convertidos para este formato. A coluna antiga observacao não é aceita.</span></div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={downloadTemplate}>Baixar modelo CSV</button>
         </div>
         <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Colunas:</strong> {templateHeader.join(" · ")}</p>

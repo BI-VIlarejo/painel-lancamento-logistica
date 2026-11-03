@@ -42,6 +42,7 @@ export type DeliveryParticipantInput = {
 export type DeliveryReasonInput = {
   id_motivo_nao_entrega: number;
   tipo_operacao: "ENTREGA" | "COLETA";
+  codigo_cliente: string;
   observacao?: string | null;
 };
 export type DeliveryItemInput = {
@@ -66,8 +67,9 @@ export type DeliveryParticipantResponse = DeliveryParticipantInput & {
   ordem: number;
   tipo_transporte_entrega: DeliveryTransportType | null;
 };
-export type DeliveryReasonResponse = DeliveryReasonInput & {
+export type DeliveryReasonResponse = Omit<DeliveryReasonInput, "codigo_cliente"> & {
   quantidade: number;
+  codigo_cliente: string | null;
   codigo_motivo: string;
   descricao_motivo: string;
   grupo_motivo: NonDeliveryReasonGroup | null;

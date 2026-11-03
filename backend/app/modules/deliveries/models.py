@@ -114,7 +114,7 @@ class Lancamento(Base):
     )
 
     id_lancamento: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
     )
     codigo_lancamento: Mapped[str] = mapped_column(
         CHAR(36), nullable=False, unique=True
@@ -515,4 +515,5 @@ class EntregaMotivo(Base):
         String(16), nullable=False, default="ENTREGA", server_default="ENTREGA"
     )
     quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
+    codigo_cliente: Mapped[str | None] = mapped_column(String(100), nullable=True)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)

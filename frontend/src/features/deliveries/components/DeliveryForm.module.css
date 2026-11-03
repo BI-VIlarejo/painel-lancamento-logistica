@@ -68,7 +68,9 @@
 .reason-row .form-field { gap: 0; }
 .reason-row .form-field select, .reason-row .form-field input { height: 35px; }
 .remove-reason { width: 31px; height: 35px; flex: 0 0 auto; }
-.reason-observation { margin-top: 8px; }
+.reason-context-fields { display: grid; grid-template-columns: minmax(150px, .72fr) minmax(0, 1.5fr); align-items: start; gap: 10px; margin-top: 9px; }
+.reason-customer-code input { height: 35px; }
+.reason-observation { margin-top: 0; }
 .legacy-observation { margin-top: 14px; overflow-wrap: anywhere; font-size: 12px; line-height: 1.5; }
 .field-error { display: block; color: var(--brand-red); font-size: 12px; font-weight: 500; line-height: 1.4; }
 .form-error-summary { margin: -4px 0 12px; }
@@ -141,6 +143,7 @@
 .quantity-total strong { font-size: 15px; }
 .reasons-panel { padding: 11px 9px; }
 .reasons-heading { align-items: flex-start; }
+.reason-context-fields { grid-template-columns: 1fr; gap: 9px; }
 .text-button { font-size: 12px; }
 .form-summary-bar { gap: 8px; padding: 10px; }
 .summary-bar-copy strong { font-size: 12px; }

@@ -32,9 +32,13 @@ from app.modules.feedback.service import (
 )
 from app.modules.deliveries.service import (
     cancel_confirmed_launch,
+    confirm_draft,
+    create_draft,
     list_launch_events,
     start_correction_draft,
+    update_draft,
 )
+from app.modules.deliveries.schemas import DeliveryDraftCreateRequest, DeliveryDraftUpdateRequest
 
 
 class FeedbackServiceTests(unittest.TestCase):
@@ -229,6 +233,65 @@ class FeedbackServiceTests(unittest.TestCase):
             codigo_item_lancamento=self.item_code,
             relato="Atendimento muito bom.",
         )
+
+    def _customer_code_item(self):
+        for person_id in (4, 5):
+            self.db.get(Pessoa, person_id).tipo_transporte_entrega = "PROPRIA"
+        self.db.add(MotivoNaoEntrega(
+            id_motivo_nao_entrega=11, codigo_motivo="AUSENTE", descricao_motivo="Cliente ausente",
+            grupo_motivo="LOGISTICA", ativo=True, vigente_desde=date(2020, 1, 1),
+            criado_por=1, criado_em=self.now, atualizado_em=self.now,
+        ))
+        self.db.commit()
+        return dict(
+            data_entrega=self.delivery_date, id_localidade=3,
+            quantidade_realizada=1, quantidade_nao_realizada=1,
+            quantidade_coleta_realizada=1, quantidade_coleta_nao_realizada=1,
+            participantes=[dict(id_pessoa=4, papel_participante="MOTORISTA")],
+            motivos=[
+                dict(id_motivo_nao_entrega=11, tipo_operacao="ENTREGA", codigo_cliente="000123", observacao="Entrega"),
+                dict(id_motivo_nao_entrega=11, tipo_operacao="COLETA", codigo_cliente="000456", observacao="Coleta"),
+            ],
+        )
+
+    def test_customer_codes_survive_confirmation_and_correction(self):
+        item = self._customer_code_item()
+        access = self._access(permission="ENTREGAS_DIARIAS:CRIAR")
+        draft = create_draft(self.db, payload=DeliveryDraftCreateRequest(itens=[item]),
+                             idempotency_key=uuid4(), access=access)
+        confirmed = confirm_draft(self.db, codigo_lancamento=draft.codigo_lancamento,
+                                  idempotency_key=uuid4(), access=access)
+        correction = start_correction_draft(self.db, codigo_lancamento=draft.codigo_lancamento,
+            justificativa=None, idempotency_key=uuid4(), access=access)
+        for detail in (draft, confirmed, correction):
+            self.assertEqual({(reason.tipo_operacao, reason.codigo_cliente) for reason in detail.itens[0].motivos},
+                             {("ENTREGA", "000123"), ("COLETA", "000456")})
+
+    def test_legacy_correction_requires_codes_but_preserves_original_history(self):
+        item = self._customer_code_item()
+        delivery = self.db.get(EntregaDiaria, 9)
+        delivery.quantidade_nao_realizada = 1
+        delivery.quantidade_coleta_nao_realizada = 1
+        for operation in ("ENTREGA", "COLETA"):
+            self.db.add(EntregaMotivo(id_entrega_diaria=9, id_motivo_nao_entrega=11,
+                                     tipo_operacao=operation, quantidade=1))
+        self.db.commit()
+        access = self._access(permission="ENTREGAS_DIARIAS:EDITAR_RASCUNHO")
+        correction = start_correction_draft(self.db, codigo_lancamento=self.launch_code,
+            justificativa=None, idempotency_key=uuid4(), access=access)
+        self.assertTrue(all(reason.codigo_cliente is None for reason in correction.itens[0].motivos))
+        with self.assertRaises(ConflictError):
+            confirm_draft(self.db, codigo_lancamento=self.launch_code,
+                          idempotency_key=uuid4(), access=access)
+        item["codigo_item_lancamento"] = correction.itens[0].codigo_item_lancamento
+        update_draft(self.db, codigo_lancamento=self.launch_code,
+                     payload=DeliveryDraftUpdateRequest(itens=[item]), idempotency_key=uuid4(), access=access)
+        confirmed = confirm_draft(self.db, codigo_lancamento=self.launch_code,
+                                 idempotency_key=uuid4(), access=access)
+        self.assertEqual(confirmed.estado, "ENVIADA")
+        old_reasons = self.db.scalars(select(EntregaMotivo).where(EntregaMotivo.id_entrega_diaria == 9)).all()
+        self.assertEqual(len(old_reasons), 2)
+        self.assertTrue(all(reason.codigo_cliente is None for reason in old_reasons))
 
     def test_feedback_is_bound_to_visible_confirmed_delivery_and_retries_idempotently(self) -> None:
         access = self._access()

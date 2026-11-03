@@ -12,10 +12,30 @@ from app.modules.deliveries.schemas import (
     DeliveryLifecycleReasonRequest,
     DeliveryParticipantInput,
     DeliveryReasonInput,
+    DeliveryDraftCreateRequest,
+    DeliveryDraftUpdateRequest,
 )
 
 
 class DeliveryRequestTests(TestCase):
+    def test_customer_code_is_required_for_each_delivery_and_collection_occurrence(self):
+        for request_type in (DeliveryDraftCreateRequest, DeliveryDraftUpdateRequest):
+            for operation in ("ENTREGA", "COLETA"):
+                for code in (None, "", "   "):
+                    with self.subTest(request=request_type.__name__, operation=operation, code=code):
+                        item = dict(
+                            data_entrega="2026-11-03", id_localidade=1,
+                            quantidade_realizada=1, quantidade_nao_realizada=int(operation == "ENTREGA"),
+                            quantidade_coleta_nao_realizada=int(operation == "COLETA"),
+                            participantes=[dict(id_pessoa=10, papel_participante="MOTORISTA")],
+                            motivos=[dict(id_motivo_nao_entrega=5, tipo_operacao=operation, codigo_cliente=code)],
+                        )
+                        with self.assertRaises(ValidationError):
+                            request_type(itens=[item])
+                        item["motivos"][0]["codigo_cliente"] = "  000123  "
+                        request = request_type(itens=[item])
+                        self.assertEqual(request.itens[0].motivos[0].codigo_cliente, "000123")
+
     def test_justification_is_trimmed_and_requires_content(self) -> None:
         request = DeliveryLifecycleReasonRequest(justificativa="  Ajuste de contagem  ")
 

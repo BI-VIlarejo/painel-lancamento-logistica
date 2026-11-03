@@ -94,10 +94,11 @@ function makeItem(
       { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1, tipo_transporte_entrega: people.find((person) => person.id_pessoa === driverId)?.tipo_transporte_entrega ?? null },
       { id_pessoa: helperId, codigo_pessoa: uuid(), nome_exibicao: personName(helperId), papel_participante: "AJUDANTE", ordem: 2, tipo_transporte_entrega: people.find((person) => person.id_pessoa === helperId)?.tipo_transporte_entrega ?? null },
     ],
-    motivos: Array.from({ length: notCompleted }, () => ({
+    motivos: Array.from({ length: notCompleted }, (_, index) => ({
       id_motivo_nao_entrega: reasonId,
       tipo_operacao: "ENTREGA",
       quantidade: 1,
+      codigo_cliente: `CLI-${String(index + 1).padStart(4, "0")}`,
       observacao: null,
       codigo_motivo: reason.codigo_motivo,
       descricao_motivo: reason.descricao_motivo,
@@ -244,7 +245,7 @@ export const demoApi = {
   async identity(): Promise<MeResponse> {
     return {
       user: demoUser,
-      permissions: ["ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "ENTREGAS_DIARIAS:CORRIGIR", "ENTREGAS_DIARIAS:CANCELAR", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "PAINEL_GERENCIAL:ACESSAR", "AUDITORIA:VER", "CADASTROS:ADMINISTRAR", "CONTROLE_ACESSO:ADMINISTRAR"],
+      permissions: ["ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "ENTREGAS_DIARIAS:CORRIGIR", "ENTREGAS_DIARIAS:CANCELAR", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "PAINEL_GERENCIAL:ACESSAR", "AUDITORIA:VER", "CADASTROS:ADMINISTRAR", "CONTROLE_ACESSO:ADMINISTRAR", "FRETES:VER", "FRETES:CRIAR", "FRETES:ADMINISTRAR_AGREGADOS", "AGREGADOS:VER", "AGREGADOS:EXPORTAR"],
       scopes: [],
     };
   },

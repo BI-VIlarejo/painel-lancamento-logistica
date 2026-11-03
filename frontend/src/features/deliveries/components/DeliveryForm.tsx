@@ -17,7 +17,7 @@ import type {
 } from "../types";
 
 type Operation = "ENTREGA" | "COLETA";
-type ReasonDraft = { key: string; id: string; observation: string };
+type ReasonDraft = { key: string; id: string; customerCode: string; observation: string };
 type OperationDraft = { completed: string; notCompleted: string; reasons: ReasonDraft[] };
 type DeliveryDraftLine = {
   key: string;
@@ -64,7 +64,7 @@ function newLine(): DeliveryDraftLine {
 }
 
 function newReason(): ReasonDraft {
-  return { key: crypto.randomUUID(), id: "", observation: "" };
+  return { key: crypto.randomUUID(), id: "", customerCode: "", observation: "" };
 }
 
 function linesFromLaunch(launch: DeliveryLaunchDetail): DeliveryDraftLine[] {
@@ -80,6 +80,7 @@ function linesFromLaunch(launch: DeliveryLaunchDetail): DeliveryDraftLine[] {
         Array.from({ length: Math.max(1, reason.quantidade) }, (_, occurrence) => ({
           key: `${item.codigo_item_lancamento}-${operation}-${reason.id_motivo_nao_entrega}-${reasonIndex}-${occurrence}`,
           id: String(reason.id_motivo_nao_entrega),
+          customerCode: reason.codigo_cliente ?? "",
           observation: reason.observacao ?? "",
         })),
       );
@@ -183,6 +184,14 @@ function validateLines(
       if (selectedReasons.length !== values.reasons.length) {
         errors[`${operationPrefix}-reasons`] = "Selecione um motivo em cada item não realizado.";
       }
+      values.reasons.forEach((reason) => {
+        const customerCode = reason.customerCode.trim();
+        if (!customerCode) {
+          errors[`${operationPrefix}-reason-${reason.key}-customer-code`] = "Informe o código do cliente.";
+        } else if (customerCode.length > 100) {
+          errors[`${operationPrefix}-reason-${reason.key}-customer-code`] = "O código do cliente deve ter até 100 caracteres.";
+        }
+      });
     });
   });
   return errors;
@@ -210,6 +219,7 @@ function toPayloadLine(line: DeliveryDraftLine): DeliveryItemInput {
     ]).map(({ reason, operation }) => ({
       id_motivo_nao_entrega: Number(reason.id),
       tipo_operacao: operation,
+      codigo_cliente: reason.customerCode.trim(),
       observacao: reason.observation.trim() || null,
     })),
   };
@@ -330,9 +340,10 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch,
     const values = line[field];
     const notCompleted = numberValue(values.notCompleted);
     const prefix = `item-${index + 1}-${operation.toLowerCase()}-reasons`;
+    const customerCodeErrorKey = (reasonKey: string) => `item-${index + 1}-${operation.toLowerCase()}-reason-${reasonKey}-customer-code`;
     if (notCompleted === 0 && values.reasons.length === 0) return null;
     return <div className={cx(styles, commonStyles, "reasons-panel")}>
-      <div className={cx(styles, commonStyles, "reasons-heading")}><div><strong>Motivos de não realização</strong><p>Informe um motivo e uma observação para cada uma das {notCompleted} {operationLabel(operation)}(s) não realizada(s). Preenchidas: {values.reasons.length}.</p></div><button type="button" className={cx(styles, commonStyles, "text-button")} disabled={values.reasons.length >= notCompleted || saving} onClick={() => addReason(line, operation)}>＋ Adicionar motivo</button></div>
+      <div className={cx(styles, commonStyles, "reasons-heading")}><div><strong>Motivos de não realização</strong><p>Informe um motivo e o código do cliente para cada uma das {notCompleted} {operationLabel(operation)}(s) não realizada(s). Preenchidas: {values.reasons.length}.</p></div><button type="button" className={cx(styles, commonStyles, "text-button")} disabled={values.reasons.length >= notCompleted || saving} onClick={() => addReason(line, operation)}>＋ Adicionar motivo</button></div>
       {values.reasons.map((reason, reasonIndex) => <div className={cx(styles, commonStyles, "reason-entry")} key={reason.key}>
         <div className={cx(styles, commonStyles, "reason-row")}>
           <label className={cx(styles, commonStyles, "form-field reason-select")}><span className={cx(styles, commonStyles, "visually-hidden")}>Motivo</span><select aria-label={`Motivo ${reasonIndex + 1} da ${operationLabel(operation)} ${index + 1}`} value={reason.id} onChange={(event) => updateReason(line.key, operation, reason.key, { id: event.target.value, observation: event.target.value === reason.id ? reason.observation : "" })}>
@@ -342,7 +353,10 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch,
           </select></label>
           <button type="button" className={cx(styles, commonStyles, "icon-button remove-reason")} aria-label={`Remover motivo ${reasonIndex + 1} da ${operationLabel(operation)} ${index + 1}`} disabled={saving} onClick={() => updateLine(line.key, { [field]: { ...values, reasons: values.reasons.filter((entry) => entry.key !== reason.key) } })}>×</button>
         </div>
-        <label className={cx(styles, commonStyles, "form-field reason-observation")}><span>Observação</span><textarea value={reason.observation} onChange={(event) => updateReason(line.key, operation, reason.key, { observation: event.target.value })} placeholder="Detalhe o que aconteceu com este motivo..." maxLength={5000} rows={2} /></label>
+        <div className={cx(styles, commonStyles, "reason-context-fields")}>
+          <label className={cx(styles, commonStyles, "form-field reason-customer-code")}><span>Código do cliente <b>*</b></span><input value={reason.customerCode} onChange={(event) => updateReason(line.key, operation, reason.key, { customerCode: event.target.value })} placeholder="Código do cliente" maxLength={100} required aria-invalid={Boolean(errors[customerCodeErrorKey(reason.key)])} aria-describedby={errors[customerCodeErrorKey(reason.key)] ? `${prefix}-${reason.key}-customer-code-error` : undefined} />{errors[customerCodeErrorKey(reason.key)] && <small id={`${prefix}-${reason.key}-customer-code-error`} className={cx(styles, commonStyles, "field-error")}>{errors[customerCodeErrorKey(reason.key)]}</small>}</label>
+          <label className={cx(styles, commonStyles, "form-field reason-observation")}><span>Observação</span><textarea value={reason.observation} onChange={(event) => updateReason(line.key, operation, reason.key, { observation: event.target.value })} placeholder="Detalhe o que aconteceu com este motivo..." maxLength={5000} rows={2} /></label>
+        </div>
       </div>)}
       {errors[prefix] && <small className={cx(styles, commonStyles, "field-error")}>{errors[prefix]}</small>}
     </div>;

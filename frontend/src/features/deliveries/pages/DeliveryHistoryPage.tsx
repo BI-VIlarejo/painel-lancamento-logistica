@@ -118,9 +118,9 @@ function HistoryReasonCell({ reasons }: { reasons: DeliveryItemResponse["motivos
   if (!reasons.length) return <span className={cx(styles, commonStyles, "history-muted-cell")}>Sem ocorrências</span>;
 
   const shouldCollapse = reasons.length > 1 || reasons.some((reason) =>
-    reason.descricao_motivo.length > 84 || (reason.observacao?.trim().length ?? 0) > 84,
+    reason.descricao_motivo.length > 84 || (reason.observacao?.trim().length ?? 0) > 84 || (reason.codigo_cliente?.length ?? 0) > 84,
   );
-  const reasonList = <ul className={cx(styles, commonStyles, "history-reasons")}>{reasons.map((reason, reasonIndex) => <li key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}>{reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}{reason.observacao && <small>Observação: {reason.observacao}</small>}</li>)}</ul>;
+  const reasonList = <ul className={cx(styles, commonStyles, "history-reasons")}>{reasons.map((reason, reasonIndex) => <li key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}>{reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}<small>Código do cliente: {reason.codigo_cliente || "Não informado"}</small>{reason.observacao && <small>Observação: {reason.observacao}</small>}</li>)}</ul>;
 
   if (!shouldCollapse) return reasonList;
 
@@ -170,7 +170,7 @@ function DetailDialog({ detail, events, onClose, onEdit, onCorrect, onCancel }: 
               {(() => { const q = itemQuantities(item); return <div className={cx(styles, commonStyles, "detail-metrics")}><div><strong>{q.entregasRealizadas}</strong><span>entregas realizadas</span></div><div><strong>{q.entregasNaoRealizadas}</strong><span>entregas não realizadas</span></div><div><strong>{q.coletasRealizadas}</strong><span>coletas realizadas</span></div><div><strong>{q.coletasNaoRealizadas}</strong><span>coletas não realizadas</span></div></div>; })()}
               {(() => { const otif = otifValue(item); const q = itemQuantities(item); const notCompleted = q.entregasNaoRealizadas + q.coletasNaoRealizadas; const total = q.entregasRealizadas + q.entregasNaoRealizadas + q.coletasRealizadas + q.coletasNaoRealizadas; return <div className={cx(styles, commonStyles, "detail-otif")}><strong>OTIF combinado</strong>{otif === null ? <span>Sem entregas ou coletas registradas para calcular</span> : <span>{rateText(otif)} · {notCompleted.toLocaleString("pt-BR")} não realizadas de {total.toLocaleString("pt-BR")}</span>}</div>; })()}
               <div className={cx(styles, commonStyles, "detail-team")}><span>Equipe · {deliveryTypeDescription(item)}</span>{item.participantes.map((person) => <span className={cx(styles, commonStyles, "team-chip")} key={`${person.id_pessoa}-${person.papel_participante}`}>{person.nome_exibicao}<small>{person.papel_participante === "MOTORISTA" ? "Motorista" : "Ajudante"} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</small></span>)}</div>
-              {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivos e observações, um por item não realizado</span>{item.motivos.map((reason, reasonIndex) => <div className={cx(styles, commonStyles, "detail-reason")} key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}><span>{reason.tipo_operacao === "COLETA" ? "Coleta" : "Entrega"} · {reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}</span>{reason.observacao && <small>Observação: {reason.observacao}</small>}</div>)}</div>}
+              {item.motivos.length > 0 && <div className={cx(styles, commonStyles, "detail-reasons")}><span>Motivo, código do cliente e observação de cada item não realizado</span>{item.motivos.map((reason, reasonIndex) => <div className={cx(styles, commonStyles, "detail-reason")} key={`${reason.id_motivo_nao_entrega}-${reasonIndex}`}><span>{reason.tipo_operacao === "COLETA" ? "Coleta" : "Entrega"} · {reason.descricao_motivo} · {nonDeliveryReasonGroupLabel(reason.grupo_motivo)}</span><small>Código do cliente: {reason.codigo_cliente || "Não informado"}</small>{reason.observacao && <small>Observação: {reason.observacao}</small>}</div>)}</div>}
               {item.observacao && <p className={cx(styles, commonStyles, "detail-observation")}><strong>Observação geral (registro antigo):</strong> {item.observacao}</p>}
             </article>
           ))}
@@ -397,6 +397,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         ["lancamento", (row) => row.launch.codigo_lancamento],
         ["status", (row) => statusLabels[row.launch.estado]],
         ["motivos_das_ocorrencias", (row) => reasonDescription(row.delivery)],
+        ["codigos_clientes_das_ocorrencias", (row) => row.delivery.motivos.map((reason) => `${reason.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA"}: ${reason.codigo_cliente ?? "Não informado"}`).join("; ")],
         ["observacoes_dos_motivos", (row) => reasonObservationDescription(row.delivery)],
         ["observacao_geral_legada", (row) => row.delivery.observacao ?? ""],
       ];
