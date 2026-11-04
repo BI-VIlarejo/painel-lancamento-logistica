@@ -264,6 +264,30 @@ def require_permission(
     )
 
 
+def require_any_permission(
+    db: Session,
+    *,
+    id_usuario: int,
+    permission_codes: tuple[str, ...],
+) -> AuthorizationContext:
+    """Exige ao menos uma permissão e preserva todos os escopos que a concedem."""
+    allowed_codes = set(permission_codes)
+    if not allowed_codes:
+        raise ValueError("Informe ao menos uma permissão.")
+    grants = tuple(
+        grant
+        for grant in _load_effective_grants(db, id_usuario)
+        if grant.permission_code in allowed_codes
+    )
+    if not grants:
+        raise PermissionDeniedError("Permissão não concedida.")
+    return AuthorizationContext(
+        id_usuario=id_usuario,
+        permission_code=grants[0].permission_code,
+        grants=grants,
+    )
+
+
 def require_scope(
     access: AuthorizationContext,
     *,
@@ -302,14 +326,18 @@ def allowed_locality_ids(access: AuthorizationContext) -> set[int] | None:
 
 def allowed_sector_ids(access: AuthorizationContext) -> set[int] | None:
     """Retorna setores permitidos; None representa concessão global explícita."""
-    if any(grant.tipo_escopo == "GLOBAL" for grant in access.grants):
-        return None
-    sectors = {
-        sector_id
-        for grant in access.grants
-        for sector_id in (grant.id_setor, grant.resource_id_setor)
-        if sector_id is not None
-    }
+    sectors: set[int] = set()
+    for grant in access.grants:
+        if grant.tipo_escopo == "GLOBAL":
+            return None
+        if grant.tipo_escopo in {"SETOR", "SETOR_LOCALIDADE"}:
+            if grant.id_setor is None:
+                continue
+            if grant.resource_id_setor not in {None, grant.id_setor}:
+                continue
+            sectors.add(grant.id_setor)
+        elif grant.tipo_escopo == "LOCALIDADE" and grant.resource_id_setor is not None:
+            sectors.add(grant.resource_id_setor)
     return sectors
 
 

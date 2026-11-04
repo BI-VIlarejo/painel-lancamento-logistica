@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, Response, status
 from app.api.v1.dependencies import (
     CsrfProtectedAuth,
     DatabaseSession,
+    require_any_permission,
     require_permission,
 )
 from app.modules.access_control.catalog import PermissionCode
@@ -35,6 +36,15 @@ from app.modules.catalogs.schemas import (
 
 router = APIRouter(tags=["Catálogos"])
 _delivery_read_access = require_permission(PermissionCode.DELIVERY_VIEW)
+_sector_catalog_read_access = require_any_permission(
+    PermissionCode.CATALOG_ADMIN,
+    PermissionCode.DELIVERY_VIEW,
+    PermissionCode.FEEDBACK_ACCESS,
+    PermissionCode.DASHBOARD_ACCESS,
+    PermissionCode.FREIGHT_VIEW,
+    PermissionCode.FREIGHT_CREATE,
+    PermissionCode.AGGREGATE_PAYMENT_VIEW,
+)
 _catalog_admin_access = require_permission(PermissionCode.CATALOG_ADMIN)
 
 
@@ -47,7 +57,7 @@ def _no_store(response: Response) -> None:
 def get_sectors(
     db: DatabaseSession,
     response: Response,
-    access: AuthorizationContext = Depends(_delivery_read_access),
+    access: AuthorizationContext = Depends(_sector_catalog_read_access),
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> CatalogPage[SectorCatalogItem]:

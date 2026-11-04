@@ -18,21 +18,23 @@ from app.core.database import dispose_engine, get_engine
 from app.core.orm import Base
 from app.core.security import InvalidPassword, hash_password
 from app.model_registry import CORE_OPERATIONAL_TABLES  # noqa: F401
-from app.modules.access_control.models import (
-    AutorizacaoEvento,
-    Escopo,
-    Permissao,
-    Perfil,
-    PerfilPermissao,
-    Recurso,
-    UsuarioEscopo,
-)
 from app.modules.access_control.catalog import (
     DELIVERY_SECTOR_CODE,
     DELIVERY_SECTOR_NAME,
+    FREIGHT_SECTOR_CODE,
+    FREIGHT_SECTOR_NAME,
     PERMISSION_DEFINITIONS,
     PROFILE_PERMISSION_CODES,
     RESOURCE_DEFINITIONS,
+)
+from app.modules.access_control.models import (
+    AutorizacaoEvento,
+    Escopo,
+    Perfil,
+    PerfilPermissao,
+    Permissao,
+    Recurso,
+    UsuarioEscopo,
 )
 from app.modules.auth.models import Usuario
 from app.modules.auth.normalization import normalize_username
@@ -228,6 +230,7 @@ def _find_dev_admin(db: Session) -> int | None:
 
 
 def _seed_sample_catalog(db: Session, *, actor_id: int, now: datetime) -> None:
+    """Prepara catálogos mínimos locais, incluindo os setores de Entregas e Fretes."""
     sector = db.scalar(select(Setor).where(Setor.codigo == DELIVERY_SECTOR_CODE))
     if sector is None:
         # Reaproveita o setor criado por versões anteriores do bootstrap para
@@ -248,9 +251,24 @@ def _seed_sample_catalog(db: Session, *, actor_id: int, now: datetime) -> None:
             sector.nome = DELIVERY_SECTOR_NAME
             sector.atualizado_em = now
 
-    locality = db.scalar(
-        select(Localidade).where(Localidade.codigo_localidade == "LOCALIDADE_DEV")
-    )
+    # O módulo de Fretes consulta este setor para filtrar lançamentos e escopos.
+    transport_sector = db.scalar(select(Setor).where(Setor.codigo == FREIGHT_SECTOR_CODE))
+    if transport_sector is None:
+        db.add(
+            Setor(
+                codigo=FREIGHT_SECTOR_CODE,
+                nome=FREIGHT_SECTOR_NAME,
+                ativo=True,
+                criado_em=now,
+                atualizado_em=now,
+            )
+        )
+    else:
+        transport_sector.nome = FREIGHT_SECTOR_NAME
+        transport_sector.ativo = True
+        transport_sector.atualizado_em = now
+
+    locality = db.scalar(select(Localidade).where(Localidade.codigo_localidade == "LOCALIDADE_DEV"))
     if locality is None:
         locality = Localidade(
             codigo_localidade="LOCALIDADE_DEV",

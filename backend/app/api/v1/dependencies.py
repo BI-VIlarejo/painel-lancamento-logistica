@@ -131,6 +131,28 @@ def require_permission(
     return dependency
 
 
+def require_any_permission(
+    *permission_codes: str,
+) -> Callable[..., AuthorizationContext]:
+    """Cria uma dependência que aceita qualquer permissão informada."""
+    if not permission_codes:
+        raise ValueError("Informe ao menos uma permissão.")
+    for permission_code in permission_codes:
+        _validate_permission_code(permission_code)
+
+    def dependency(
+        db: DatabaseSession,
+        auth: CurrentAuth,
+    ) -> AuthorizationContext:
+        return access_control_service.require_any_permission(
+            db,
+            id_usuario=auth.user.id_usuario,
+            permission_codes=permission_codes,
+        )
+
+    return dependency
+
+
 def require_global_permission(
     permission_code: str,
 ) -> Callable[..., AuthorizationContext]:

@@ -25,6 +25,11 @@ class PermissionCode:
     FEEDBACK_EXPORT: Final[str] = "FEEDBACK_CLIENTES:EXPORTAR"
     DASHBOARD_ACCESS: Final[str] = "PAINEL_GERENCIAL:ACESSAR"
     AUDIT_VIEW: Final[str] = "AUDITORIA:VER"
+    # Fretes separa consulta e criação de lançamentos.
+    FREIGHT_VIEW: Final[str] = "FRETES:VER"
+    FREIGHT_CREATE: Final[str] = "FRETES:CRIAR"
+    AGGREGATE_PAYMENT_VIEW: Final[str] = "AGREGADOS:VER"
+    AGGREGATE_PAYMENT_EXPORT: Final[str] = "AGREGADOS:EXPORTAR"
 
 
 RESOURCE_DEFINITIONS: Final[tuple[tuple[str, str], ...]] = (
@@ -34,6 +39,9 @@ RESOURCE_DEFINITIONS: Final[tuple[tuple[str, str], ...]] = (
     ("FEEDBACK_CLIENTES", "Reclamações e elogios"),
     ("PAINEL_GERENCIAL", "Painel gerencial"),
     ("AUDITORIA", "Auditoria administrativa"),
+    # Pagamentos têm permissões próprias de consulta e exportação dos totais.
+    ("FRETES", "Lançamentos de fretes"),
+    ("AGREGADOS", "Pagamentos de transporte"),
 )
 
 PERMISSION_DEFINITIONS: Final[tuple[tuple[str, str, str], ...]] = (
@@ -50,6 +58,10 @@ PERMISSION_DEFINITIONS: Final[tuple[tuple[str, str, str], ...]] = (
     ("FEEDBACK_CLIENTES", "EXPORTAR", "Exportar manifestações de clientes"),
     ("PAINEL_GERENCIAL", "ACESSAR", "Consultar o painel gerencial"),
     ("AUDITORIA", "VER", "Consultar a trilha administrativa"),
+    ("FRETES", "VER", "Consultar lançamentos de fretes"),
+    ("FRETES", "CRIAR", "Registrar um frete"),
+    ("AGREGADOS", "VER", "Consultar o relatório de pagamentos"),
+    ("AGREGADOS", "EXPORTAR", "Exportar o relatório de pagamentos"),
 )
 
 BUILTIN_PERMISSION_CODES: Final[frozenset[str]] = frozenset(
@@ -89,3 +101,6 @@ PROFILE_PERMISSION_CODES: Final[dict[str, frozenset[str]]] = {
 # O módulo de Entregas registra os lançamentos no setor responsável Suporte.
 DELIVERY_SECTOR_CODE: Final[str] = "SUPORTE"
 DELIVERY_SECTOR_NAME: Final[str] = "Suporte"
+# Lançamentos e relatórios de Fretes são sempre vinculados a este setor.
+FREIGHT_SECTOR_CODE: Final[str] = "TRANSPORTE"
+FREIGHT_SECTOR_NAME: Final[str] = "Transporte"
