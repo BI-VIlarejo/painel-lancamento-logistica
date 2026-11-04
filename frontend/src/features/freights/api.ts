@@ -1,12 +1,13 @@
 import { apiBlob, apiRequest, isDemoMode } from "../../shared/api/apiClient";
 import { freightsDemoApi } from "./demoApi";
 import type {
-  AggregateCreateRequest,
-  AggregatePaymentFilters,
-  AggregateResponse,
   FreightHistoryFilters,
+  FreightAggregateDriverOption,
+  FreightDeliverySummary,
   FreightInput,
   FreightPage,
+  FreightPaymentFilters,
+  FreightPaymentOptions,
   FreightPaymentReport,
   FreightQuoteResponse,
   FreightResponse,
@@ -18,6 +19,9 @@ function historyQuery(filters: FreightHistoryFilters = {}): string {
   const params = new URLSearchParams();
   if (filters.data_de) params.set("data_de", filters.data_de);
   if (filters.data_ate) params.set("data_ate", filters.data_ate);
+  if (filters.tipo_transporte && filters.tipo_transporte !== "TODOS") {
+    params.set("tipo_transporte", filters.tipo_transporte);
+  }
   if (filters.status_calculo && filters.status_calculo !== "TODOS") {
     params.set("status_calculo", filters.status_calculo);
   }
@@ -27,12 +31,30 @@ function historyQuery(filters: FreightHistoryFilters = {}): string {
 }
 
 /** Constrói os parâmetros comuns ao relatório e à exportação financeira. */
-function paymentQuery(filters: AggregatePaymentFilters): string {
+function paymentQuery(filters: FreightPaymentFilters): string {
   const params = new URLSearchParams({
     data_de: filters.data_de,
     data_ate: filters.data_ate,
+    tipo_transporte: filters.tipo_transporte,
   });
+  if (filters.nome_transportador) params.set("nome_transportador", filters.nome_transportador);
+  if (filters.sem_identificacao) params.set("sem_identificacao", "true");
   return params.toString();
+}
+
+function paymentOptionsQuery(dataDe: string, dataAte: string): string {
+  return new URLSearchParams({ data_de: dataDe, data_ate: dataAte }).toString();
+}
+
+function aggregateDriversQuery(dataServico: string): string {
+  return new URLSearchParams({ data_servico: dataServico }).toString();
+}
+
+function deliverySummaryQuery(dataServico: string, idMotorista: number): string {
+  return new URLSearchParams({
+    data_servico: dataServico,
+    id_motorista: String(idMotorista),
+  }).toString();
 }
 
 /** Operações do módulo Fretes sobre a API real ou os dados de demonstração. */
@@ -43,19 +65,20 @@ export const freightsApi = {
       : apiRequest<FreightTariffOptions>("/freights/tariff-options");
   },
 
-  listAggregates(): Promise<AggregateResponse[]> {
+  aggregateDrivers(dataServico: string): Promise<FreightAggregateDriverOption[]> {
     return isDemoMode
-      ? freightsDemoApi.listAggregates()
-      : apiRequest<AggregateResponse[]>("/freights/aggregates");
+      ? freightsDemoApi.aggregateDrivers(dataServico)
+      : apiRequest<FreightAggregateDriverOption[]>(
+          `/freights/aggregate-drivers?${aggregateDriversQuery(dataServico)}`,
+        );
   },
 
-  createAggregate(payload: AggregateCreateRequest): Promise<AggregateResponse> {
+  deliverySummary(dataServico: string, idMotorista: number): Promise<FreightDeliverySummary> {
     return isDemoMode
-      ? freightsDemoApi.createAggregate(payload)
-      : apiRequest<AggregateResponse>("/freights/aggregates", {
-          method: "POST",
-          body: payload,
-        });
+      ? freightsDemoApi.deliverySummary(dataServico, idMotorista)
+      : apiRequest<FreightDeliverySummary>(
+          `/freights/delivery-summary?${deliverySummaryQuery(dataServico, idMotorista)}`,
+        );
   },
 
   quote(payload: FreightInput): Promise<FreightQuoteResponse> {
@@ -83,7 +106,7 @@ export const freightsApi = {
       : apiRequest<FreightPage>(`/freights?${historyQuery(filters)}`);
   },
 
-  paymentReport(filters: AggregatePaymentFilters): Promise<FreightPaymentReport> {
+  paymentReport(filters: FreightPaymentFilters): Promise<FreightPaymentReport> {
     return isDemoMode
       ? freightsDemoApi.paymentReport(filters)
       : apiRequest<FreightPaymentReport>(
@@ -91,7 +114,15 @@ export const freightsApi = {
         );
   },
 
-  exportPaymentReport(filters: AggregatePaymentFilters): Promise<Blob> {
+  paymentOptions(dataDe: string, dataAte: string): Promise<FreightPaymentOptions> {
+    return isDemoMode
+      ? freightsDemoApi.paymentOptions(dataDe, dataAte)
+      : apiRequest<FreightPaymentOptions>(
+          `/freights/payments/options?${paymentOptionsQuery(dataDe, dataAte)}`,
+        );
+  },
+
+  exportPaymentReport(filters: FreightPaymentFilters): Promise<Blob> {
     return isDemoMode
       ? freightsDemoApi.exportPaymentReport(filters)
       : apiBlob(`/freights/payments/export.csv?${paymentQuery(filters)}`);

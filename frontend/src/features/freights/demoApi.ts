@@ -1,11 +1,11 @@
 import type {
-  AggregateCreateRequest,
-  AggregatePaymentFilters,
-  AggregatePaymentSummary,
-  AggregateResponse,
   FreightHistoryFilters,
+  FreightAggregateDriverOption,
+  FreightDeliverySummary,
   FreightInput,
   FreightPage,
+  FreightPaymentFilters,
+  FreightPaymentOptions,
   FreightPaymentReport,
   FreightQuoteResponse,
   FreightResponse,
@@ -13,12 +13,8 @@ import type {
   JustInTimeZoneOption,
 } from "./types";
 
-const AGGREGATES_KEY = "lancamento-logistica:demo-freight-aggregates";
 const FREIGHTS_KEY = "lancamento-logistica:demo-freights";
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 120));
-
-/** No modo demo, o CPF fica no armazenamento local e nunca integra a resposta comum. */
-type DemoAggregate = AggregateResponse & { cpf: string | null };
 
 const tariffSources = [
   { codigo: "AGREGADOS_CD", nome: "Agregados CD" },
@@ -94,6 +90,22 @@ function numeric(value: string | number | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** Calcula a distância pelas duas leituras, como a validação da API real. */
+function odometerDistance(payload: FreightInput): number | null {
+  const initial = numeric(payload.km_inicial);
+  const final = numeric(payload.km_final);
+  if (initial === null || final === null) {
+    if (payload.tipo_transporte === "TRANSPORTADORA" && initial === null && final === null) {
+      return null;
+    }
+    throw new Error("Informe as leituras inicial e final do hodômetro.");
+  }
+  if (final < initial) {
+    throw new Error("KM final deve ser igual ou maior que KM inicial.");
+  }
+  return final - initial;
+}
+
 /** Arredonda valores não negativos para centavos, como a calculadora de fretes. */
 function money(value: number): number {
   return Math.floor((value + Number.EPSILON) * 100 + 0.5) / 100;
@@ -102,32 +114,6 @@ function money(value: number): number {
 /** Serializa os decimais de saída com escala monetária estável. */
 function moneyText(value: number): string {
   return money(value).toFixed(2);
-}
-
-/** Verifica a validade matemática do CPF informado no cadastro demonstrativo. */
-function validCpf(digits: string): boolean {
-  if (digits.length !== 11 || /^([0-9])\1{10}$/.test(digits)) return false;
-  const digitFor = (part: string, startWeight: number) => {
-    const sum = [...part].reduce(
-      (total, digit, index) => total + Number(digit) * (startWeight - index),
-      0,
-    );
-    const remainder = sum % 11;
-    return remainder < 2 ? 0 : 11 - remainder;
-  };
-  return digits.endsWith(`${digitFor(digits.slice(0, 9), 10)}${digitFor(digits.slice(0, 10), 11)}`);
-}
-
-/** Valida e normaliza o CPF seguindo as regras do contrato da API. */
-function normalizeCpf(value?: string | null): string | null {
-  if (!value?.trim()) return null;
-  if (!/^[0-9.\-\s]+$/.test(value.trim())) {
-    throw new Error("Informe o CPF usando apenas números, pontos e hífen.");
-  }
-  const digits = value.replace(/[.\-\s]/g, "");
-  if (digits.length !== 11) throw new Error("O CPF deve conter 11 dígitos.");
-  if (!validCpf(digits)) throw new Error("O CPF informado é inválido.");
-  return digits;
 }
 
 /** Lê registros locais; dados inválidos são descartados sem chamar a API real. */
@@ -142,39 +128,27 @@ function readArray<T>(key: string, isItem: (value: unknown) => value is T): T[] 
   }
 }
 
-/** Retorna apenas campos suficientes para operar o agregado no modo demo. */
-function isDemoAggregate(value: unknown): value is DemoAggregate {
-  if (!value || typeof value !== "object") return false;
-  const item = value as Partial<DemoAggregate>;
-  return typeof item.id_agregado === "number"
-    && typeof item.codigo_agregado === "string"
-    && typeof item.nome === "string"
-    && typeof item.ativo === "boolean"
-    && typeof item.criado_em === "string"
-    && (typeof item.cpf === "string" || item.cpf === null);
-}
-
 /** Confere a estrutura mínima antes de reutilizar um frete salvo localmente. */
 function isFreight(value: unknown): value is FreightResponse {
   if (!value || typeof value !== "object") return false;
   const item = value as Partial<FreightResponse>;
   return typeof item.id_frete === "number"
     && typeof item.codigo_frete === "string"
-    && typeof item.id_agregado === "number"
     && typeof item.data_servico === "string"
     && typeof item.status_calculo === "string";
 }
 
-function readAggregates(): DemoAggregate[] {
-  return readArray(AGGREGATES_KEY, isDemoAggregate);
-}
-
 function readFreights(): FreightResponse[] {
-  return readArray(FREIGHTS_KEY, isFreight);
-}
-
-function saveAggregates(items: DemoAggregate[]): void {
-  window.localStorage.setItem(AGGREGATES_KEY, JSON.stringify(items));
+  return readArray(FREIGHTS_KEY, isFreight).map((item) => ({
+    ...item,
+    tipo_transporte: item.tipo_transporte ?? "AGREGADO",
+    id_motorista_agregado: item.id_motorista_agregado ?? null,
+    quantidade_avarias: item.quantidade_avarias ?? 0,
+    nome_transportador: item.nome_transportador === "Agregados" && item.tipo_transporte === "AGREGADO"
+      ? null
+      : item.nome_transportador ?? null,
+    codigo_fonte_tarifa: item.tipo_transporte === "PROPRIO" ? null : item.codigo_fonte_tarifa ?? "AGREGADOS_CD",
+  }));
 }
 
 function saveFreights(items: FreightResponse[]): void {
@@ -339,14 +313,16 @@ function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
     });
   }
 
-  const km = numeric(payload.km_rodado)
-    ?? ((numeric(payload.km_inicial) !== null && numeric(payload.km_final) !== null)
-      ? (numeric(payload.km_final) as number) - (numeric(payload.km_inicial) as number)
-      : null);
+  const km = odometerDistance(payload);
+  if (km === null) {
+    return pendingQuote("Informe o hodômetro para calcular a tarifa Agregados CD.", {
+      fonte_tarifa: "AGREGADOS_CD",
+    });
+  }
   const invoice = numeric(payload.valor_nota);
   const weight = numeric(payload.peso_kg) ?? 0;
-  if (km === null || invoice === null) {
-    return pendingQuote("Informe KM rodado e valor da nota para calcular a tarifa Agregados CD.", {
+  if (invoice === null) {
+    return pendingQuote("Informe o valor da nota para calcular a tarifa Agregados CD.", {
       aba_tarifa: sheet,
       fonte_tarifa: "AGREGADOS_CD",
     });
@@ -404,6 +380,14 @@ function quotePauloCruz(payload: FreightInput): FreightQuoteResponse {
   const vehicle = payload.tipo_caminhao ? vehicles[payload.tipo_caminhao] : undefined;
   if (!vehicle) return pendingQuote("Selecione um tipo de caminhão da tabela Paulo Cruz.", {});
 
+  if (!vehicle.bounds) {
+    return pendingQuote("Os limites de peso deste veículo Paulo Cruz ainda precisam de confirmação.", {
+      tipo_caminhao: payload.tipo_caminhao,
+      faixa_de_peso: vehicle.label,
+      fonte_tarifa: "PAULO_CRUZ",
+    });
+  }
+
   const weight = numeric(payload.peso_kg) ?? 0;
   if (vehicle.bounds && (weight < vehicle.bounds[0] || weight > vehicle.bounds[1])) {
     return pendingQuote("O peso não se enquadra na faixa definida para o caminhão Paulo Cruz.", {
@@ -432,6 +416,13 @@ function quotePauloCruz(payload: FreightInput): FreightQuoteResponse {
 
 /** Executa a cotação conforme a fonte tarifária escolhida. */
 function calculateQuote(payload: FreightInput): FreightQuoteResponse {
+  // Somente transporte independente dispensa leituras do hodômetro.
+  if (payload.tipo_transporte !== "TRANSPORTADORA") odometerDistance(payload);
+  if (!payload.codigo_fonte_tarifa) {
+    return pendingQuote("Selecione uma fonte tarifária para este transporte terceirizado.", {
+      tipo_transporte: payload.tipo_transporte,
+    });
+  }
   let quote = payload.codigo_fonte_tarifa === "AGREGADOS_CD"
     ? quoteAggregates(payload)
     : payload.codigo_fonte_tarifa === "JUST_IN_TIME"
@@ -456,17 +447,6 @@ function dateInRange(value: string, from?: string, to?: string): boolean {
   return (!from || value >= from) && (!to || value <= to);
 }
 
-/** Converte o nome de um agregado para o formato sem dados pessoais da resposta. */
-function aggregateResponse(item: DemoAggregate): AggregateResponse {
-  return {
-    id_agregado: item.id_agregado,
-    codigo_agregado: item.codigo_agregado,
-    nome: item.nome,
-    ativo: item.ativo,
-    criado_em: item.criado_em,
-  };
-}
-
 /** Gera as opções para os formulários de demonstração. */
 function options(): FreightTariffOptions {
   return {
@@ -484,10 +464,31 @@ function options(): FreightTariffOptions {
 }
 
 /** Valida as datas antes de filtrar ou consolidar lançamentos. */
-function ensureValidPeriod(filters: AggregatePaymentFilters): void {
+function ensureValidPeriod(filters: FreightPaymentFilters): void {
   if (filters.data_de > filters.data_ate) {
     throw new Error("A data inicial deve ser anterior à data final.");
   }
+  if (filters.sem_identificacao && filters.tipo_transporte !== "AGREGADO") {
+    throw new Error("A opção sem identificação só se aplica aos agregados.");
+  }
+  if (filters.sem_identificacao && filters.nome_transportador) {
+    throw new Error("Escolha um nome ou a opção sem identificação, não ambos.");
+  }
+}
+
+function paymentRecords(filters: FreightPaymentFilters): FreightResponse[] {
+  return readFreights()
+    .filter((item) => item.tipo_transporte === filters.tipo_transporte)
+    .filter((item) => dateInRange(item.data_servico, filters.data_de, filters.data_ate))
+    .filter((item) => filters.sem_identificacao
+      ? item.nome_transportador === null
+      : !filters.nome_transportador || item.nome_transportador === filters.nome_transportador);
+}
+
+function paymentResponsibleLabel(filters: FreightPaymentFilters): string {
+  if (filters.sem_identificacao) return "Sem identificação";
+  if (filters.nome_transportador) return filters.nome_transportador;
+  return filters.tipo_transporte === "AGREGADO" ? "Todos os agregados" : "Todas as transportadoras";
 }
 
 /** Converte valor numérico em data brasileira para o arquivo financeiro. */
@@ -498,7 +499,7 @@ function brazilianDate(value: string): string {
 
 /** Escapa uma célula CSV e bloqueia fórmulas iniciadas por caracteres especiais. */
 function csvCell(value: string, protectFormula = false): string {
-  const safe = protectFormula && /^[=+\-@]/.test(value) ? `'${value}` : value;
+  const safe = protectFormula && /^[=+\-@]/.test(value.trimStart()) ? `'${value}` : value;
   return `"${safe.replaceAll('"', '""')}"`;
 }
 
@@ -509,36 +510,26 @@ export const freightsDemoApi = {
     return options();
   },
 
-  async listAggregates(): Promise<AggregateResponse[]> {
+  async aggregateDrivers(_dataServico: string): Promise<FreightAggregateDriverOption[]> {
     await pause();
-    return readAggregates()
-      .filter((item) => item.ativo)
-      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
-      .map(aggregateResponse);
+    return [{ id_motorista: 501, nome_motorista: "João da Silva" }];
   },
 
-  async createAggregate(payload: AggregateCreateRequest): Promise<AggregateResponse> {
+  async deliverySummary(
+    dataServico: string,
+    idMotorista: number,
+  ): Promise<FreightDeliverySummary> {
     await pause();
-    const nome = payload.nome.trim().replace(/\s+/g, " ");
-    if (nome.length < 2) throw new Error("Informe o nome completo do agregado.");
-    const aggregates = readAggregates();
-    if (aggregates.some((item) => item.nome.toLocaleLowerCase("pt-BR") === nome.toLocaleLowerCase("pt-BR"))) {
-      throw new Error("Já existe um agregado com esse nome.");
-    }
-    const cpf = normalizeCpf(payload.cpf);
-    if (cpf && aggregates.some((item) => item.cpf === cpf)) {
-      throw new Error("Já existe um agregado com esse CPF.");
-    }
-    const created: DemoAggregate = {
-      id_agregado: Math.max(0, ...aggregates.map((item) => item.id_agregado)) + 1,
-      codigo_agregado: crypto.randomUUID(),
-      nome,
-      cpf,
-      ativo: true,
-      criado_em: new Date().toISOString(),
+    if (idMotorista !== 501) throw new Error("Motorista não encontrado no cadastro de equipes.");
+    return {
+      id_motorista: idMotorista,
+      data_servico: dataServico,
+      rota_cidade: "Macaé",
+      cidades: ["Macaé"],
+      quantidade_entregas: 18,
+      quantidade_avarias: 2,
+      quantidade_registros: 1,
     };
-    saveAggregates([...aggregates, created]);
-    return aggregateResponse(created);
   },
 
   async quote(payload: FreightInput): Promise<FreightQuoteResponse> {
@@ -548,26 +539,23 @@ export const freightsDemoApi = {
 
   async create(payload: FreightInput): Promise<FreightResponse> {
     await pause();
-    const aggregate = readAggregates().find((item) => item.id_agregado === payload.id_agregado && item.ativo);
-    if (!aggregate) throw new Error("O agregado selecionado não foi encontrado ou está inativo.");
-
     const quote = calculateQuote(payload);
     const gross = numeric(quote.valor_frete_bruto);
     const damage = numeric(payload.valor_avaria) ?? 0;
     if (gross !== null && damage > gross) {
-      throw new Error("A avaria não pode superar o frete calculado.");
+      throw new Error("O valor da avaria não pode superar o frete calculado.");
     }
 
     const kmInitial = numeric(payload.km_inicial);
     const kmFinal = numeric(payload.km_final);
-    const kmRun = numeric(payload.km_rodado)
-      ?? (kmInitial !== null && kmFinal !== null ? kmFinal - kmInitial : null);
+    const kmRun = odometerDistance(payload);
     const current = readFreights();
     const record: FreightResponse = {
       id_frete: Math.max(0, ...current.map((item) => item.id_frete)) + 1,
       codigo_frete: crypto.randomUUID(),
-      id_agregado: aggregate.id_agregado,
-      nome_agregado: aggregate.nome,
+      tipo_transporte: payload.tipo_transporte,
+      nome_transportador: payload.nome_transportador,
+      id_motorista_agregado: payload.id_motorista_agregado,
       codigo_fonte_tarifa: payload.codigo_fonte_tarifa,
       data_servico: payload.data_servico,
       rota_cidade: payload.rota_cidade,
@@ -582,6 +570,7 @@ export const freightsDemoApi = {
       adicionais_jit: payload.adicionais_jit ?? [],
       valor_frete_bruto: gross === null ? null : moneyText(gross),
       valor_avaria: moneyText(damage),
+      quantidade_avarias: payload.quantidade_avarias,
       valor_frete_pago: gross === null ? null : moneyText(gross - damage),
       percentual_frete: quote.percentual_frete,
       status_calculo: quote.status_calculo,
@@ -598,6 +587,7 @@ export const freightsDemoApi = {
     await pause();
     const filtered = readFreights()
       .filter((item) => dateInRange(item.data_servico, filters.data_de, filters.data_ate))
+      .filter((item) => !filters.tipo_transporte || filters.tipo_transporte === "TODOS" || item.tipo_transporte === filters.tipo_transporte)
       .filter((item) => !filters.status_calculo || filters.status_calculo === "TODOS" || item.status_calculo === filters.status_calculo)
       .sort((a, b) => b.data_servico.localeCompare(a.data_servico) || b.id_frete - a.id_frete);
     const limit = filters.limit ?? 50;
@@ -610,46 +600,23 @@ export const freightsDemoApi = {
     };
   },
 
-  async paymentReport(filters: AggregatePaymentFilters): Promise<FreightPaymentReport> {
+  async paymentReport(filters: FreightPaymentFilters): Promise<FreightPaymentReport> {
     await pause();
     ensureValidPeriod(filters);
-    const records = readFreights().filter((item) => dateInRange(item.data_servico, filters.data_de, filters.data_ate));
-    const aggregates = new Map(readAggregates().map((item) => [item.id_agregado, item]));
-    const grouped = new Map<number, AggregatePaymentSummary>();
+    const records = paymentRecords(filters);
     let grossTotal = 0;
     let damageTotal = 0;
     let netTotal = 0;
     let pendingTotal = 0;
 
     for (const freight of records) {
-      const aggregate = aggregates.get(freight.id_agregado);
-      if (!aggregate) continue;
-      let summary = grouped.get(aggregate.id_agregado);
-      if (!summary) {
-        summary = {
-          id_agregado: aggregate.id_agregado,
-          nome_agregado: aggregate.nome,
-          cpf_pendente: aggregate.cpf === null,
-          quantidade_fretes: 0,
-          quantidade_pendentes: 0,
-          valor_frete_bruto: "0.00",
-          valor_avarias: "0.00",
-          valor_a_pagar: "0.00",
-        };
-        grouped.set(aggregate.id_agregado, summary);
-      }
-      summary.quantidade_fretes += 1;
       if (freight.status_calculo !== "CALCULADO" || freight.valor_frete_pago === null) {
-        summary.quantidade_pendentes += 1;
         pendingTotal += 1;
         continue;
       }
       const gross = numeric(freight.valor_frete_bruto) ?? 0;
       const damage = numeric(freight.valor_avaria) ?? 0;
       const net = numeric(freight.valor_frete_pago) ?? 0;
-      summary.valor_frete_bruto = moneyText((numeric(summary.valor_frete_bruto) ?? 0) + gross);
-      summary.valor_avarias = moneyText((numeric(summary.valor_avarias) ?? 0) + damage);
-      summary.valor_a_pagar = moneyText((numeric(summary.valor_a_pagar) ?? 0) + net);
       grossTotal += gross;
       damageTotal += damage;
       netTotal += net;
@@ -658,7 +625,9 @@ export const freightsDemoApi = {
     return {
       data_de: filters.data_de,
       data_ate: filters.data_ate,
-      items: [...grouped.values()].sort((a, b) => a.nome_agregado.localeCompare(b.nome_agregado, "pt-BR")),
+      tipo_transporte: filters.tipo_transporte,
+      nome_transportador: filters.nome_transportador ?? null,
+      sem_identificacao: Boolean(filters.sem_identificacao),
       quantidade_fretes: records.length,
       quantidade_pendentes: pendingTotal,
       valor_frete_bruto: moneyText(grossTotal),
@@ -667,33 +636,45 @@ export const freightsDemoApi = {
     };
   },
 
-  async exportPaymentReport(filters: AggregatePaymentFilters): Promise<Blob> {
+  async paymentOptions(dataDe: string, dataAte: string): Promise<FreightPaymentOptions> {
+    await pause();
+    if (dataDe > dataAte) throw new Error("A data inicial deve ser anterior à data final.");
+    const records = readFreights().filter((item) =>
+      (item.tipo_transporte === "AGREGADO" || item.tipo_transporte === "TRANSPORTADORA")
+      && dateInRange(item.data_servico, dataDe, dataAte));
+    return {
+      agregados: [...new Set(records
+        .filter((item) => item.tipo_transporte === "AGREGADO" && item.nome_transportador)
+        .map((item) => item.nome_transportador as string))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      transportadoras: [...new Set(records
+        .filter((item) => item.tipo_transporte === "TRANSPORTADORA" && item.nome_transportador)
+        .map((item) => item.nome_transportador as string))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      agregados_sem_identificacao: records.some((item) =>
+        item.tipo_transporte === "AGREGADO" && item.nome_transportador === null),
+    };
+  },
+
+  async exportPaymentReport(filters: FreightPaymentFilters): Promise<Blob> {
     const report = await this.paymentReport(filters);
     if (report.quantidade_pendentes) {
       throw new Error("Resolva os fretes pendentes de conferência antes de exportar o pagamento.");
     }
 
-    const aggregates = new Map(readAggregates().map((item) => [item.id_agregado, item]));
-    const missingCpf = report.items.filter((item) => !aggregates.get(item.id_agregado)?.cpf);
-    if (missingCpf.length) {
-      throw new Error(`Cadastre o CPF dos agregados antes de exportar: ${missingCpf.map((item) => item.nome_agregado).join(", ")}`);
-    }
-
-    const rows: string[][] = [["Data", "Nome", "CPF", "Motivo", "Setor", "Valor Total", "Observações"]];
-    for (const item of report.items) {
-      const aggregate = aggregates.get(item.id_agregado)!;
-      rows.push([
+    const rows: string[][] = [
+      ["Data inicial", "Data final", "Tipo de transporte", "Responsável", "Fretes no período", "Fretes pendentes", "Frete bruto calculado", "Valor das avarias (R$)", "Total a pagar"],
+      [
+        brazilianDate(filters.data_de),
         brazilianDate(filters.data_ate),
-        aggregate.nome,
-        aggregate.cpf!,
-        `FRETES DO PERÍODO ${brazilianDate(filters.data_de)} A ${brazilianDate(filters.data_ate)}`,
-        "TRANSPORTE",
-        (numeric(item.valor_a_pagar) ?? 0).toFixed(2).replace(".", ","),
-        `${item.quantidade_fretes} frete(s); bruto ${(numeric(item.valor_frete_bruto) ?? 0).toFixed(2)}; avarias ${(numeric(item.valor_avarias) ?? 0).toFixed(2)}`,
-      ]);
-    }
-    rows.push(["", "TOTAL GERAL", "", "", "TRANSPORTE", (numeric(report.valor_a_pagar) ?? 0).toFixed(2).replace(".", ","), ""]);
-    const csv = `\uFEFF${rows.map((row) => row.map((cell, index) => csvCell(cell, index === 1)).join(";")).join("\r\n")}`;
+        filters.tipo_transporte === "AGREGADO" ? "Agregado" : "Transportadora independente",
+        paymentResponsibleLabel(filters),
+        String(report.quantidade_fretes),
+        String(report.quantidade_pendentes),
+        (numeric(report.valor_frete_bruto) ?? 0).toFixed(2).replace(".", ","),
+        (numeric(report.valor_avarias) ?? 0).toFixed(2).replace(".", ","),
+        (numeric(report.valor_a_pagar) ?? 0).toFixed(2).replace(".", ","),
+      ],
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map((cell, index) => csvCell(cell, index === 2 || index === 3)).join(";")).join("\r\n")}`;
     return new Blob([csv], { type: "text/csv;charset=utf-8" });
   },
 };

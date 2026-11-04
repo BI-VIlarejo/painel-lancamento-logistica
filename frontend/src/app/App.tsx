@@ -17,9 +17,12 @@ const ChangePasswordPage = lazy(() => import("../features/auth/pages/ChangePassw
 const ResetPasswordPage = lazy(() => import("../features/auth/pages/ResetPasswordPage").then((module) => ({ default: module.ResetPasswordPage })));
 const FeedbackPage = lazy(() => import("../features/feedback/pages/FeedbackPage").then((module) => ({ default: module.FeedbackPage })));
 const AuditPage = lazy(() => import("../features/audit/pages/AuditPage").then((module) => ({ default: module.AuditPage })));
+const FreightLaunchPage = lazy(() => import("../features/freights/pages/FreightLaunchPage").then((module) => ({ default: module.FreightLaunchPage })));
+const FreightHistoryPage = lazy(() => import("../features/freights/pages/FreightHistoryPage").then((module) => ({ default: module.FreightHistoryPage })));
+const AggregatePaymentsPage = lazy(() => import("../features/freights/pages/AggregatePaymentsPage").then((module) => ({ default: module.AggregatePaymentsPage })));
 
 function PortalApp() {
-  const { user, permissions, loading, bootstrapMessage, login, changePassword, resetPassword, logout } = useAuth();
+  const { user, permissions, scopes, loading, bootstrapMessage, login, changePassword, resetPassword, logout } = useAuth();
   const path = usePathname();
   const canView = permissions.includes("ENTREGAS_DIARIAS:VER");
   const canCreate = permissions.includes("ENTREGAS_DIARIAS:CRIAR") && canView;
@@ -31,9 +34,13 @@ function PortalApp() {
   const canManageCatalogs = permissions.includes("CADASTROS:ADMINISTRAR");
   const canManageAccess = permissions.includes("CONTROLE_ACESSO:ADMINISTRAR");
   const canViewAudit = permissions.includes("AUDITORIA:VER");
+  const canViewFreights = permissions.includes("FRETES:VER");
+  const canCreateFreights = permissions.includes("FRETES:CRIAR");
+  const canViewAggregatePayments = permissions.includes("AGREGADOS:VER");
+  const canExportAggregatePayments = permissions.includes("AGREGADOS:EXPORTAR");
   const editMatch = path.match(/^\/entregas\/([0-9a-f-]{36})$/i);
-  const knownPath = ["/", "/login", "/entregas", "/historico", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch);
-  const defaultPath = canCreate ? "/entregas" : canView ? "/historico" : canAccessFeedback ? "/feedback" : canViewDashboard ? "/painel" : canManageAccess || canManageCatalogs ? "/cadastros" : canViewAudit ? "/auditoria" : "/entregas";
+  const knownPath = ["/", "/login", "/entregas", "/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch);
+  const defaultPath = canCreate ? "/entregas" : canView ? "/historico" : canCreateFreights ? "/fretes" : canViewFreights ? "/fretes/historico" : canViewAggregatePayments ? "/fretes/pagamentos" : canAccessFeedback ? "/feedback" : canViewDashboard ? "/painel" : canManageAccess || canManageCatalogs ? "/cadastros" : canViewAudit ? "/auditoria" : "/entregas";
 
   useEffect(() => {
     if (!loading && user && path === "/redefinir-senha") {
@@ -64,11 +71,12 @@ function PortalApp() {
     </Suspense>;
   }
 
-  const currentPath = ["/historico", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
+  const currentPath = ["/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
   return (
     <AppShell
       user={user}
       permissions={permissions}
+      scopes={scopes}
       path={currentPath}
       onNavigate={navigate}
       onSignOut={() => { void logout().catch(() => undefined).finally(() => navigate("/login")); }}
@@ -84,6 +92,12 @@ function PortalApp() {
           ? <AuditPage />
           : path === "/feedback" && canAccessFeedback
           ? <FeedbackPage permissions={permissions} />
+          : path === "/fretes" && canCreateFreights
+          ? <FreightLaunchPage onNavigate={navigate} canViewFreights={canViewFreights} canViewAggregatePayments={canViewAggregatePayments} />
+          : path === "/fretes/historico" && canViewFreights
+          ? <FreightHistoryPage onNavigate={navigate} canCreate={canCreateFreights} canViewPayments={canViewAggregatePayments} />
+          : path === "/fretes/pagamentos" && canViewAggregatePayments
+          ? <AggregatePaymentsPage canExport={canExportAggregatePayments} canViewFreights={canViewFreights} onNavigate={navigate} />
           : path === "/cadastros" && (canManageCatalogs || canManageAccess)
           ? <RegistriesPage permissions={permissions} currentUserId={user.id_usuario} />
           : path === "/historico" && canView
@@ -103,6 +117,21 @@ function PortalApp() {
                 {canCreate && currentPath !== "/entregas" && (
                   <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/entregas")}>
                     Novo lançamento
+                  </button>
+                )}
+                {canCreateFreights && currentPath !== "/fretes" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/fretes")}>
+                    Lançar frete
+                  </button>
+                )}
+                {canViewFreights && currentPath !== "/fretes/historico" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/fretes/historico")}>
+                    Histórico de fretes
+                  </button>
+                )}
+                {canViewAggregatePayments && currentPath !== "/fretes/pagamentos" && (
+                  <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => navigate("/fretes/pagamentos")}>
+                    Pagamentos de transporte
                   </button>
                 )}
                 {canAccessFeedback && currentPath !== "/feedback" && (

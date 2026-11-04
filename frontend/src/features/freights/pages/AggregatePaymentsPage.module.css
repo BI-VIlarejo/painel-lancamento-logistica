@@ -1,0 +1,57 @@
+.aggregate-payments-page { width: 100%; min-width: 0; }
+.aggregate-heading { min-width: 0; }
+.heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.heading-actions .button { white-space: nowrap; }
+.report-filter { display: grid; min-width: 0; grid-template-columns: minmax(160px, 1fr) repeat(2, minmax(135px, 160px)) minmax(175px, 195px) minmax(170px, 210px); align-items: end; gap: 12px; padding: 14px; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
+.report-filter > div { display: flex; min-width: 0; align-items: center; gap: 10px; padding-bottom: 2px; }
+.filter-mark { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 9px; color: var(--primary); background: #eff6ed; font-size: 19px; }
+.report-filter > div strong, .report-filter > div small { display: block; }
+.report-filter > div strong { color: var(--brand-navy); font-size: 12px; }
+.report-filter > div small { margin-top: 4px; color: #89958b; font-size: 10px; line-height: 1.4; }
+.report-filter .filter-control { min-width: 0; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.summary-card { display: flex; min-width: 0; min-height: 112px; flex-direction: column; justify-content: center; padding: 15px; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
+.summary-card span { color: #758278; font-size: 11px; font-weight: 700; }
+.summary-card strong { margin-top: 9px; color: var(--brand-navy); font-size: 21px; letter-spacing: -.4px; }
+.summary-card small { margin-top: 5px; color: #96a096; font-size: 10px; }
+.summary-payable { border-color: #d9e8d5; background: #f3f8f0; }
+.summary-payable strong { color: #496e4b; }
+.report-card { min-width: 0; overflow: hidden; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
+.report-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 17px; border-bottom: 1px solid #e8ede8; }
+.report-card > header h2 { margin: 0; color: var(--brand-navy); font-size: 15px; }
+.report-card > header p { margin: 4px 0 0; color: #89958b; font-size: 10px; }
+.export-blocked { color: #99743b; font-size: 10px; text-align: right; }
+.report-table { min-width: 780px; }
+.report-table th:not(:first-child), .report-table td:not(:first-child) { text-align: right; white-space: nowrap; }
+.report-table td:first-child { min-width: 195px; }
+.report-table td strong { color: var(--brand-navy); }
+.report-table td small, .cell-warning { display: block; margin-top: 4px; color: #9a7337; font-size: 10px; }
+.empty-report { display: flex; align-items: center; gap: 13px; padding: 22px; }
+.empty-report strong { color: var(--brand-navy); font-size: 13px; }
+.empty-report p { margin: 4px 0 0; color: #89958b; font-size: 11px; }
+.privacy-note { margin: -5px 0 0; color: #89958b; font-size: 10px; line-height: 1.5; }
+
+@container workspace (max-width: 1000px) {
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aggregate-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .heading-actions { width: 100%; }
+  .heading-actions .button { flex: 1 1 190px; }
+}
+
+@container workspace (max-width: 860px) {
+  .report-filter { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .report-filter > div { grid-column: 1 / -1; }
+}
+
+@container workspace (max-width: 480px) {
+  .summary-grid { grid-template-columns: 1fr; }
+  .summary-card { min-height: 94px; }
+  .report-filter { grid-template-columns: minmax(0, 1fr); }
+  .report-card > header { align-items: flex-start; flex-direction: column; }
+  .export-blocked { text-align: left; }
+}
+
+@container workspace (max-width: 460px) {
+  .heading-actions { flex-direction: column; }
+  .heading-actions .button { width: 100%; flex-basis: auto; }
+}

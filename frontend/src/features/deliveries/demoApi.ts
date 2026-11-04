@@ -246,7 +246,16 @@ export const demoApi = {
     return {
       user: demoUser,
       permissions: ["ENTREGAS_DIARIAS:VER", "ENTREGAS_DIARIAS:CRIAR", "ENTREGAS_DIARIAS:EDITAR_RASCUNHO", "ENTREGAS_DIARIAS:CORRIGIR", "ENTREGAS_DIARIAS:CANCELAR", "FEEDBACK_CLIENTES:ACESSAR", "FEEDBACK_CLIENTES:VER", "FEEDBACK_CLIENTES:CRIAR", "FEEDBACK_CLIENTES:EXPORTAR", "PAINEL_GERENCIAL:ACESSAR", "AUDITORIA:VER", "CADASTROS:ADMINISTRAR", "CONTROLE_ACESSO:ADMINISTRAR", "FRETES:VER", "FRETES:CRIAR", "FRETES:ADMINISTRAR_AGREGADOS", "AGREGADOS:VER", "AGREGADOS:EXPORTAR"],
-      scopes: [],
+      scopes: [{
+        id_escopo: 1,
+        codigo_escopo: "GLOBAL",
+        tipo_escopo: "GLOBAL",
+        id_setor: null,
+        id_localidade: null,
+        id_perfil: 1,
+        codigo_perfil: "DEV",
+        permissions: ["ENTREGAS_DIARIAS:VER", "FRETES:VER"],
+      }],
     };
   },
   async login(): Promise<AuthenticatedUser> {

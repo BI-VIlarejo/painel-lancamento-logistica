@@ -6,6 +6,12 @@ export type DecimalValue = string | number;
 /** Situação retornada pelo motor de cálculo de tarifas. */
 export type FreightStatus = "CALCULADO" | "PENDENTE_CONFERENCIA";
 
+/** Modalidade informada no lançamento; independe da fonte tarifária. */
+export type FreightTransportType = "AGREGADO" | "TRANSPORTADORA";
+/** Modalidades antigas continuam legíveis no histórico, mas não podem ser lançadas. */
+export type FreightRecordedTransportType = FreightTransportType | "PROPRIO";
+export type FreightPaymentTransportType = "AGREGADO" | "TRANSPORTADORA";
+
 /** Planilhas de origem disponíveis no lançamento. */
 export type FreightTariffSource = "AGREGADOS_CD" | "JUST_IN_TIME" | "PAULO_CRUZ";
 
@@ -20,6 +26,21 @@ export type FreightTruckType =
 export type FreightCatalogOption = {
   codigo: string;
   nome: string;
+};
+
+export type FreightAggregateDriverOption = {
+  id_motorista: number;
+  nome_motorista: string;
+};
+
+export type FreightDeliverySummary = {
+  id_motorista: number;
+  data_servico: string;
+  rota_cidade: string;
+  cidades: string[];
+  quantidade_entregas: number;
+  quantidade_avarias: number;
+  quantidade_registros: number;
 };
 
 /** Zona JUST IN TIME com a relação de áreas atendidas. */
@@ -38,34 +59,21 @@ export type FreightTariffOptions = {
   hash_retrato_tarifas: string;
 };
 
-/** Corpo usado para cadastrar um agregado recebedor de pagamentos. */
-export type AggregateCreateRequest = {
-  nome: string;
-  cpf?: string | null;
-};
-
-/** Agregado retornado pela API, sem CPF. */
-export type AggregateResponse = {
-  id_agregado: number;
-  codigo_agregado: string;
-  nome: string;
-  ativo: boolean;
-  criado_em: string;
-};
-
 /** Campos enviados para simular ou registrar um frete. */
 export type FreightInput = {
   data_servico: string;
-  id_agregado: number;
-  codigo_fonte_tarifa: FreightTariffSource;
+  tipo_transporte: FreightTransportType;
+  nome_transportador: string | null;
+  id_motorista_agregado: number | null;
+  codigo_fonte_tarifa: FreightTariffSource | null;
   rota_cidade: string;
-  km_inicial?: DecimalValue | null;
-  km_final?: DecimalValue | null;
-  km_rodado?: DecimalValue | null;
+  km_inicial: DecimalValue | null;
+  km_final: DecimalValue | null;
   quantidade_entregas: number;
   peso_kg: DecimalValue;
   valor_nota?: DecimalValue | null;
   valor_avaria?: DecimalValue;
+  quantidade_avarias: number;
   codigo_zona_jit?: string | null;
   adicionais_jit?: string[];
   tipo_caminhao?: FreightTruckType | null;
@@ -84,9 +92,10 @@ export type FreightQuoteResponse = {
 export type FreightResponse = {
   id_frete: number;
   codigo_frete: string;
-  id_agregado: number;
-  nome_agregado: string;
-  codigo_fonte_tarifa: FreightTariffSource;
+  tipo_transporte: FreightRecordedTransportType;
+  nome_transportador: string | null;
+  id_motorista_agregado: number | null;
+  codigo_fonte_tarifa: FreightTariffSource | null;
   data_servico: string;
   rota_cidade: string;
   km_inicial: DecimalValue | null;
@@ -100,6 +109,7 @@ export type FreightResponse = {
   adicionais_jit: string[];
   valor_frete_bruto: DecimalValue | null;
   valor_avaria: DecimalValue;
+  quantidade_avarias: number;
   valor_frete_pago: DecimalValue | null;
   percentual_frete: DecimalValue | null;
   status_calculo: FreightStatus;
@@ -121,28 +131,19 @@ export type FreightPage = {
 export type FreightHistoryFilters = {
   data_de?: string;
   data_ate?: string;
+  tipo_transporte?: FreightRecordedTransportType | "TODOS";
   status_calculo?: FreightStatus | "TODOS";
   limit?: number;
   offset?: number;
-};
-
-/** Totais do período para um agregado no relatório financeiro. */
-export type AggregatePaymentSummary = {
-  id_agregado: number;
-  nome_agregado: string;
-  cpf_pendente: boolean;
-  quantidade_fretes: number;
-  quantidade_pendentes: number;
-  valor_frete_bruto: DecimalValue;
-  valor_avarias: DecimalValue;
-  valor_a_pagar: DecimalValue;
 };
 
 /** Resposta de GET /freights/payments/report. */
 export type FreightPaymentReport = {
   data_de: string;
   data_ate: string;
-  items: AggregatePaymentSummary[];
+  tipo_transporte: FreightPaymentTransportType;
+  nome_transportador: string | null;
+  sem_identificacao: boolean;
   quantidade_fretes: number;
   quantidade_pendentes: number;
   valor_frete_bruto: DecimalValue;
@@ -151,7 +152,17 @@ export type FreightPaymentReport = {
 };
 
 /** Filtros comuns à consulta e à exportação do relatório financeiro. */
-export type AggregatePaymentFilters = {
+export type FreightPaymentFilters = {
   data_de: string;
   data_ate: string;
+  tipo_transporte: FreightPaymentTransportType;
+  nome_transportador?: string;
+  sem_identificacao?: boolean;
+};
+
+/** Responsáveis encontrados no período para os filtros de pagamento. */
+export type FreightPaymentOptions = {
+  agregados: string[];
+  transportadoras: string[];
+  agregados_sem_identificacao: boolean;
 };

@@ -3,11 +3,12 @@ import type { ReactNode } from "react";
 import { ApiError } from "../shared/api/apiError";
 import { clearRequestCache } from "../shared/api/requestCache";
 import { authApi } from "../features/auth/api";
-import type { AuthenticatedUser, MeResponse } from "../features/auth/types";
+import type { AccessScope, AuthenticatedUser, MeResponse } from "../features/auth/types";
 
 type AuthContextValue = {
   user: AuthenticatedUser | null;
   permissions: string[];
+  scopes: AccessScope[];
   loading: boolean;
   bootstrapMessage: string;
   login: (username: string, password: string) => Promise<void>;
@@ -22,6 +23,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [scopes, setScopes] = useState<AccessScope[]>([]);
   const [loading, setLoading] = useState(true);
   const [bootstrapMessage, setBootstrapMessage] = useState("");
 
@@ -32,6 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (active) {
           setUser(identity?.user ?? null);
           setPermissions(identity?.permissions ?? []);
+          setScopes(identity?.scopes ?? []);
         }
       })
       .catch((error: unknown) => {
@@ -39,12 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (active) {
             setUser(null);
             setPermissions([]);
+            setScopes([]);
           }
           return;
         }
         if (active) {
           setUser(null);
           setPermissions([]);
+          setScopes([]);
           setBootstrapMessage(error instanceof Error ? error.message : "Não foi possível conectar ao Portal.");
         }
       })
@@ -62,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setBootstrapMessage("");
     setUser(identity.user);
     setPermissions(identity.permissions);
+    setScopes(identity.scopes);
   }, []);
 
   const logout = useCallback(async () => {
@@ -69,6 +75,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await authApi.logout();
     setUser(null);
     setPermissions([]);
+    setScopes([]);
   }, []);
 
   const refreshIdentity = useCallback(async () => {
@@ -76,6 +83,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const identity = await authApi.currentIdentity();
     setUser(identity?.user ?? null);
     setPermissions(identity?.permissions ?? []);
+    setScopes(identity?.scopes ?? []);
   }, []);
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
@@ -88,8 +96,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, permissions, loading, bootstrapMessage, login, changePassword, resetPassword, refreshIdentity, logout }),
-    [user, permissions, loading, bootstrapMessage, login, changePassword, resetPassword, refreshIdentity, logout],
+    () => ({ user, permissions, scopes, loading, bootstrapMessage, login, changePassword, resetPassword, refreshIdentity, logout }),
+    [user, permissions, scopes, loading, bootstrapMessage, login, changePassword, resetPassword, refreshIdentity, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

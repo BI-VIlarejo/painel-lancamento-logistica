@@ -1,0 +1,45 @@
+.freight-history-page { width: 100%; min-width: 0; }
+.freight-heading { min-width: 0; }
+.heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-panel { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: 11px; padding: 14px; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
+.filter-panel .filter-control { min-width: 0; }
+.result-count { margin: 0 2px 10px; color: #748176; font-size: 11px; white-space: nowrap; }
+.table-card { min-width: 0; overflow: hidden; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
+.freight-table.freight-table { min-width: 900px; }
+.freight-table th:nth-child(1) { width: 105px; }
+.freight-table th:nth-child(2) { width: 195px; }
+.freight-table th:nth-child(3) { width: 230px; }
+.freight-table th:nth-child(4) { width: 165px; }
+.freight-table th:nth-child(5) { width: 195px; }
+.pagination { display: flex; min-height: 48px; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 14px; border-top: 1px solid #e8ede8; color: #63748a; font-size: 11px; }
+.pagination > div { display: flex; align-items: center; gap: 8px; }
+.pagination > div > span { min-width: 90px; text-align: center; white-space: nowrap; }
+.pagination .button { min-height: 34px; padding: 0 11px; font-size: 12px; }
+.page-size-control { display: inline-flex; align-items: center; gap: 7px; color: #63748a; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.page-size-control select { height: 34px; min-width: 64px; padding: 0 8px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-control-radius); color: #344b66; background: #fff; font: inherit; }
+.empty-state { display: flex; min-height: 230px; align-items: center; flex-direction: column; justify-content: center; padding: 26px; text-align: center; }
+.empty-state h2 { margin: 14px 0 4px; color: var(--brand-navy); font-size: 16px; }
+.empty-state p { margin: 0 0 17px; color: #7b887e; font-size: 12px; }
+
+@container workspace (max-width: 900px) {
+  .freight-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .heading-actions { width: 100%; }
+  .heading-actions button { flex: 1 1 180px; }
+  .filter-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .result-count { grid-column: 1 / -1; justify-self: end; margin: 1px 0 0; }
+}
+
+@container workspace (max-width: 600px) {
+  .filter-panel { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+  .result-count { grid-column: auto; justify-self: start; }
+  .pagination { align-items: flex-start; flex-direction: column; }
+  .pagination > span { order: 3; }
+  .pagination > div { width: 100%; justify-content: space-between; }
+  .pagination > div > span { flex: 1; }
+  .pagination .button { flex: 1; }
+}
+
+@container workspace (max-width: 460px) {
+  .heading-actions { flex-direction: column; }
+  .heading-actions button { width: 100%; flex-basis: auto; }
+}

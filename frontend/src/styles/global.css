@@ -52,6 +52,13 @@
   --ui-card-shadow: 0 3px 12px rgba(32, 51, 81, .045);
   --ui-dialog-radius: 14px;
   --ui-dialog-shadow: 0 24px 80px rgba(32, 51, 81, .24);
+  /* Compatibilidade dos formulários de frete com os mesmos tokens do portal. */
+  --freight-control-height: var(--ui-control-height);
+  --freight-radius-control: var(--ui-control-radius);
+  --freight-radius-card: var(--ui-card-radius);
+  --freight-border: var(--ui-border);
+  --freight-border-strong: var(--ui-border-strong);
+  --freight-card-shadow: var(--ui-card-shadow);
 }
 
 * { box-sizing: border-box; }

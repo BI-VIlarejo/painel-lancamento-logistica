@@ -1,0 +1,21 @@
+.freight-launch-page { width: 100%; min-width: 0; }
+.launch-heading { align-items: center; }
+.heading-actions { display: flex; flex: 0 0 auto; gap: 8px; }
+.tariff-snapshot { display: flex; min-height: 40px; align-items: center; gap: 9px; padding: 8px 12px; border: 1px solid var(--freight-border); border-radius: 10px; color: #6e7b72; background: #f7faf6; font-size: 11px; }
+.tariff-snapshot strong { color: #465a4a; }
+.snapshot-mark { display: grid; width: 22px; height: 22px; flex: 0 0 auto; place-items: center; border-radius: 7px; color: #527753; background: #e9f1e7; font-weight: 700; }
+.snapshot-hash { margin-left: auto; color: #95a095; font-size: 10px; }
+.load-error { justify-content: space-between; }
+
+@container workspace (max-width: 860px) {
+  .launch-heading { align-items: flex-start; flex-direction: column; gap: 12px; }
+  .heading-actions { width: 100%; flex-wrap: wrap; }
+  .heading-actions button { flex: 1 1 170px; }
+  .tariff-snapshot { align-items: flex-start; flex-wrap: wrap; }
+  .snapshot-hash { width: 100%; margin-left: 31px; }
+  .load-error { align-items: flex-start; flex-direction: column; }
+}
+
+@container workspace (max-width: 520px) {
+  .heading-actions button { flex-basis: 100%; }
+}
