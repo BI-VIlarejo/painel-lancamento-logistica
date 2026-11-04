@@ -9,6 +9,7 @@ from app.modules.auth.router import router as auth_router
 from app.modules.catalogs.router import router as catalogs_router
 from app.modules.deliveries.router import router as deliveries_router
 from app.modules.feedback.router import router as feedback_router
+from app.modules.fretes.router import router as freights_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -17,4 +18,6 @@ api_router.include_router(analytics_router)
 api_router.include_router(catalogs_router)
 api_router.include_router(deliveries_router)
 api_router.include_router(feedback_router)
+# Registra os endpoints do módulo de fretes no prefixo global da API v1.
+api_router.include_router(freights_router)
 api_router.include_router(audit_router)

@@ -1,0 +1,1500 @@
+{
+  "schema_version": 1,
+  "snapshot_date": "2026-10-29",
+  "sources": [
+    "TABELA DE FRETE AGREGADOS CD.xlsx",
+    "TABELA DE FRETE JUST IN TIME.xlsx",
+    "TABELA DE FRETE PAULO CRUZ.xlsx"
+  ],
+  "aggregados_cd": {
+    "RO": {
+      "percent_invoice": 0.012,
+      "per_km": 6.32,
+      "per_kg": 0.06,
+      "formula_cells": {
+        "percent": "D11",
+        "per_km": "D12",
+        "per_kg": "D13"
+      },
+      "formula_example": "E20*$D$11",
+      "freight_min_label": true,
+      "freight_min_value": null
+    },
+    "MC": {
+      "percent_invoice": 0.012,
+      "per_km": 3.56,
+      "per_kg": 0.06,
+      "formula_cells": {
+        "percent": "D11",
+        "per_km": "D12",
+        "per_kg": "D13"
+      },
+      "formula_example": "E20*$D$11",
+      "freight_min_label": true,
+      "freight_min_value": null
+    },
+    "MC S": {
+      "percent_invoice": 0.012,
+      "per_km": 3.75,
+      "per_kg": 0.07,
+      "formula_cells": {
+        "percent": "E6",
+        "per_km": "E7",
+        "per_kg": "E8"
+      },
+      "formula_example": "E20*$E$6",
+      "freight_min_label": true,
+      "freight_min_value": null
+    },
+    "CF": {
+      "percent_invoice": 0.012,
+      "per_km": 3.75,
+      "per_kg": 0.07,
+      "formula_cells": {
+        "percent": "E6",
+        "per_km": "E7",
+        "per_kg": "E8"
+      },
+      "formula_example": "E20*$E$6",
+      "freight_min_label": true,
+      "freight_min_value": null
+    },
+    "AR": {
+      "percent_invoice": 0.012,
+      "per_km": 3.85,
+      "per_kg": 0.08,
+      "formula_cells": {
+        "percent": "E6",
+        "per_km": "E7",
+        "per_kg": "E8"
+      },
+      "formula_example": "E20*E6",
+      "freight_min_label": true,
+      "freight_min_value": null
+    },
+    "CP": {
+      "percent_invoice": 0.012,
+      "per_km": 3.95,
+      "per_kg": 0.08,
+      "formula_cells": {
+        "percent": "E6",
+        "per_km": "E7",
+        "per_kg": "E8"
+      },
+      "formula_example": "E19*E6",
+      "freight_min_label": true,
+      "freight_min_value": null
+    }
+  },
+  "just_in_time": {
+    "zones": [
+      {
+        "code": "ZONA_OESTE_1",
+        "label": "ZONA OESTE 1",
+        "area": "Recreio dos Bandeirantes, Garnenia,Azul, Anil, Barra da Tijuca, Joá, Itanhangá, Jacarépagua, Freguesia, Taquara, Tanque, Praça Seca, Camorim, Jardim Sulacap, Vila Valqueire",
+        "tiers": [
+          {
+            "label": "1 até 50",
+            "min_kg": 1,
+            "max_kg": 50,
+            "price": 90.0
+          },
+          {
+            "label": "51 até 100",
+            "min_kg": 51,
+            "max_kg": 100,
+            "price": 120.0
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 170.0
+          },
+          {
+            "label": "251 até 500",
+            "min_kg": 251,
+            "max_kg": 500,
+            "price": 243.23
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 395.25
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 532.08
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 653.7
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 881.73
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1079.36
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1520.21
+          }
+        ]
+      },
+      {
+        "code": "ZONA_OESTE_2",
+        "label": "ZONA OESTE 2",
+        "area": "Guaratiba, Pedra de Guaratiba, Campo Grande, Santa Cruz, Barra de Guarariba, Vargem Grande",
+        "tiers": [
+          {
+            "label": "1 até 50",
+            "min_kg": 1,
+            "max_kg": 50,
+            "price": 90.0
+          },
+          {
+            "label": "51 até 100",
+            "min_kg": 51,
+            "max_kg": 100,
+            "price": 120.0
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 170.0
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 285.87
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 435.93
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 604.44
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 808.97
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1078.07
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1296.94
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1676.64
+          }
+        ]
+      },
+      {
+        "code": "ZONA_SUL",
+        "label": "ZONA SUL",
+        "area": "Flamengo, Botafogo, Cosme Velho, Glória, Humaitá, Santa Teresa, Catete, Copacabana, Ipanema, Leblon, Jardim Botânico, Lagoa, São Conrado, Leme, Gávea",
+        "tiers": [
+          {
+            "label": "1 até 50",
+            "min_kg": 1,
+            "max_kg": 50,
+            "price": 90.0
+          },
+          {
+            "label": "51 até 100",
+            "min_kg": 51,
+            "max_kg": 100,
+            "price": 120.0
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 170.0
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 250.84
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 398.0
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 602.01
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 819.4
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1070.23
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1337.79
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1672.23
+          }
+        ]
+      },
+      {
+        "code": "BAIXADA_FLUMINENSE",
+        "label": "BAIXADA FLUMINENSE",
+        "area": "Caxias, Nova Iguaçu, Belford Roxo, Mesquita, Queimados, Eng Pedreira, Japeri, Nilopólis",
+        "tiers": [
+          {
+            "label": "1 até 50",
+            "min_kg": 1,
+            "max_kg": 50,
+            "price": 90.0
+          },
+          {
+            "label": "51 até 100",
+            "min_kg": 51,
+            "max_kg": 100,
+            "price": 120.0
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 170.0
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 250.84
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 401.34
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 635.46
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 819.4
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1086.95
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1321.08
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1839.46
+          }
+        ]
+      },
+      {
+        "code": "ZONA_NORTE_1",
+        "label": "ZONA NORTE 1",
+        "area": "Cachambi, Pilares, Piedade, Cascadura, Madureira, Todos os Santos, Bonsucesso, Ramos, Penha, Engenho de Dentro,Ilha do Governador",
+        "tiers": [
+          {
+            "label": "1 até 50",
+            "min_kg": 1,
+            "max_kg": 50,
+            "price": 90.0
+          },
+          {
+            "label": "51 até 100",
+            "min_kg": 51,
+            "max_kg": 100,
+            "price": 120.0
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 170.0
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 267.55
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 384.63
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 585.29
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 819.4
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1086.95
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1220.74
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1655.52
+          }
+        ]
+      },
+      {
+        "code": "ZONA_NORTE_2",
+        "label": "ZONA NORTE 2",
+        "area": "Macaranã, Tijuca, Vila Isabel, Grajaú, Andaraí, Alto da Boa Vista, Caju, Centro",
+        "tiers": [
+          {
+            "label": "1 até 50",
+            "min_kg": 1,
+            "max_kg": 50,
+            "price": 90.0
+          },
+          {
+            "label": "51 até 100",
+            "min_kg": 51,
+            "max_kg": 100,
+            "price": 120.0
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 170.0
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 267.55
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 418.07
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 585.29
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 836.12
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1107.8
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1237.46
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1672.23
+          }
+        ]
+      },
+      {
+        "code": "NORTE_FLUMINENSE",
+        "label": "NORTE FLUMINENSE",
+        "area": "Conceição de Macabu, Quisamã, Campos, São João da Barra",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 930.11
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 987.49
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 1009.26
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 1208.14
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1302.14
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1602.94
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1884.93
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 2354.94
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2918.93
+          }
+        ]
+      },
+      {
+        "code": "NOROESTE_FLUMINENSE",
+        "label": "NOROESTE FLUMINENSE",
+        "area": "Cordeiro, Santo Antônio de Padua, Piratininga, Latoca, Aperibé, Miracema, Laje do Muriaé, Natividade, Muriaé, Itaperuna, Macuco, Cantagalo",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 930.11
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 987.49
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 1009.26
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 1208.14
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1302.14
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1602.94
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1884.93
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 2354.94
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2918.93
+          }
+        ]
+      },
+      {
+        "code": "REGI_O_SERRANA_1",
+        "label": "REGIÃO SERRANA 1",
+        "area": "Petropólis, Itaipava, Três Rios, Areal",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 632.86
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 704.23
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 780.36
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 886.01
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1247.64
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1446.53
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1735.84
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1988.99
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2706.76
+          }
+        ]
+      },
+      {
+        "code": "REGI_O_SERRANA_2",
+        "label": "REGIÃO SERRANA 2",
+        "area": "Teresopólis, Cachoeira de Macacu, Friburgo, Bom Jardim, Nova Friburgo",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 632.86
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 704.23
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 761.33
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 886.01
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1066.82
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1410.37
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1772.0
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 2169.79
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2712.25
+          }
+        ]
+      },
+      {
+        "code": "NITEROI_1",
+        "label": "NITEROI 1",
+        "area": "Niteroi, Centro, Icarai, Santa Rosa, Pendotiba, Piratininga, Itaipu, Camboinhas, São Francisco, Charitas",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 250.47
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 306.13
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 375.71
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 425.67
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 577.68
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 836.12
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1048.95
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1216.17
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1520.22
+          }
+        ]
+      },
+      {
+        "code": "NITEROI_2",
+        "label": "NITEROI 2",
+        "area": "São Gonçalo, Itaborai, Rio Bonito, Tanga",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 264.39
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 333.96
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 389.62
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 456.06
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 608.09
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 760.11
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 988.15
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1216.17
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 1976.28
+          }
+        ]
+      },
+      {
+        "code": "REGI_O_DOS_LAGOS_1",
+        "label": "REGIÃO DOS LAGOS 1",
+        "area": "Marica, Araruama, Saquarema, Iguaba, Cabo Frio, Arraial do cano, Búzios, São Pedro da Aldeia",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 756.61
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 799.4
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 837.46
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 890.76
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1107.74
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1523.62
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1704.44
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1903.33
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2445.78
+          }
+        ]
+      },
+      {
+        "code": "REGI_O_DOS_LAGOS_2",
+        "label": "REGIÃO DOS LAGOS 2",
+        "area": "Cassimiro de Abreu, Rios das Ostras, Macaé, Silva Jardim",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 806.1
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 828.95
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 844.92
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 904.59
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1127.62
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1534.27
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1716.35
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1916.64
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2462.88
+          }
+        ]
+      },
+      {
+        "code": "COSTA_VERDE_1",
+        "label": "COSTA VERDE 1",
+        "area": "Iataguai, Itacuruça, Coroa Grande, Muriqui, Conceição de Jacarei, Mangaratiba",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 658.63
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 678.23
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 705.67
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 839.49
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1182.13
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1370.57
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1678.95
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1884.53
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2484.17
+          }
+        ]
+      },
+      {
+        "code": "COSTA_VERDE_2",
+        "label": "COSTA VERDE 2",
+        "area": "Angra dos Reis, Paraty, Rio Claro, Lídice",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 696.89
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 758.99
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 834.89
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 942.1
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1140.38
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1446.84
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1663.15
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1825.36
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2546.41
+          }
+        ]
+      },
+      {
+        "code": "VALE_DO_PARAIBA1",
+        "label": "VALE DO PARAIBA1",
+        "area": "Parai, Barra do Parai, Volta Redonda, Rio das Flore, Itatiaia, Porto Real, Quatis, Barra Mansa, Resende, Valença, Pinheiral",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 720.34
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 763.33
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 790.61
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 705.7
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1122.67
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1339.67
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1556.63
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1712.54
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2224.26
+          }
+        ]
+      },
+      {
+        "code": "VALE_DO_PARAIBA_2",
+        "label": "VALE DO PARAIBA 2",
+        "area": "Miguel Pereira, Paty Alferes, Mendes, Paraiba do Sul, Vassouras, Avelar",
+        "tiers": [
+          {
+            "label": "1 até 100",
+            "min_kg": 1,
+            "max_kg": 100,
+            "price": 755.48
+          },
+          {
+            "label": "100 até 250",
+            "min_kg": 100,
+            "max_kg": 250,
+            "price": 776.56
+          },
+          {
+            "label": "250 até 500",
+            "min_kg": 250,
+            "max_kg": 500,
+            "price": 790.61
+          },
+          {
+            "label": "500 até 1.000",
+            "min_kg": 500,
+            "max_kg": 1000,
+            "price": 922.38
+          },
+          {
+            "label": "1.001 até 2.000",
+            "min_kg": 1001,
+            "max_kg": 2000,
+            "price": 1039.23
+          },
+          {
+            "label": "2.001 até 3.500",
+            "min_kg": 2001,
+            "max_kg": 3500,
+            "price": 1423.1
+          },
+          {
+            "label": "3.500 até 5.000",
+            "min_kg": 3500,
+            "max_kg": 5000,
+            "price": 1690.15
+          },
+          {
+            "label": "5.001 até 7.000",
+            "min_kg": 5001,
+            "max_kg": 7000,
+            "price": 1923.82
+          },
+          {
+            "label": "7.001 até 12.000",
+            "min_kg": 7001,
+            "max_kg": 12000,
+            "price": 2574.77
+          }
+        ]
+      }
+    ],
+    "additional_tiers": [
+      {
+        "label": "0 à 500",
+        "min_kg": 0,
+        "max_kg": 500,
+        "rates": {
+          "DISTANCIA": 120.0,
+          "MATERIAL GRANDE": 150.0,
+          "ESCADA": 120.0,
+          "RAMPA": 120.0,
+          "SUB SOLO  E DÍCIL ACESSO": 120.0,
+          "SÁBADO": 220.0,
+          "NOTURNO": 220.0,
+          "CAMINHÃO NÃO PARA": 120.0
+        }
+      },
+      {
+        "label": "500 à 1000",
+        "min_kg": 500,
+        "max_kg": 1000,
+        "rates": {
+          "DISTANCIA": 170.0,
+          "MATERIAL GRANDE": 200.0,
+          "ESCADA": 170.0,
+          "RAMPA": 170.0,
+          "SUB SOLO  E DÍCIL ACESSO": 170.0,
+          "SÁBADO": 270.0,
+          "NOTURNO": 270.0,
+          "CAMINHÃO NÃO PARA": 170.0
+        }
+      },
+      {
+        "label": "1500 à 2000",
+        "min_kg": 1500,
+        "max_kg": 2000,
+        "rates": {
+          "DISTANCIA": 220.0,
+          "MATERIAL GRANDE": 250.0,
+          "ESCADA": 220.0,
+          "RAMPA": 220.0,
+          "SUB SOLO  E DÍCIL ACESSO": 220.0,
+          "SÁBADO": 320.0,
+          "NOTURNO": 320.0,
+          "CAMINHÃO NÃO PARA": 220.0
+        }
+      },
+      {
+        "label": "2000 à 2500",
+        "min_kg": 2000,
+        "max_kg": 2500,
+        "rates": {
+          "DISTANCIA": 270.0,
+          "MATERIAL GRANDE": 300.0,
+          "ESCADA": 270.0,
+          "RAMPA": 270.0,
+          "SUB SOLO  E DÍCIL ACESSO": 270.0,
+          "SÁBADO": 370.0,
+          "NOTURNO": 370.0,
+          "CAMINHÃO NÃO PARA": 270.0
+        }
+      },
+      {
+        "label": "3000 à 3500",
+        "min_kg": 3000,
+        "max_kg": 3500,
+        "rates": {
+          "DISTANCIA": 320.0,
+          "MATERIAL GRANDE": 350.0,
+          "ESCADA": 320.0,
+          "RAMPA": 320.0,
+          "SUB SOLO  E DÍCIL ACESSO": 320.0,
+          "SÁBADO": 420.0,
+          "NOTURNO": 420.0,
+          "CAMINHÃO NÃO PARA": 320.0
+        }
+      },
+      {
+        "label": "4000 à 4500",
+        "min_kg": 4000,
+        "max_kg": 4500,
+        "rates": {
+          "DISTANCIA": 370.0,
+          "MATERIAL GRANDE": 400.0,
+          "ESCADA": 370.0,
+          "RAMPA": 370.0,
+          "SUB SOLO  E DÍCIL ACESSO": 370.0,
+          "SÁBADO": 470.0,
+          "NOTURNO": 470.0,
+          "CAMINHÃO NÃO PARA": 370.0
+        }
+      },
+      {
+        "label": "5000 à 5500",
+        "min_kg": 5000,
+        "max_kg": 5500,
+        "rates": {
+          "DISTANCIA": 420.0,
+          "MATERIAL GRANDE": 450.0,
+          "ESCADA": 420.0,
+          "RAMPA": 420.0,
+          "SUB SOLO  E DÍCIL ACESSO": 420.0,
+          "SÁBADO": 520.0,
+          "NOTURNO": 520.0,
+          "CAMINHÃO NÃO PARA": 420.0
+        }
+      },
+      {
+        "label": "6000 à 6500",
+        "min_kg": 6000,
+        "max_kg": 6500,
+        "rates": {
+          "DISTANCIA": 470.0,
+          "MATERIAL GRANDE": 500.0,
+          "ESCADA": 470.0,
+          "RAMPA": 470.0,
+          "SUB SOLO  E DÍCIL ACESSO": 470.0,
+          "SÁBADO": 570.0,
+          "NOTURNO": 570.0,
+          "CAMINHÃO NÃO PARA": 470.0
+        }
+      },
+      {
+        "label": "7000 à 7500",
+        "min_kg": 7000,
+        "max_kg": 7500,
+        "rates": {
+          "DISTANCIA": 520.0,
+          "MATERIAL GRANDE": 550.0,
+          "ESCADA": 520.0,
+          "RAMPA": 520.0,
+          "SUB SOLO  E DÍCIL ACESSO": 520.0,
+          "SÁBADO": 620.0,
+          "NOTURNO": 620.0,
+          "CAMINHÃO NÃO PARA": 520.0
+        }
+      },
+      {
+        "label": "8000 à 8500",
+        "min_kg": 8000,
+        "max_kg": 8500,
+        "rates": {
+          "DISTANCIA": 570.0,
+          "MATERIAL GRANDE": 600.0,
+          "ESCADA": 570.0,
+          "RAMPA": 570.0,
+          "SUB SOLO  E DÍCIL ACESSO": 570.0,
+          "SÁBADO": 670.0,
+          "NOTURNO": 670.0,
+          "CAMINHÃO NÃO PARA": 570.0
+        }
+      },
+      {
+        "label": "9000 à 9500",
+        "min_kg": 9000,
+        "max_kg": 9500,
+        "rates": {
+          "DISTANCIA": 620.0,
+          "MATERIAL GRANDE": 650.0,
+          "ESCADA": 620.0,
+          "RAMPA": 620.0,
+          "SUB SOLO  E DÍCIL ACESSO": 620.0,
+          "SÁBADO": 720.0,
+          "NOTURNO": 720.0,
+          "CAMINHÃO NÃO PARA": 620.0
+        }
+      },
+      {
+        "label": "10000 à 10500",
+        "min_kg": 10000,
+        "max_kg": 10500,
+        "rates": {
+          "DISTANCIA": 670.0,
+          "MATERIAL GRANDE": 700.0,
+          "ESCADA": 670.0,
+          "RAMPA": 670.0,
+          "SUB SOLO  E DÍCIL ACESSO": 670.0,
+          "SÁBADO": 770.0,
+          "NOTURNO": 770.0,
+          "CAMINHÃO NÃO PARA": 670.0
+        }
+      },
+      {
+        "label": "11000 à 11500",
+        "min_kg": 11000,
+        "max_kg": 11500,
+        "rates": {
+          "DISTANCIA": 720.0,
+          "MATERIAL GRANDE": 750.0,
+          "ESCADA": 720.0,
+          "RAMPA": 720.0,
+          "SUB SOLO  E DÍCIL ACESSO": 720.0,
+          "SÁBADO": 820.0,
+          "NOTURNO": 820.0,
+          "CAMINHÃO NÃO PARA": 720.0
+        }
+      },
+      {
+        "label": "12000",
+        "min_kg": 12000,
+        "max_kg": 12000,
+        "rates": {
+          "DISTANCIA": 770.0,
+          "MATERIAL GRANDE": 800.0,
+          "ESCADA": 770.0,
+          "RAMPA": 770.0,
+          "SUB SOLO  E DÍCIL ACESSO": 770.0,
+          "SÁBADO": 870.0,
+          "NOTURNO": 870.0,
+          "CAMINHÃO NÃO PARA": 770.0
+        }
+      },
+      {
+        "label": "OBS: SE HOUVER ENTREGA COM MAIS DE UM DOS ADICIONAIS NO MESMO LOCAL, NÓS INFORMAREMOS, E NEGOCIAREMOS NOVOS VALORES.",
+        "rates": {
+          "DISTANCIA": null,
+          "MATERIAL GRANDE": null,
+          "ESCADA": null,
+          "RAMPA": null,
+          "SUB SOLO  E DÍCIL ACESSO": null,
+          "SÁBADO": null,
+          "NOTURNO": null,
+          "CAMINHÃO NÃO PARA": null
+        }
+      }
+    ],
+    "storage": [
+      {
+        "service": "ARMAZENAGEM QUINZENAL POR PALLET",
+        "price": 35
+      },
+      {
+        "service": "ENTRADA POR PALLET",
+        "price": 15
+      },
+      {
+        "service": "SAÍDA DE PALLET (CAMINHÕES TERCEIROS)",
+        "price": 15
+      },
+      {
+        "service": "REPALLETIZAÇÃO",
+        "price": 50
+      },
+      {
+        "service": "EMBALAR CAIXAS",
+        "price": "à combinar"
+      },
+      {
+        "service": "MOVIMENTAÇÃO DE PALLET",
+        "price": "à combinar"
+      }
+    ]
+  },
+  "paulo_cruz": [
+    {
+      "vehicle": "Saveiro",
+      "weight_label": "Carro de apoio",
+      "price": 300.0
+    },
+    {
+      "vehicle": "Kia Bongo",
+      "weight_label": "Carro de apoio",
+      "price": 500.0
+    },
+    {
+      "vehicle": "Caminhão 3/4",
+      "weight_label": "1.500 a 4.000 kg",
+      "price": 950.0
+    },
+    {
+      "vehicle": "Caminhão toco",
+      "weight_label": "4.001 a 9.000 kg",
+      "price": 1100.0
+    }
+  ]
+}

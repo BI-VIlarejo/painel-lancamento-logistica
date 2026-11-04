@@ -21,6 +21,8 @@ from app.core.security import generate_temporary_password, hash_password
 from app.modules.access_control.catalog import (
     DELIVERY_SECTOR_CODE,
     DELIVERY_SECTOR_NAME,
+    FREIGHT_SECTOR_CODE,
+    FREIGHT_SECTOR_NAME,
     PERMISSION_DEFINITIONS,
     PROFILE_PERMISSION_CODES,
     RESOURCE_DEFINITIONS,
@@ -60,6 +62,9 @@ REQUIRED_TABLES = (
     "op_logistica_autorizacao_evento",
     "op_logistica_setor",
     "op_logistica_formulario_versao",
+    # Tabelas de Fretes só podem ser verificadas depois da migration do módulo.
+    "op_logistica_frete",
+    "op_logistica_frete_evento",
 )
 
 
@@ -260,6 +265,7 @@ def _get_or_create_user(db: Session, *, username: str, now: datetime) -> tuple[U
 
 
 def _seed_operational_reference_data(db: Session, *, actor_id: int, now: datetime) -> None:
+    """Confere ou cadastra os setores usados pelos módulos operacionais."""
     sector = db.scalar(select(Setor).where(Setor.codigo == DELIVERY_SECTOR_CODE))
     if sector is None:
         sector = Setor(
@@ -274,6 +280,26 @@ def _seed_operational_reference_data(db: Session, *, actor_id: int, now: datetim
     elif not sector.ativo or sector.nome != DELIVERY_SECTOR_NAME:
         raise RuntimeError(
             f"O setor existente diverge de {DELIVERY_SECTOR_NAME} ou está inativo; revise-o manualmente."
+        )
+
+    # O provisionamento não cria tabelas; a migration deve existir antes desta etapa.
+    transport_sector = db.scalar(
+        select(Setor).where(Setor.codigo == FREIGHT_SECTOR_CODE)
+    )
+    if transport_sector is None:
+        db.add(
+            Setor(
+                codigo=FREIGHT_SECTOR_CODE,
+                nome=FREIGHT_SECTOR_NAME,
+                ativo=True,
+                criado_em=now,
+                atualizado_em=now,
+            )
+        )
+        db.flush()
+    elif not transport_sector.ativo or transport_sector.nome != FREIGHT_SECTOR_NAME:
+        raise RuntimeError(
+            f"O setor existente diverge de {FREIGHT_SECTOR_NAME} ou está inativo; revise-o manualmente."
         )
 
     form = db.scalar(
@@ -359,6 +385,7 @@ def _grant_global_dev(db: Session, *, user: Usuario, profile: Perfil, now: datet
 
 
 def main() -> int:
+    """Valida staging, verifica o schema e provisiona a conta de desenvolvimento."""
     try:
         _confirm_staging_target()
         username = normalize_username(input("Username da conta DEV: "))
