@@ -34,16 +34,13 @@ class FreightCalculatorTests(TestCase):
                 self.assertEqual(result.status, "PENDENTE_CONFERENCIA")
                 self.assertIsNone(result.valor_frete_bruto)
 
-    def test_own_fleet_never_uses_a_third_party_cost(self):
-        result = calculate_freight(
+    def test_new_launch_rejects_own_fleet_modality(self):
+        with self.assertRaises(ValidationError):
             payload(
                 tipo_transporte="PROPRIO",
                 codigo_fonte_tarifa=None,
                 nome_transportador="Veículo de teste",
             )
-        )
-        self.assertEqual(result.status, "PENDENTE_CONFERENCIA")
-        self.assertIsNone(result.valor_frete_bruto)
 
     def test_paulo_cruz_requires_confirmed_weight_bounds(self):
         cases = [
@@ -116,7 +113,7 @@ class FreightCalculatorTests(TestCase):
             {"peso_kg": "1.0001"},
             {"valor_nota": "1.001"},
             {"quantidade_entregas": -1},
-            {"nome_transportador": "Recebedor indevido"},
+            {"id_motorista_agregado": None},
             {"codigo_fonte_tarifa": "PAULO_CRUZ"},
             {"adicionais_jit": ["ESCADA", " escada "]},
         ):

@@ -10,7 +10,7 @@ import app.model_registry  # noqa: F401
 from app.core.orm import Base
 from app.modules.access_control.service import AuthorizationContext, EffectiveGrant
 from app.modules.auth.models import Usuario
-from app.modules.catalogs.models import Setor
+from app.modules.catalogs.models import Pessoa, Setor
 from app.modules.fretes.schemas import FreightInput
 
 
@@ -18,6 +18,7 @@ def payload(**changes) -> FreightInput:
     values = dict(
         data_servico=date(2026, 11, 3),
         tipo_transporte="AGREGADO",
+        id_motorista_agregado=1,
         codigo_fonte_tarifa="AGREGADOS_CD",
         rota_cidade="Rio das Ostras",
         km_inicial="100",
@@ -85,6 +86,23 @@ def database():
             codigo="TRANSPORTE",
             nome="Transporte",
             ativo=True,
+            criado_em=now,
+            atualizado_em=now,
+        )
+    )
+    db.add(
+        Pessoa(
+            id_pessoa=1,
+            codigo_pessoa="00000000-0000-0000-0000-000000000001",
+            sistema_origem=None,
+            codigo_pessoa_origem=None,
+            nome_exibicao="Motorista Agregado Teste",
+            tipo_funcao="MOTORISTA",
+            tipo_transporte_entrega="TERCEIRIZADA",
+            ativo=True,
+            vigente_desde=date(2026, 1, 1),
+            vigente_ate=None,
+            criado_por=1,
             criado_em=now,
             atualizado_em=now,
         )

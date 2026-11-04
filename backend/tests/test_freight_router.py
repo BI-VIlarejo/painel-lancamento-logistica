@@ -52,10 +52,16 @@ class FreightRouterTests(TestCase):
             side_effect=authorize,
         )
         settings_patch = patch("app.api.v1.dependencies.get_settings", return_value=self.settings)
+        delivery_summary_patch = patch(
+            "app.modules.fretes.repository.get_driver_delivery_summary",
+            return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1),
+        )
         auth_patch.start()
         settings_patch.start()
+        delivery_summary_patch.start()
         self.addCleanup(auth_patch.stop)
         self.addCleanup(settings_patch.stop)
+        self.addCleanup(delivery_summary_patch.stop)
 
     def tearDown(self):
         self.db.close()
