@@ -1,7 +1,9 @@
 # Plano de implementação do portal de lançamento de dados
 
-**Atualizado em:** 27/10/2026
-**Status em 27/10/2026:** staging está na revisão `a640c9e2f7b1`; o snapshot anterior já foi confirmado. A correção para que a coleta fique dentro do mesmo registro da entrega está em trabalho local e exige novo CI e a migration `b17d4e82c906`. O deploy corrigido em staging está planejado para amanhã, 28/10/2026: primeiro CI e migration, depois o workflow manual da API e o aceite funcional. Produção fica para depois do piloto.
+**Atualizado em:** 03/11/2026
+**Estado em 03/11/2026:** os fluxos de Entregas e Fretes estão implementados localmente; as migrations pendentes são `d4e7c9b2a610` e `f8a2d6c1e407`, após a revisão de staging `b17d4e82c906`. A cadeia foi validada em MySQL temporário. A aplicação em staging aguarda confirmação de snapshot: o perfil IAM da instância não tem permissão `rds:DescribeDBInstances`. Decisões operacionais ainda pendentes e o estado detalhado estão em [pendências para retomada](./pendencias-para-retomada.md) e [pendências de Fretes](./pendencias-modulo-fretes.md). Produção fica para depois do piloto.
+
+**Registro histórico de 27/10/2026:** staging estava na revisão `a640c9e2f7b1`; o snapshot anterior havia sido confirmado. A correção para que a coleta ficasse dentro do mesmo registro da entrega exigia a migration `b17d4e82c906` e um novo CI/deploy.
 
 **Atualização de escopo em 27/10/2026:** `a640c9e2f7b1` já está aplicada em staging. A nova `b17d4e82c906` grava as quantidades de coleta no mesmo item da entrega e marca a operação dos motivos. O deploy está planejado para 28/10/2026, seguindo CI verde → migration → workflow manual da API → validação. Detalhes e critérios de aceite: [entregas, coletas e indicadores](./alteracoes-coletas-edicao-indicadores.md).
 

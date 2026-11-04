@@ -10,8 +10,16 @@ A cadeia operacional começa em `f4a7c9d2e1b6`; `e2b6d4a1c903` cria as tabelas o
 `a92f7c31de04` acrescenta sessões, `c41d8e6f2b70` alinha a auditoria e valida as quantidades de
 entrega, e `d7c9a4f2b610` atualiza OTIF, feedback e os tipos de auditoria. `f3c8a1d6b907` simplifica
 o modelo de feedback e remove publicação adiada; `b817e6c2a904` acrescenta cidade/UF e auditoria de
-edições de localidades; `c9b61a2f4d80` permite auditar alterações de nome e usuário de contas. As
-migrations devem ser revisadas contra o DBML e os modelos ORM.
+edições de localidades; `c9b61a2f4d80` permite auditar alterações de nome e usuário de contas.
+Depois, `d2a8f6c1b904`, `e31f9a7c2b64`, `a640c9e2f7b1` e `b17d4e82c906` acrescentam observação
+de motivo, eventos de atualização de catálogo e suporte a coletas no modelo de Entregas. A revisão
+`d4e7c9b2a610` adiciona a coluna nullable `codigo_cliente` a cada ocorrência de entrega/coleta. Dados
+legados continuam nulos, e o downgrade recusa apagar códigos existentes. `f8a2d6c1e407` cria as
+tabelas de fretes e eventos; agora depende de `d4e7c9b2a610`, formando uma cadeia linear.
+`c7e3a91b5d42` acrescenta o vínculo nullable com o motorista do agregado, a quantidade de avarias
+com valor inicial zero, a FK e os checks correspondentes, além de permitir hodômetro nulo para
+transportadoras independentes. O vínculo usa o cadastro existente de pessoas/equipes, sem criar
+cadastro paralelo. As migrations devem ser revisadas contra o DBML e os modelos ORM.
 
 `d7c9a4f2b610` adiciona `quantidade_entregas_no_prazo` e
 `quantidade_entregas_completas`, ambas nullable. Essas colunas permanecem por compatibilidade com

@@ -28,9 +28,11 @@ O setor terá algumas páginas, como o Suporte. A primeira página confirmada é
 
 O lançamento de Frete deve trazer para o portal a tabela usada hoje e calcular automaticamente o valor a registrar, usando a planilha de tarifas por cidade e as tabelas próprias de mais duas transportadoras independentes.
 
+**Correção de escopo confirmada em 04/11/2026:** novos lançamentos de frete não incluem frota própria. Para agregados, o lançamento seleciona os motoristas classificados como **MOTORISTA / TERCEIRIZADA** no cadastro de equipes. Ao escolher a data e o motorista, o Portal busca nas Entregas confirmadas a cidade/rota, a quantidade de entregas e a quantidade de ocorrências **AVARIA**. A quantidade de avarias fica separada do desconto financeiro em reais.
+
 As transportadoras independentes poderão atualizar suas tabelas. Se uma delas adicionar uma coluna, cobrança ou seção, precisamos definir como incluir o campo correspondente no preenchimento do Portal. Também será preciso decidir quem pode editar cada tabela, quando novos valores passam a valer e como manter a explicação dos fretes antigos sem alterá-los silenciosamente.
 
-O módulo também deve permitir que a gestão escolha um período entre duas datas e gere um relatório com cada agregado e o valor a pagar, pronto para encaminhar ao Financeiro. A regra de cálculo, os fretes que entram no período e o tratamento de cancelamentos, ajustes e pagamentos anteriores precisam ser combinados com as áreas responsáveis.
+O módulo permite que a gestão escolha um período e gere um resumo dos fretes por responsável. O agregado selecionado e o nome usado no dia ficam registrados no lançamento; o relatório não inclui CPF. O tratamento de cancelamentos, ajustes e pagamentos anteriores ainda precisa ser combinado com as áreas responsáveis.
 
 As pastas para subsetores do Suporte podem ser necessárias futuramente, mas essa organização ainda será confirmada.
 

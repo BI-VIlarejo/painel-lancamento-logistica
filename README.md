@@ -13,6 +13,7 @@ O frontend usa a API por padrão. A demonstração só é ativada explicitamente
 - Login, logout, sessão persistente e proteção CSRF.
 - Consulta da identidade, permissões e escopos da conta.
 - Administração de perfis, permissões e escopos pela API protegida.
+- Lançamento e histórico de Fretes para agregados e transportadoras independentes, com cálculo tarifário rastreável; pagamentos consolidados por responsável.
 - Leitura de catálogos, criação e edição de rascunhos, conferência e confirmação direta dos lançamentos de Entregas.
 - Correção de lançamento confirmado por nova revisão, cancelamento justificado e consulta da trilha de eventos.
 - Feedback de cliente vinculado a entrega confirmada, com consulta paginada, filtros e exportação protegida.
