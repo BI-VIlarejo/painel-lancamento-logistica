@@ -18,7 +18,6 @@ def payload(**changes) -> FreightInput:
     values = dict(
         data_servico=date(2026, 11, 3),
         tipo_transporte="AGREGADO",
-        id_motorista_agregado=1,
         codigo_fonte_tarifa="AGREGADOS_CD",
         rota_cidade="Rio das Ostras",
         km_inicial="100",
@@ -28,7 +27,12 @@ def payload(**changes) -> FreightInput:
         valor_nota="10000",
         valor_avaria="16",
     )
-    return FreightInput.model_validate(values | changes)
+    values.update(changes)
+    if "id_motorista_agregado" not in changes:
+        values["id_motorista_agregado"] = (
+            1 if values["tipo_transporte"] == "AGREGADO" else None
+        )
+    return FreightInput.model_validate(values)
 
 
 def access(permission="FRETES:CRIAR", *, scope="GLOBAL", sector_id=None, user_id=1):

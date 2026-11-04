@@ -391,7 +391,9 @@ def create_freight(
             payload,
             require_delivery_data=True,
         )
-        request_fingerprint = _request_fingerprint(prepared_payload)
+        # A repetição idempotente compara o mesmo pedido recebido do cliente.
+        # `prepared_payload` já contém o nome/rota/contagens recalculados do banco.
+        request_fingerprint = _request_fingerprint(payload)
         calculation_detail = {
             **calculation.detalhe,
             "request_fingerprint": request_fingerprint,
