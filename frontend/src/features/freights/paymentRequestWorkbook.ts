@@ -149,7 +149,5 @@ export async function createPaymentRequestWorkbook(
   };
 
   const bytes = await workbook.xlsx.writeBuffer();
-  const arrayBuffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(arrayBuffer).set(bytes);
-  return new Blob([arrayBuffer], { type: XLSX_MIME_TYPE });
+  return new Blob([bytes], { type: XLSX_MIME_TYPE });
 }
