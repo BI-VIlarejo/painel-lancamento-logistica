@@ -59,11 +59,11 @@
 .history-muted-cell { color: #8a958d; }
 .history-row-actions { display: flex; width: 100%; flex-direction: column; align-items: center; gap: 6px; }
 .history-main-actions { display: flex; width: 100%; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
-.history-row-actions .table-action { display: inline-flex; min-height: 31px; flex: 0 0 auto; align-items: center; justify-content: center; padding: 6px 7px; border: 0; border-radius: 0; color: var(--brand-navy); background: transparent; box-shadow: none; font-size: 12px; font-weight: 700; text-align: center; text-decoration: none; white-space: nowrap; transition: color .16s; }
-.history-row-actions .table-action:hover:not(:disabled) { color: var(--primary-hover); background: transparent; box-shadow: none; }
+.history-row-actions .table-action { display: inline-flex; min-height: 31px; flex: 0 0 auto; align-items: center; justify-content: center; padding: 6px 7px; border: 1px solid transparent; border-radius: 6px; color: var(--brand-navy); background: transparent; box-shadow: none; font-size: 12px; font-weight: 700; text-align: center; text-decoration: none; white-space: nowrap; transition: color .18s, background .18s, border-color .18s; }
+.history-row-actions .table-action:hover:not(:disabled) { border-color: #c5d2e1; color: var(--primary-hover); background: #f4f7fa; box-shadow: none; }
 .history-row-actions .table-action:focus-visible { outline: 2px solid var(--brand-blue-line); outline-offset: 1px; }
 .history-row-actions .table-action-danger { color: #a44b45; background: transparent; }
-.history-row-actions .table-action-danger:hover:not(:disabled) { color: #81332f; background: transparent; }
+.history-row-actions .table-action-danger:hover:not(:disabled) { border-color: #e3c6c2; color: #81332f; background: #fbefee; box-shadow: none; }
 .history-delete-action { min-height: 28px !important; color: #8a6a62 !important; font-size: 10px !important; }
 .history-otif-note { align-items: flex-start; margin: 14px 17px 16px; padding: 10px 12px; }
 .history-otif-note > div { min-width: 0; line-height: 1.5; overflow-wrap: anywhere; }
