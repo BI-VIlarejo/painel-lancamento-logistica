@@ -14,6 +14,8 @@ import type {
   FreightTariffOptions,
 } from "./types";
 
+const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+
 /** Constrói a query string do histórico com os filtros aceitos pela API. */
 function historyQuery(filters: FreightHistoryFilters = {}): string {
   const params = new URLSearchParams();
@@ -125,6 +127,6 @@ export const freightsApi = {
   exportPaymentReport(filters: FreightPaymentFilters): Promise<Blob> {
     return isDemoMode
       ? freightsDemoApi.exportPaymentReport(filters)
-      : apiBlob(`/freights/payments/export.csv?${paymentQuery(filters)}`);
+      : apiBlob(`/freights/payments/export.xlsx?${paymentQuery(filters)}`, XLSX_MIME_TYPE);
   },
 };

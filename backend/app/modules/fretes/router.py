@@ -181,7 +181,7 @@ def get_payment_options(
     )
 
 
-@router.get("/payments/export.csv")
+@router.get("/payments/export.xlsx")
 def export_payment_report(
     db: DatabaseSession,
     data_de: date,
@@ -191,8 +191,8 @@ def export_payment_report(
     sem_identificacao: bool = False,
     access: AuthorizationContext = Depends(_payment_export),  # noqa: B008
 ) -> Response:
-    """Baixa o CSV financeiro somente para quem tem permissão de exportação."""
-    csv_bytes = service.export_payment_report(
+    """Baixa a solicitação XLSX somente para quem tem permissão de exportação."""
+    xlsx_bytes = service.export_payment_report(
         db,
         access=access,
         data_de=data_de,
@@ -202,10 +202,10 @@ def export_payment_report(
         sem_identificacao=sem_identificacao,
     )
     transport_label = "agregados" if tipo_transporte == "AGREGADO" else "transportadoras"
-    filename = f"solicitacao-pagamento-{transport_label}-{data_de:%Y%m%d}-{data_ate:%Y%m%d}.csv"
+    filename = f"solicitacao-pagamento-{transport_label}-{data_de:%Y%m%d}-{data_ate:%Y%m%d}.xlsx"
     return Response(
-        content=csv_bytes,
-        media_type="text/csv; charset=utf-8",
+        content=xlsx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": f'attachment; filename="{filename}"',
             "Cache-Control": "no-store",

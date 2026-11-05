@@ -12,6 +12,7 @@ import type {
   FreightTariffOptions,
   JustInTimeZoneOption,
 } from "./types";
+import type { PaymentRequestWorkbookRow } from "./paymentRequestWorkbook";
 
 const FREIGHTS_KEY = "lancamento-logistica:demo-freights";
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 120));
@@ -485,24 +486,6 @@ function paymentRecords(filters: FreightPaymentFilters): FreightResponse[] {
       : !filters.nome_transportador || item.nome_transportador === filters.nome_transportador);
 }
 
-function paymentResponsibleLabel(filters: FreightPaymentFilters): string {
-  if (filters.sem_identificacao) return "Sem identificação";
-  if (filters.nome_transportador) return filters.nome_transportador;
-  return filters.tipo_transporte === "AGREGADO" ? "Todos os agregados" : "Todas as transportadoras";
-}
-
-/** Converte valor numérico em data brasileira para o arquivo financeiro. */
-function brazilianDate(value: string): string {
-  const [year, month, day] = value.split("-");
-  return `${day}/${month}/${year}`;
-}
-
-/** Escapa uma célula CSV e bloqueia fórmulas iniciadas por caracteres especiais. */
-function csvCell(value: string, protectFormula = false): string {
-  const safe = protectFormula && /^[=+\-@]/.test(value.trimStart()) ? `'${value}` : value;
-  return `"${safe.replaceAll('"', '""')}"`;
-}
-
 /** Operações locais usadas somente quando VITE_DEMO_MODE estiver ativo. */
 export const freightsDemoApi = {
   async tariffOptions(): Promise<FreightTariffOptions> {
@@ -660,21 +643,30 @@ export const freightsDemoApi = {
       throw new Error("Resolva os fretes pendentes de conferência antes de exportar o pagamento.");
     }
 
-    const rows: string[][] = [
-      ["Data inicial", "Data final", "Tipo de transporte", "Responsável", "Fretes no período", "Fretes pendentes", "Frete bruto calculado", "Valor das avarias (R$)", "Total a pagar"],
-      [
-        brazilianDate(filters.data_de),
-        brazilianDate(filters.data_ate),
-        filters.tipo_transporte === "AGREGADO" ? "Agregado" : "Transportadora independente",
-        paymentResponsibleLabel(filters),
-        String(report.quantidade_fretes),
-        String(report.quantidade_pendentes),
-        (numeric(report.valor_frete_bruto) ?? 0).toFixed(2).replace(".", ","),
-        (numeric(report.valor_avarias) ?? 0).toFixed(2).replace(".", ","),
-        (numeric(report.valor_a_pagar) ?? 0).toFixed(2).replace(".", ","),
-      ],
-    ];
-    const csv = `\uFEFF${rows.map((row) => row.map((cell, index) => csvCell(cell, index === 2 || index === 3)).join(";")).join("\r\n")}`;
-    return new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const groups = new Map<string, {
+      days: Set<string>;
+      net: number;
+    }>();
+    for (const freight of paymentRecords(filters)) {
+      if (freight.status_calculo !== "CALCULADO" || freight.valor_frete_pago === null) continue;
+      const responsible = freight.nome_transportador ?? "Sem identificação";
+      const group = groups.get(responsible) ?? { days: new Set<string>(), net: 0 };
+      group.days.add(freight.data_servico);
+      group.net += numeric(freight.valor_frete_pago) ?? 0;
+      groups.set(responsible, group);
+    }
+
+    const reasonPrefix = filters.tipo_transporte === "AGREGADO" ? "AGREGADO" : "TRANSPORTADORA";
+    const rows: PaymentRequestWorkbookRow[] = [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right, "pt-BR"))
+      .map(([name, group]) => ({
+        name,
+        reason: `${reasonPrefix} TOTAL DE ${group.days.size} ${group.days.size === 1 ? "DIA" : "DIAS"}`,
+        total: Number(group.net.toFixed(2)),
+        observations: "",
+      }));
+
+    const { createPaymentRequestWorkbook } = await import("./paymentRequestWorkbook");
+    return createPaymentRequestWorkbook(rows);
   },
 };

@@ -1,13 +1,13 @@
 """Persistência, autorização, idempotência e consolidação financeira isoladas."""
 
-import csv
-import io
+from io import BytesIO
 from datetime import date
 from decimal import Decimal
 from unittest import TestCase
 from unittest.mock import patch
 from uuid import uuid4
 
+from openpyxl import load_workbook
 from freight_support import access, database, payload
 from sqlalchemy import func, select
 
@@ -115,19 +115,21 @@ class FreightServiceTests(TestCase):
         self.assertEqual(report.valor_frete_bruto, Decimal("496.00"))
         self.assertEqual(report.valor_avarias, Decimal("16.00"))
         self.assertEqual(report.valor_a_pagar, Decimal("480.00"))
-        rows = list(
-            csv.reader(
-                io.StringIO(
-                    service.export_payment_report(self.db, access=access(), **filters).decode(
-                        "utf-8-sig"
-                    )
-                ),
-                delimiter=";",
-            )
+        workbook = load_workbook(
+            BytesIO(service.export_payment_report(self.db, access=access(), **filters)),
+            data_only=False,
         )
-        self.assertEqual(len(rows), 2)
-        self.assertNotIn("CPF", ";".join(rows[0]).upper())
-        self.assertIn("480,00", rows[1])
+        worksheet = workbook["Sheet1"]
+        self.assertEqual([worksheet.cell(3, column).value for column in range(1, 7)], [
+            "Nome", "CPF", "Motivo", "Setor", "Valor Total", "Observações"
+        ])
+        self.assertEqual(worksheet["A4"].value, "Motorista Agregado Teste")
+        self.assertIsNone(worksheet["B4"].value)
+        self.assertEqual(worksheet["C4"].value, "AGREGADO TOTAL DE 1 DIA")
+        self.assertEqual(worksheet["D4"].value, "TRANSPORTE")
+        self.assertEqual(worksheet["E4"].value, Decimal("480.00"))
+        self.assertEqual(worksheet["D24"].value, "TOTAL GERAL")
+        self.assertEqual(worksheet["E24"].value, "=SUM(E4:E23)")
 
     def test_pending_freights_are_counted_and_block_payment_export(self):
         self.create_transporter(tipo_caminhao="SAVEIRO")

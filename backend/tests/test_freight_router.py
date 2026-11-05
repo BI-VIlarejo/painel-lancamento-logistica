@@ -108,7 +108,7 @@ class FreightRouterTests(TestCase):
             ("POST", "/freights/quote", "FRETES:CRIAR"),
             ("POST", "/freights", "FRETES:CRIAR"),
             ("GET", "/freights/payments/report", "AGREGADOS:VER"),
-            ("GET", "/freights/payments/export.csv", "AGREGADOS:EXPORTAR"),
+            ("GET", "/freights/payments/export.xlsx", "AGREGADOS:EXPORTAR"),
         ]
         for method, path, permission in cases:
             with self.subTest(path=path):
@@ -130,13 +130,17 @@ class FreightRouterTests(TestCase):
 
     def test_export_has_download_and_no_cache_headers(self):
         response = self.client.get(
-            "/freights/payments/export.csv",
+            "/freights/payments/export.xlsx",
             params={"data_de": "2026-11-01", "data_ate": "2026-11-30"},
         )
         self.assertEqual(response.status_code, 200, response.text)
         self.assertIn("attachment", response.headers["content-disposition"])
         self.assertEqual(response.headers["cache-control"], "no-store")
-        self.assertTrue(response.content.startswith(b"\xef\xbb\xbf"))
+        self.assertEqual(
+            response.headers["content-type"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        self.assertTrue(response.content.startswith(b"PK\x03\x04"))
 
     def test_invalid_filter_and_inverted_period_are_rejected(self):
         self.assertEqual(self.client.get("/freights?limit=101").status_code, 422)

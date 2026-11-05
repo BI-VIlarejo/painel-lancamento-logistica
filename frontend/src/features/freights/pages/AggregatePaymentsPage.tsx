@@ -134,7 +134,7 @@ export function AggregatePaymentsPage({ canExport, canViewFreights, onNavigate }
       link.href = objectUrl;
       const typePart = transportType === "AGREGADO" ? "agregados" : "transportadoras";
       const responsiblePart = safeFilePart(selectedResponsibleLabel);
-      link.download = `solicitacao-pagamento-${typePart}-${responsiblePart}-${compactDate(fromDate)}-${compactDate(toDate)}.csv`;
+      link.download = `solicitacao-pagamento-${typePart}-${responsiblePart}-${compactDate(fromDate)}-${compactDate(toDate)}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -156,7 +156,7 @@ export function AggregatePaymentsPage({ canExport, canViewFreights, onNavigate }
         <div><p className={cx(styles, commonStyles, "eyebrow")}>FECHAMENTO FINANCEIRO</p><h1>Pagamentos de transporte</h1><p className={cx(styles, commonStyles, "page-lead")}>Consulte e exporte o fechamento de cada agregado ou transportadora independente.</p></div>
         <div className={cx(styles, "heading-actions")}>
           {canViewFreights && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/fretes/historico")}>Histórico de fretes</button>}
-          {canExport && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => { void exportReport(); }} disabled={!canDownload || exporting}>{exporting ? "Gerando CSV..." : "Baixar solicitação CSV"}</button>}
+          {canExport && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => { void exportReport(); }} disabled={!canDownload || exporting}>{exporting ? "Gerando XLSX..." : "Baixar solicitação XLSX"}</button>}
         </div>
       </header>
 
@@ -192,7 +192,7 @@ export function AggregatePaymentsPage({ canExport, canViewFreights, onNavigate }
             <article className={cx(styles, "summary-card", "summary-payable")}><span>Total a pagar</span><strong>{formatMoney(report.valor_a_pagar)}</strong><small>Após os descontos por avaria</small></article>
           </section>
           <section className={cx(styles, "report-card")} aria-label={`Resumo de pagamento: ${selectedResponsibleLabel}`}>
-            <header><div><h2>{transportTypeLabel} · {selectedResponsibleLabel}</h2><p>Consolidado pela data do serviço para exportação individual do responsável.</p></div>{canExport && hasPending && <span className={cx(styles, "export-blocked")}>CSV indisponível até resolver as pendências</span>}</header>
+            <header><div><h2>{transportTypeLabel} · {selectedResponsibleLabel}</h2><p>Consolidado pela data do serviço para exportação individual do responsável.</p></div>{canExport && hasPending && <span className={cx(styles, "export-blocked")}>XLSX indisponível até resolver as pendências</span>}</header>
             {report.quantidade_fretes === 0 ? <div className={cx(styles, "empty-report")}><span className={cx(styles, commonStyles, "empty-state-icon")}>＋</span><div><strong>Sem fretes para este filtro no período</strong><p>Altere o período, a modalidade ou o responsável.</p></div></div>
               : <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Resumo de pagamentos por responsável" tabIndex={0}><table className={cx(styles, commonStyles, "data-table report-table")}><thead><tr><th>Tipo de transporte / responsável</th><th>Fretes</th><th>Frete bruto calculado</th><th>Valor das avarias (R$)</th><th>Total a pagar</th></tr></thead><tbody><tr><td><strong>{transportTypeLabel}</strong><small>{selectedResponsibleLabel}</small></td><td>{report.quantidade_fretes.toLocaleString("pt-BR")}{report.quantidade_pendentes > 0 && <small>{report.quantidade_pendentes.toLocaleString("pt-BR")} pendentes</small>}</td><td>{formatMoney(report.valor_frete_bruto)}</td><td>{formatMoney(report.valor_avarias)}</td><td><strong>{formatMoney(report.valor_a_pagar)}</strong></td></tr></tbody></table></div>}
           </section>

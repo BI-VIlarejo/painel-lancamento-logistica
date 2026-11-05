@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from hashlib import sha256
+from io import BytesIO
+from zoneinfo import ZoneInfo
 from uuid import UUID, uuid4
 
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.worksheet.page import PageMargins
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -253,11 +256,6 @@ def _freight_calculation(
             detalhe={**calculation.detalhe, "origem_entregas": source_detail},
         )
     return prepared, calculation
-
-
-def _csv_text_cell(value: str) -> str:
-    """Impede que um nome digitado seja interpretado como fórmula na planilha."""
-    return f"'{value}" if value.lstrip().startswith(("=", "+", "-", "@")) else value
 
 
 def get_tariff_options(
@@ -630,7 +628,7 @@ def export_payment_report(
     nome_transportador: str | None,
     sem_identificacao: bool,
 ) -> bytes:
-    """Gera o CSV do responsável selecionado após exigir cálculos resolvidos."""
+    """Gera a solicitação XLSX no formato da planilha usada pela operação."""
     try:
         sector_id = _transport_access(db, access)
         if data_de > data_ate:
@@ -666,37 +664,161 @@ def export_payment_report(
             "Resolva os fretes pendentes de conferência antes de exportar o pagamento."
         )
 
-    output = io.StringIO(newline="")
-    writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
-    writer.writerow(
-        [
-            "Data inicial",
-            "Data final",
-            "Tipo de transporte",
-            "Responsável",
-            "Fretes no período",
-            "Fretes pendentes",
-            "Frete bruto calculado",
-            "Valor das avarias (R$)",
-            "Total a pagar",
-        ]
+    grouped: dict[str, dict[str, object]] = {}
+    for freight in records:
+        # Pendências são bloqueadas acima; mantenha a proteção caso a regra mude.
+        if freight.status_calculo != "CALCULADO" or freight.valor_frete_pago is None:
+            continue
+        responsible = freight.nome_transportador or "Sem identificação"
+        row = grouped.setdefault(
+            responsible,
+            {
+                "days": set(),
+                "net": Decimal("0"),
+            },
+        )
+        days = row["days"]
+        assert isinstance(days, set)
+        days.add(freight.data_servico)
+        row["net"] = Decimal(row["net"]) + freight.valor_frete_pago
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Sheet1"
+    worksheet.sheet_view.showGridLines = False
+    workbook.properties.creator = "Portal de Logística"
+    workbook.properties.title = "Solicitação de pagamento de Fretes"
+
+    dark = "FF000000"
+    dark_gray = "FF808080"
+    medium_gray = "FF404040"
+    white = "FFFFFFFF"
+    black = "FF000000"
+    thin = Side(style="thin", color=black)
+    medium = Side(style="medium", color=black)
+    currency_format = r'_-[$R$-416]\ * #,##0.00_-;\-[$R$-416]\ * #,##0.00_-;_-[$R$-416]\ * "-"??_-;_-@_-'
+
+    widths = (28.140625, 28.7109375, 41.28515625, 20.140625, 19.140625, 40.7109375)
+    for index, width in enumerate(widths, start=1):
+        worksheet.column_dimensions[chr(64 + index)].width = width
+
+    worksheet.merge_cells("A1:F1")
+    title = worksheet["A1"]
+    title.value = "Solicitação de pagamento Extra"
+    title.font = Font(name="Calibri", size=24, bold=True, italic=True, color=white)
+    title.fill = PatternFill("solid", fgColor=dark_gray)
+    title.alignment = Alignment(horizontal="center", vertical="center")
+    worksheet.row_dimensions[1].height = 32.25
+
+    for cell in worksheet[2]:
+        if cell.column <= 6:
+            cell.fill = PatternFill("solid", fgColor=medium_gray)
+            cell.border = Border(left=medium, right=medium, top=medium, bottom=medium)
+    worksheet["A2"] = "Data"
+    worksheet["A2"].font = Font(name="Calibri", size=11, bold=True, color=white)
+    worksheet["A2"].alignment = Alignment(horizontal="center", vertical="center")
+    worksheet["C2"] = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+    worksheet["C2"].number_format = "dd/mm/yyyy"
+    worksheet["C2"].font = Font(name="Calibri", size=14, bold=True, italic=True, color=white)
+    worksheet["C2"].alignment = Alignment(horizontal="center", vertical="center")
+    worksheet.row_dimensions[2].height = 21.75
+
+    headers = ("Nome", "CPF", "Motivo", "Setor", "Valor Total", "Observações")
+    for column, value in enumerate(headers, start=1):
+        cell = worksheet.cell(row=3, column=column, value=value)
+        cell.font = Font(name="Calibri", size=11, bold=True, color=white)
+        cell.fill = PatternFill("solid", fgColor="FF0D0D0D")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = Border(
+            left=medium if column == 1 else thin,
+            right=thin,
+            top=medium,
+            bottom=thin,
+        )
+
+    data_start = 4
+    data_end = data_start + len(grouped) - 1
+    data_slot_end = max(23, data_end)
+    payment_reason = "AGREGADO" if tipo_transporte == "AGREGADO" else "TRANSPORTADORA"
+
+    for offset, (responsible, values) in enumerate(
+        sorted(grouped.items(), key=lambda item: item[0].casefold())
+    ):
+        row_index = data_start + offset
+        service_days = values["days"]
+        assert isinstance(service_days, set)
+        net = Decimal(values["net"])
+        days_label = "DIA" if len(service_days) == 1 else "DIAS"
+        values_for_row: tuple[object, ...] = (
+            responsible,
+            None,  # O cadastro de pessoas do Portal não armazena CPF.
+            f"{payment_reason} TOTAL DE {len(service_days)} {days_label}",
+            "TRANSPORTE",
+            net,
+            "",
+        )
+        for column, value in enumerate(values_for_row, start=1):
+            cell = worksheet.cell(row=row_index, column=column, value=value)
+            if isinstance(value, str):
+                cell.data_type = "s"
+            cell.font = Font(name="Calibri", size=16, color=black)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = Border(
+                left=medium if column == 1 else thin,
+                right=thin,
+                top=thin,
+                bottom=medium if row_index == data_slot_end else thin,
+            )
+            if column == 5:
+                cell.fill = PatternFill("solid", fgColor="FFD9D9D9")
+                cell.number_format = currency_format
+        worksheet.row_dimensions[row_index].height = 42
+
+    for row_index in range(max(data_start, data_end + 1), data_slot_end + 1):
+        worksheet.row_dimensions[row_index].height = 21
+        for column in range(1, 7):
+            cell = worksheet.cell(row=row_index, column=column)
+            cell.font = Font(name="Calibri", size=16, color=black)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = Border(
+                left=medium if column == 1 else thin,
+                right=thin,
+                top=thin,
+                bottom=medium if row_index == data_slot_end else thin,
+            )
+            if column == 5:
+                cell.fill = PatternFill("solid", fgColor="FFD9D9D9")
+                cell.number_format = currency_format
+
+    if data_end < data_slot_end:
+        worksheet.row_dimensions[data_slot_end].height = 21.75
+
+    total_row = data_slot_end + 1
+    for column in (4, 5):
+        cell = worksheet.cell(row=total_row, column=column)
+        cell.fill = PatternFill("solid", fgColor=dark)
+        cell.font = Font(name="Calibri", size=16, bold=column == 4, color=white)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = Border(left=medium, right=medium, top=medium, bottom=medium)
+    worksheet.cell(row=total_row, column=4, value="TOTAL GERAL")
+    total = worksheet.cell(row=total_row, column=5)
+    total.value = f"=SUM(E{data_start}:E{data_slot_end})"
+    total.number_format = currency_format
+    worksheet.row_dimensions[total_row].height = 21.75
+
+    worksheet.page_setup.orientation = "landscape"
+    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
+    worksheet.page_setup.scale = 69
+    worksheet.page_margins = PageMargins(
+        left=0.7086614173228347,
+        right=0.7086614173228347,
+        top=0.7480314960629921,
+        bottom=0.7480314960629921,
+        header=0.3149606299212598,
+        footer=0.3149606299212598,
     )
-    writer.writerow(
-        [
-            data_de.strftime("%d/%m/%Y"),
-            data_ate.strftime("%d/%m/%Y"),
-            "Agregado" if tipo_transporte == "AGREGADO" else "Transportadora independente",
-            _csv_text_cell(
-                "Sem identificação"
-                if sem_identificacao
-                else nome_transportador
-                or ("Todos os agregados" if tipo_transporte == "AGREGADO" else "Todas as transportadoras")
-            ),
-            report.quantidade_fretes,
-            report.quantidade_pendentes,
-            f"{report.valor_frete_bruto:.2f}".replace(".", ","),
-            f"{report.valor_avarias:.2f}".replace(".", ","),
-            f"{report.valor_a_pagar:.2f}".replace(".", ","),
-        ]
-    )
-    return ("\ufeff" + output.getvalue()).encode("utf-8")
+    worksheet.print_area = f"A1:F{total_row}"
+
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()

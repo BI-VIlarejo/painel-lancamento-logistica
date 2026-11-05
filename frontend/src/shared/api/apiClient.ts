@@ -82,7 +82,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   return (await response.json()) as T;
 }
 
-export async function apiBlob(path: string): Promise<Blob> {
+export async function apiBlob(path: string, accept = "text/csv"): Promise<Blob> {
   if (!apiBaseUrl) {
     throw new Error("Configure VITE_API_BASE_URL para conectar o Portal à API.");
   }
@@ -92,7 +92,7 @@ export async function apiBlob(path: string): Promise<Blob> {
     response = await fetch(`${apiBaseUrl.replace(/\/$/, "")}${path}`, {
       method: "GET",
       credentials: "include",
-      headers: { Accept: "text/csv" },
+      headers: { Accept: accept },
     });
   } catch {
     throw new Error("Não foi possível conectar à API. Confira se o backend está disponível.");
