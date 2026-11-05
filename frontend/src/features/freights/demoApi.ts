@@ -145,6 +145,10 @@ function readFreights(): FreightResponse[] {
     tipo_transporte: item.tipo_transporte ?? "AGREGADO",
     id_motorista_agregado: item.id_motorista_agregado ?? null,
     quantidade_avarias: item.quantidade_avarias ?? 0,
+    cancelado: item.cancelado ?? false,
+    cancelado_em: item.cancelado_em ?? null,
+    cancelado_por: item.cancelado_por ?? null,
+    justificativa_cancelamento: item.justificativa_cancelamento ?? null,
     nome_transportador: item.nome_transportador === "Agregados" && item.tipo_transporte === "AGREGADO"
       ? null
       : item.nome_transportador ?? null,
@@ -479,6 +483,7 @@ function ensureValidPeriod(filters: FreightPaymentFilters): void {
 
 function paymentRecords(filters: FreightPaymentFilters): FreightResponse[] {
   return readFreights()
+    .filter((item) => !item.cancelado)
     .filter((item) => item.tipo_transporte === filters.tipo_transporte)
     .filter((item) => dateInRange(item.data_servico, filters.data_de, filters.data_ate))
     .filter((item) => filters.sem_identificacao
@@ -561,9 +566,86 @@ export const freightsDemoApi = {
       detalhe_calculo: quote.detalhe_calculo,
       criado_por: 7,
       criado_em: new Date().toISOString(),
+      cancelado: false,
+      cancelado_em: null,
+      cancelado_por: null,
+      justificativa_cancelamento: null,
     };
     saveFreights([record, ...current]);
     return record;
+  },
+
+  async get(codigoFrete: string): Promise<FreightResponse> {
+    await pause();
+    const freight = readFreights().find((item) => item.codigo_frete === codigoFrete);
+    if (!freight) throw new Error("Lançamento de frete não encontrado.");
+    return freight;
+  },
+
+  async update(codigoFrete: string, payload: FreightInput): Promise<FreightResponse> {
+    await pause();
+    const current = readFreights();
+    const existing = current.find((item) => item.codigo_frete === codigoFrete);
+    if (!existing) throw new Error("Lançamento de frete não encontrado.");
+    if (existing.cancelado) throw new Error("Um frete cancelado não pode ser editado.");
+
+    const quote = calculateQuote(payload);
+    const gross = numeric(quote.valor_frete_bruto);
+    const damage = numeric(payload.valor_avaria) ?? 0;
+    if (gross !== null && damage > gross) {
+      throw new Error("O valor da avaria não pode superar o frete calculado.");
+    }
+    const kmRun = odometerDistance(payload);
+    const updated: FreightResponse = {
+      ...existing,
+      tipo_transporte: payload.tipo_transporte,
+      nome_transportador: payload.nome_transportador,
+      id_motorista_agregado: payload.id_motorista_agregado,
+      codigo_fonte_tarifa: payload.codigo_fonte_tarifa,
+      data_servico: payload.data_servico,
+      rota_cidade: payload.rota_cidade,
+      km_inicial: numeric(payload.km_inicial) === null ? null : String(numeric(payload.km_inicial)),
+      km_final: numeric(payload.km_final) === null ? null : String(numeric(payload.km_final)),
+      km_rodado: kmRun === null ? null : String(kmRun),
+      quantidade_entregas: payload.quantidade_entregas,
+      peso_kg: String(numeric(payload.peso_kg) ?? 0),
+      valor_nota: numeric(payload.valor_nota) === null ? null : String(numeric(payload.valor_nota)),
+      tipo_caminhao: payload.tipo_caminhao ?? null,
+      codigo_zona_jit: payload.codigo_zona_jit ?? null,
+      adicionais_jit: payload.adicionais_jit ?? [],
+      valor_frete_bruto: gross === null ? null : moneyText(gross),
+      valor_avaria: moneyText(damage),
+      quantidade_avarias: payload.quantidade_avarias,
+      valor_frete_pago: gross === null ? null : moneyText(gross - damage),
+      percentual_frete: quote.percentual_frete,
+      status_calculo: quote.status_calculo,
+      motivo_pendencia: quote.motivo_pendencia,
+      detalhe_calculo: quote.detalhe_calculo,
+      cancelado: false,
+      cancelado_em: null,
+      cancelado_por: null,
+      justificativa_cancelamento: null,
+    };
+    saveFreights(current.map((item) => item.codigo_frete === codigoFrete ? updated : item));
+    return updated;
+  },
+
+  async cancel(codigoFrete: string, justificativa: string): Promise<void> {
+    await pause();
+    const current = readFreights();
+    const existing = current.find((item) => item.codigo_frete === codigoFrete);
+    if (!existing) throw new Error("Lançamento de frete não encontrado.");
+    if (existing.cancelado) throw new Error("Este frete já está cancelado.");
+    const normalized = justificativa.trim().replace(/\s+/g, " ");
+    if (normalized.length < 5) throw new Error("Informe uma justificativa com pelo menos 5 caracteres.");
+    const canceled: FreightResponse = {
+      ...existing,
+      cancelado: true,
+      cancelado_em: new Date().toISOString(),
+      cancelado_por: 7,
+      justificativa_cancelamento: normalized,
+    };
+    saveFreights(current.map((item) => item.codigo_frete === codigoFrete ? canceled : item));
   },
 
   async list(filters: FreightHistoryFilters = {}): Promise<FreightPage> {

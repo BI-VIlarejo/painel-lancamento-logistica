@@ -28,7 +28,7 @@ from app.modules.access_control.service import AuthorizationContext
 
 from . import repository
 from .calculator import FreightCalculation, calculate_freight
-from .models import Frete
+from .models import Frete, FreteEvento
 from .schemas import (
     FreightAggregateDriverOption,
     FreightDeliverySummary,
@@ -149,8 +149,12 @@ def _truck_type(value: str | None) -> TruckType:
     raise ValueError(f"Tipo de caminhão inválido no frete: {value!r}")
 
 
-def _freight_response(freight: Frete) -> FreightResponse:
-    """Converte o registro operacional preservando o nome do responsável."""
+def _freight_response(
+    freight: Frete,
+    *,
+    cancellation: FreteEvento | None = None,
+) -> FreightResponse:
+    """Converte o registro operacional preservando dados e situação do frete."""
     calculation_detail = {
         key: value for key, value in freight.detalhe_calculo.items() if key != "request_fingerprint"
     }
@@ -182,6 +186,14 @@ def _freight_response(freight: Frete) -> FreightResponse:
         detalhe_calculo=calculation_detail,
         criado_por=freight.criado_por,
         criado_em=freight.criado_em,
+        cancelado=cancellation is not None,
+        cancelado_em=cancellation.ocorrido_em if cancellation else None,
+        cancelado_por=cancellation.id_usuario_ator if cancellation else None,
+        justificativa_cancelamento=(
+            str(cancellation.detalhes.get("justificativa", "")) or None
+            if cancellation
+            else None
+        ),
     )
 
 
@@ -455,6 +467,212 @@ def create_freight(
         raise _database_unavailable(db, exc) from exc
 
 
+def get_freight(
+    db: Session,
+    *,
+    codigo_frete: UUID,
+    access: AuthorizationContext,
+) -> FreightResponse:
+    """Carrega os dados completos do frete selecionado dentro do setor permitido."""
+    try:
+        sector_id = _transport_access(db, access)
+        freight = repository.get_freight_by_code(
+            db,
+            codigo_frete=codigo_frete,
+            id_setor=sector_id,
+        )
+        if freight is None:
+            raise NotFoundError("Lançamento de frete não encontrado.")
+        cancellations = repository.list_freight_cancellations(
+            db,
+            freight_ids=[freight.id_frete],
+        )
+        return _freight_response(freight, cancellation=cancellations.get(freight.id_frete))
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def update_freight(
+    db: Session,
+    *,
+    codigo_frete: UUID,
+    payload: FreightInput,
+    idempotency_key: UUID,
+    access: AuthorizationContext,
+) -> FreightResponse:
+    """Atualiza o lançamento, recalcula a tarifa e guarda snapshots na auditoria."""
+    try:
+        sector_id = _transport_access(db, access)
+        freight = repository.get_freight_by_code(
+            db,
+            codigo_frete=codigo_frete,
+            id_setor=sector_id,
+            lock=True,
+        )
+        if freight is None:
+            raise NotFoundError("Lançamento de frete não encontrado.")
+
+        events = repository.list_freight_events(db, id_frete=freight.id_frete)
+        request_fingerprint = _request_fingerprint(payload)
+        cancellation = next(
+            (event for event in events if event.tipo_evento == "FRETE_CANCELADO"),
+            None,
+        )
+        prior_event = next(
+            (
+                event
+                for event in events
+                if event.detalhes.get("idempotency_key") == str(idempotency_key)
+            ),
+            None,
+        )
+        if prior_event is not None:
+            if (
+                prior_event.tipo_evento == "FRETE_ATUALIZADO"
+                and prior_event.id_usuario_ator == access.id_usuario
+                and prior_event.detalhes.get("request_fingerprint") == request_fingerprint
+            ):
+                return _freight_response(freight, cancellation=cancellation)
+            raise ConflictError("A chave de idempotência já foi utilizada.")
+
+        if cancellation is not None:
+            raise ConflictError("Um frete cancelado não pode ser editado.")
+
+        prepared_payload, calculation = _freight_calculation(
+            db,
+            payload,
+            require_delivery_data=True,
+        )
+        gross = calculation.valor_frete_bruto
+        paid: Decimal | None = None
+        if gross is not None:
+            if prepared_payload.valor_avaria > gross:
+                raise ConflictError("O valor da avaria não pode superar o frete calculado.")
+            paid = gross - prepared_payload.valor_avaria
+
+        before = _freight_response(freight).model_dump(mode="json")
+        freight.tipo_transporte = prepared_payload.tipo_transporte
+        freight.nome_transportador = prepared_payload.nome_transportador
+        freight.id_motorista_agregado = prepared_payload.id_motorista_agregado
+        freight.codigo_fonte_tarifa = prepared_payload.codigo_fonte_tarifa
+        freight.data_servico = prepared_payload.data_servico
+        freight.rota_cidade = prepared_payload.rota_cidade
+        freight.km_inicial = prepared_payload.km_inicial
+        freight.km_final = prepared_payload.km_final
+        freight.km_rodado = prepared_payload.km_rodado
+        freight.quantidade_entregas = prepared_payload.quantidade_entregas
+        freight.peso_kg = prepared_payload.peso_kg
+        freight.valor_nota = prepared_payload.valor_nota
+        freight.tipo_caminhao = prepared_payload.tipo_caminhao
+        freight.codigo_zona_jit = prepared_payload.codigo_zona_jit
+        freight.adicionais_jit = prepared_payload.adicionais_jit
+        freight.valor_frete_bruto = gross
+        freight.valor_avaria = prepared_payload.valor_avaria
+        freight.quantidade_avarias = prepared_payload.quantidade_avarias
+        freight.valor_frete_pago = paid
+        freight.percentual_frete = calculation.percentual_frete
+        freight.status_calculo = calculation.status
+        freight.motivo_pendencia = calculation.motivo_pendencia
+        freight.detalhe_calculo = {
+            **calculation.detalhe,
+            "request_fingerprint": request_fingerprint,
+        }
+        now = _utc_now()
+        after = _freight_response(freight).model_dump(mode="json")
+        db.add(
+            FreteEvento(
+                id_frete=freight.id_frete,
+                id_usuario_ator=access.id_usuario,
+                tipo_evento="FRETE_ATUALIZADO",
+                ocorrido_em=now,
+                detalhes={
+                    "idempotency_key": str(idempotency_key),
+                    "request_fingerprint": request_fingerprint,
+                    "antes": before,
+                    "depois": after,
+                },
+            )
+        )
+        db.commit()
+        db.refresh(freight)
+        return _freight_response(freight)
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError("A edição conflita com um evento já registrado.") from exc
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def cancel_freight(
+    db: Session,
+    *,
+    codigo_frete: UUID,
+    justificativa: str,
+    idempotency_key: UUID,
+    access: AuthorizationContext,
+) -> None:
+    """Cancela sem apagar o frete e registra justificativa e snapshot na auditoria."""
+    try:
+        sector_id = _transport_access(db, access)
+        freight = repository.get_freight_by_code(
+            db,
+            codigo_frete=codigo_frete,
+            id_setor=sector_id,
+            lock=True,
+        )
+        if freight is None:
+            raise NotFoundError("Lançamento de frete não encontrado.")
+
+        events = repository.list_freight_events(db, id_frete=freight.id_frete)
+        prior_event = next(
+            (
+                event
+                for event in events
+                if event.detalhes.get("idempotency_key") == str(idempotency_key)
+            ),
+            None,
+        )
+        if prior_event is not None:
+            if (
+                prior_event.tipo_evento == "FRETE_CANCELADO"
+                and prior_event.id_usuario_ator == access.id_usuario
+                and prior_event.detalhes.get("justificativa") == justificativa
+            ):
+                return
+            raise ConflictError("A chave de idempotência já foi utilizada.")
+        if any(event.tipo_evento == "FRETE_CANCELADO" for event in events):
+            raise ConflictError("Este frete já está cancelado.")
+
+        now = _utc_now()
+        db.add(
+            FreteEvento(
+                id_frete=freight.id_frete,
+                id_usuario_ator=access.id_usuario,
+                tipo_evento="FRETE_CANCELADO",
+                ocorrido_em=now,
+                detalhes={
+                    "idempotency_key": str(idempotency_key),
+                    "justificativa": justificativa,
+                    "frete": _freight_response(freight).model_dump(mode="json"),
+                },
+            )
+        )
+        db.commit()
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        db.rollback()
+        raise
+    except IntegrityError as exc:
+        db.rollback()
+        raise ConflictError("O cancelamento conflita com uma ação já registrada.") from exc
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
 def list_freights(
     db: Session,
     *,
@@ -481,8 +699,15 @@ def list_freights(
             limit=limit,
             offset=offset,
         )
+        cancellations = repository.list_freight_cancellations(
+            db,
+            freight_ids=[freight.id_frete for freight in rows],
+        )
         return FreightPage(
-            items=[_freight_response(freight) for freight in rows],
+            items=[
+                _freight_response(freight, cancellation=cancellations.get(freight.id_frete))
+                for freight in rows
+            ],
             total=total,
             limit=limit,
             offset=offset,

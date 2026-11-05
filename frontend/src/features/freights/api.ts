@@ -102,6 +102,32 @@ export const freightsApi = {
         });
   },
 
+  get(codigoFrete: string): Promise<FreightResponse> {
+    return isDemoMode
+      ? freightsDemoApi.get(codigoFrete)
+      : apiRequest<FreightResponse>(`/freights/${encodeURIComponent(codigoFrete)}`);
+  },
+
+  update(codigoFrete: string, payload: FreightInput, idempotencyKey: string): Promise<FreightResponse> {
+    return isDemoMode
+      ? freightsDemoApi.update(codigoFrete, payload)
+      : apiRequest<FreightResponse>(`/freights/${encodeURIComponent(codigoFrete)}`, {
+          method: "PUT",
+          body: payload,
+          idempotencyKey,
+        });
+  },
+
+  cancel(codigoFrete: string, justificativa: string, idempotencyKey: string): Promise<void> {
+    return isDemoMode
+      ? freightsDemoApi.cancel(codigoFrete, justificativa)
+      : apiRequest<void>(`/freights/${encodeURIComponent(codigoFrete)}/cancel`, {
+          method: "POST",
+          body: { justificativa },
+          idempotencyKey,
+        });
+  },
+
   list(filters: FreightHistoryFilters = {}): Promise<FreightPage> {
     return isDemoMode
       ? freightsDemoApi.list(filters)

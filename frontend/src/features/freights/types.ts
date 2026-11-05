@@ -117,6 +117,10 @@ export type FreightResponse = {
   detalhe_calculo: Record<string, unknown>;
   criado_por: number;
   criado_em: string;
+  cancelado: boolean;
+  cancelado_em: string | null;
+  cancelado_por: number | null;
+  justificativa_cancelamento: string | null;
 };
 
 /** Resultado paginado da consulta de lançamentos. */

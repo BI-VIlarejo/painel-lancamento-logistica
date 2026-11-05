@@ -13,6 +13,7 @@ from app.modules.access_control.service import AuthorizationContext
 from . import service
 from .schemas import (
     FreightAggregateDriverOption,
+    FreightCancelRequest,
     FreightDeliverySummary,
     FreightInput,
     FreightPage,
@@ -211,4 +212,58 @@ def export_payment_report(
             "Cache-Control": "no-store",
             "Pragma": "no-cache",
         },
+    )
+
+
+@router.get("/{codigo_frete}", response_model=FreightResponse)
+def get_freight(
+    codigo_frete: UUID,
+    db: DatabaseSession,
+    response: Response,
+    access: AuthorizationContext = Depends(_read_access),  # noqa: B008
+) -> FreightResponse:
+    """Retorna o registro completo e a situação do frete selecionado."""
+    _no_store(response)
+    return service.get_freight(db, codigo_frete=codigo_frete, access=access)
+
+
+@router.put("/{codigo_frete}", response_model=FreightResponse)
+def update_freight(
+    codigo_frete: UUID,
+    payload: FreightInput,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    idempotency_key: UUID = Header(alias="Idempotency-Key"),  # noqa: B008
+    access: AuthorizationContext = Depends(_create_access),  # noqa: B008
+) -> FreightResponse:
+    """Recalcula os valores e salva as alterações auditadas do frete."""
+    _no_store(response)
+    return service.update_freight(
+        db,
+        codigo_frete=codigo_frete,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        access=access,
+    )
+
+
+@router.post("/{codigo_frete}/cancel", status_code=status.HTTP_204_NO_CONTENT)
+def cancel_freight(
+    codigo_frete: UUID,
+    payload: FreightCancelRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    idempotency_key: UUID = Header(alias="Idempotency-Key"),  # noqa: B008
+    access: AuthorizationContext = Depends(_create_access),  # noqa: B008
+) -> None:
+    """Cancela o lançamento sem removê-lo do histórico de auditoria."""
+    _no_store(response)
+    service.cancel_freight(
+        db,
+        codigo_frete=codigo_frete,
+        justificativa=payload.justificativa,
+        idempotency_key=idempotency_key,
+        access=access,
     )

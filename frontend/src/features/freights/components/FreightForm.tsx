@@ -40,6 +40,8 @@ type FormValues = {
 type Props = {
   options: FreightTariffOptions;
   onCreated: (freight: FreightResponse) => void;
+  initialFreight?: FreightResponse;
+  onUpdated?: (freight: FreightResponse) => void;
 };
 
 function emptyValues(options: FreightTariffOptions): FormValues {
@@ -60,6 +62,27 @@ function emptyValues(options: FreightTariffOptions): FormValues {
     codigo_zona_jit: "",
     adicionais_jit: [],
     tipo_caminhao: "",
+  };
+}
+
+function valuesFromFreight(freight: FreightResponse): FormValues {
+  return {
+    data_servico: freight.data_servico,
+    tipo_transporte: freight.tipo_transporte === "TRANSPORTADORA" ? "TRANSPORTADORA" : "AGREGADO",
+    nome_transportador: freight.nome_transportador ?? "",
+    id_motorista_agregado: freight.id_motorista_agregado === null ? "" : String(freight.id_motorista_agregado),
+    codigo_fonte_tarifa: freight.codigo_fonte_tarifa ?? "",
+    rota_cidade: freight.rota_cidade,
+    km_inicial: freight.km_inicial === null ? "" : String(freight.km_inicial),
+    km_final: freight.km_final === null ? "" : String(freight.km_final),
+    quantidade_entregas: String(freight.quantidade_entregas),
+    peso_kg: String(freight.peso_kg),
+    valor_nota: freight.valor_nota === null ? "" : String(freight.valor_nota),
+    valor_avaria: String(freight.valor_avaria),
+    quantidade_avarias: String(freight.quantidade_avarias),
+    codigo_zona_jit: freight.codigo_zona_jit ?? "",
+    adicionais_jit: freight.adicionais_jit,
+    tipo_caminhao: freight.tipo_caminhao ?? "",
   };
 }
 
@@ -141,7 +164,7 @@ function payloadFromValues(values: FormValues): FreightInput {
 }
 
 /** Formulário do lançamento, incluindo leitura do hodômetro e cotação da tarifa. */
-export function FreightForm({ options, onCreated }: Props) {
+export function FreightForm({ options, onCreated, initialFreight, onUpdated }: Props) {
   const dateId = useId();
   const transportTypeId = useId();
   const transporterId = useId();
@@ -157,7 +180,7 @@ export function FreightForm({ options, onCreated }: Props) {
   const damageCountId = useId();
   const zoneId = useId();
   const truckId = useId();
-  const [values, setValues] = useState(() => emptyValues(options));
+  const [values, setValues] = useState(() => initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options));
   const [aggregateDrivers, setAggregateDrivers] = useState<FreightAggregateDriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [driversError, setDriversError] = useState("");
@@ -301,9 +324,12 @@ export function FreightForm({ options, onCreated }: Props) {
       if (!idempotency.current || idempotency.current.signature !== signature) {
         idempotency.current = { signature, key: crypto.randomUUID() };
       }
-      const created = await freightsApi.create(payload, idempotency.current.key);
+      const saved = initialFreight
+        ? await freightsApi.update(initialFreight.codigo_frete, payload, idempotency.current.key)
+        : await freightsApi.create(payload, idempotency.current.key);
       idempotency.current = null;
-      onCreated(created);
+      if (initialFreight) onUpdated?.(saved);
+      else onCreated(saved);
     } catch (submitError: unknown) {
       setError(messageFromApiError(submitError));
     } finally {
@@ -503,14 +529,14 @@ export function FreightForm({ options, onCreated }: Props) {
         <div><span className={cx(styles, "quote-icon")}>{liveQuote.status_calculo === "CALCULADO" ? "✓" : "!"}</span><div><p>{liveQuote.status_calculo === "CALCULADO" ? "PRÉVIA DO FRETE" : "CONFERÊNCIA NECESSÁRIA"}</p><h2>{liveQuote.status_calculo === "CALCULADO" ? formatMoney(liveQuote.valor_frete_bruto) : "Valor aguardando conferência"}</h2>{liveQuote.motivo_pendencia && <small>{liveQuote.motivo_pendencia}</small>}</div></div>
         {liveQuote.status_calculo === "CALCULADO" && <span className={cx(styles, "quote-route")}>{values.nome_transportador} · {values.rota_cidade}</span>}
       </section>}
-      {pendingConfirm && <div className={cx(styles, commonStyles, "notice notice-warning", "form-message")} role="status">Este lançamento ficará pendente de conferência e não entrará na exportação de pagamento deste responsável até ser resolvido. Clique em confirmar para registrar.</div>}
+      {pendingConfirm && <div className={cx(styles, commonStyles, "notice notice-warning", "form-message")} role="status">Este lançamento ficará pendente de conferência e não entrará na exportação de pagamento deste responsável até ser resolvido. Clique em confirmar para {initialFreight ? "salvar as alterações" : "registrar"}.</div>}
 
       <div className={cx(styles, "form-actions")}>
         <span>Os valores são calculados pelas fontes tarifárias disponíveis.</span>
         <div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { void simulate(); }} disabled={busy || driversLoading || summaryLoading}>{busyAction === "quote" ? "Calculando..." : "Simular cálculo"}</button>
           <button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={busy || driversLoading || summaryLoading}>
-            {busyAction === "submit" ? "Registrando..." : pendingConfirm ? "Confirmar lançamento pendente" : "Registrar frete"}
+            {busyAction === "submit" ? (initialFreight ? "Salvando..." : "Registrando...") : pendingConfirm ? "Confirmar lançamento pendente" : initialFreight ? "Salvar alterações" : "Registrar frete"}
           </button>
         </div>
       </div>

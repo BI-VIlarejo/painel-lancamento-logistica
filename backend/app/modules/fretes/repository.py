@@ -173,6 +173,55 @@ def get_freight_by_idempotency_key(
     )
 
 
+def get_freight_by_code(
+    db: Session,
+    *,
+    codigo_frete: UUID,
+    id_setor: int,
+    lock: bool = False,
+) -> Frete | None:
+    """Busca um frete dentro do setor e opcionalmente bloqueia alterações concorrentes."""
+    statement = select(Frete).where(
+        Frete.codigo_frete == str(codigo_frete),
+        Frete.id_setor == id_setor,
+    )
+    if lock:
+        statement = statement.with_for_update()
+    return db.scalar(statement)
+
+
+def list_freight_events(db: Session, *, id_frete: int) -> list[FreteEvento]:
+    """Retorna os eventos auditáveis de um frete em ordem cronológica."""
+    statement = (
+        select(FreteEvento)
+        .where(FreteEvento.id_frete == id_frete)
+        .order_by(FreteEvento.ocorrido_em, FreteEvento.id_frete_evento)
+    )
+    return list(db.scalars(statement).all())
+
+
+def list_freight_cancellations(
+    db: Session,
+    *,
+    freight_ids: list[int],
+) -> dict[int, FreteEvento]:
+    """Carrega em lote os eventos de cancelamento usados pelo histórico."""
+    if not freight_ids:
+        return {}
+    statement = (
+        select(FreteEvento)
+        .where(
+            FreteEvento.id_frete.in_(freight_ids),
+            FreteEvento.tipo_evento == "FRETE_CANCELADO",
+        )
+        .order_by(FreteEvento.ocorrido_em, FreteEvento.id_frete_evento)
+    )
+    cancellations: dict[int, FreteEvento] = {}
+    for event in db.scalars(statement).all():
+        cancellations.setdefault(event.id_frete, event)
+    return cancellations
+
+
 def list_freights(
     db: Session,
     *,
@@ -227,6 +276,11 @@ def list_payment_freights(
             Frete.tipo_transporte.in_(("AGREGADO", "TRANSPORTADORA")),
             Frete.data_servico >= data_de,
             Frete.data_servico <= data_ate,
+            Frete.id_frete.not_in(
+                select(FreteEvento.id_frete).where(
+                    FreteEvento.tipo_evento == "FRETE_CANCELADO"
+                )
+            ),
         )
     )
     if tipo_transporte is not None:

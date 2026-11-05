@@ -39,7 +39,8 @@ function PortalApp() {
   const canViewAggregatePayments = permissions.includes("AGREGADOS:VER");
   const canExportAggregatePayments = permissions.includes("AGREGADOS:EXPORTAR");
   const editMatch = path.match(/^\/entregas\/([0-9a-f-]{36})$/i);
-  const knownPath = ["/", "/login", "/entregas", "/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch);
+  const freightEditMatch = path.match(/^\/fretes\/([0-9a-f-]{36})$/i);
+  const knownPath = ["/", "/login", "/entregas", "/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch) || Boolean(freightEditMatch);
   const defaultPath = canCreate ? "/entregas" : canView ? "/historico" : canCreateFreights ? "/fretes" : canViewFreights ? "/fretes/historico" : canViewAggregatePayments ? "/fretes/pagamentos" : canAccessFeedback ? "/feedback" : canViewDashboard ? "/painel" : canManageAccess || canManageCatalogs ? "/cadastros" : canViewAudit ? "/auditoria" : "/entregas";
 
   useEffect(() => {
@@ -71,7 +72,7 @@ function PortalApp() {
     </Suspense>;
   }
 
-  const currentPath = ["/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
+  const currentPath = freightEditMatch ? "/fretes/historico" : ["/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
   return (
     <AppShell
       user={user}
@@ -92,8 +93,8 @@ function PortalApp() {
           ? <AuditPage />
           : path === "/feedback" && canAccessFeedback
           ? <FeedbackPage permissions={permissions} />
-          : path === "/fretes" && canCreateFreights
-          ? <FreightLaunchPage onNavigate={navigate} canViewFreights={canViewFreights} canViewAggregatePayments={canViewAggregatePayments} />
+          : ((path === "/fretes" && canCreateFreights) || (freightEditMatch && canCreateFreights && canViewFreights))
+          ? <FreightLaunchPage onNavigate={navigate} canViewFreights={canViewFreights} canViewAggregatePayments={canViewAggregatePayments} editId={freightEditMatch?.[1]} />
           : path === "/fretes/historico" && canViewFreights
           ? <FreightHistoryPage onNavigate={navigate} canCreate={canCreateFreights} canViewPayments={canViewAggregatePayments} />
           : path === "/fretes/pagamentos" && canViewAggregatePayments

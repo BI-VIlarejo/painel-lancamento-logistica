@@ -177,6 +177,24 @@ class FreightResponse(BaseModel):
     detalhe_calculo: dict[str, object]
     criado_por: int
     criado_em: datetime
+    cancelado: bool = False
+    cancelado_em: datetime | None = None
+    cancelado_por: int | None = None
+    justificativa_cancelamento: str | None = None
+
+
+class FreightCancelRequest(BaseModel):
+    """Justificativa obrigatória para cancelar um lançamento de frete."""
+
+    justificativa: str = Field(min_length=5, max_length=1000)
+
+    @field_validator("justificativa")
+    @classmethod
+    def normalize_justification(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if len(normalized) < 5:
+            raise ValueError("Informe uma justificativa com pelo menos 5 caracteres.")
+        return normalized
 
 
 class FreightPage(BaseModel):
