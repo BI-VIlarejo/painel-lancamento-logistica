@@ -11,6 +11,7 @@ import type {
   FreightQuoteResponse,
   FreightResponse,
   FreightTariffOptions,
+  JustInTimeRegionOption,
   JustInTimeZoneOption,
 } from "./types";
 import type { PaymentRequestWorkbookRow } from "./paymentRequestWorkbook";
@@ -76,6 +77,20 @@ const jitZones: JustInTimeZoneOption[] = [
   { codigo: "VALE_DO_PARAIBA1", nome: "VALE DO PARAIBA1", areas: "Parai, Barra do Parai, Volta Redonda, Rio das Flore, Itatiaia, Porto Real, Quatis, Barra Mansa, Resende, Valença, Pinheiral" },
   { codigo: "VALE_DO_PARAIBA_2", nome: "VALE DO PARAIBA 2", areas: "Miguel Pereira, Paty Alferes, Mendes, Paraiba do Sul, Vassouras, Avelar" },
 ];
+
+const jitRegions: JustInTimeRegionOption[] = [
+  {
+    codigo: "RIO_DE_JANEIRO",
+    nome: "Rio de Janeiro",
+    subzonas: jitZones.filter((zone) => ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"].includes(zone.codigo)),
+  },
+  {
+    codigo: "REGIAO_SERRANA",
+    nome: "Região Serrana",
+    subzonas: jitZones.filter((zone) => ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"].includes(zone.codigo)),
+  },
+];
+const jitAllowedZoneCodes = new Set(jitRegions.flatMap((region) => region.subzonas.map((zone) => zone.codigo)));
 
 const additionalNames = [
   "DISTANCIA",
@@ -249,7 +264,10 @@ const additionWeightBands: Array<[number, number]> = [
 
 /** Calcula uma tarifa JIT apenas quando a faixa base e o adicional são únicos. */
 function quoteJustInTime(payload: FreightInput): FreightQuoteResponse {
-  const zone = jitZones.find((item) => item.codigo === payload.codigo_zona_jit);
+  const zoneCode = payload.codigo_zona_jit ?? "";
+  const zone = jitAllowedZoneCodes.has(zoneCode)
+    ? jitZones.find((item) => item.codigo === zoneCode)
+    : undefined;
   if (!zone) return pendingQuote("Selecione uma zona válida da tabela JUST IN TIME.", {});
 
   const weight = numeric(payload.peso_kg) ?? 0;
@@ -480,7 +498,7 @@ function options(): FreightTariffOptions {
   return {
     fontes: tariffSources,
     rotas_agregados_cd: aggregateRoutes,
-    zonas_just_in_time: jitZones,
+    zonas_just_in_time: jitRegions,
     adicionais_just_in_time: additionalNames.map((nome) => ({
       codigo: normalizeLabel(nome).replace(/ /g, "_"),
       nome,

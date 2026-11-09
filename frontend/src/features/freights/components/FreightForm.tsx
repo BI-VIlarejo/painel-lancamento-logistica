@@ -103,7 +103,7 @@ function payloadFromValues(values: FormValues): FreightInput {
     throw new Error("Selecione a transportadora na etapa 01.");
   }
   if (values.codigo_fonte_tarifa === "JUST_IN_TIME" && !values.codigo_zona_jit) {
-    throw new Error("Selecione a região da transportadora JUST IN TIME.");
+    throw new Error("Selecione a região e a área de atendimento JUST IN TIME.");
   }
   if (values.codigo_fonte_tarifa !== "JUST_IN_TIME" && values.rota_cidade.trim().length < 2) {
     throw new Error("Informe a rota ou cidade do frete.");
@@ -186,9 +186,15 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const invoiceId = useId();
   const damageId = useId();
   const damageCountId = useId();
+  const regionId = useId();
   const zoneId = useId();
   const truckId = useId();
   const [values, setValues] = useState(() => initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options));
+  const [jitRegionCode, setJitRegionCode] = useState(() =>
+    options.zonas_just_in_time.find((region) =>
+      region.subzonas.some((zone) => zone.codigo === initialFreight?.codigo_zona_jit),
+    )?.codigo ?? "",
+  );
   const [aggregateDrivers, setAggregateDrivers] = useState<FreightAggregateDriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [driversError, setDriversError] = useState("");
@@ -417,7 +423,8 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   })();
   const liveQuote = quote && quoteSignature === currentSignature ? quote : null;
   const pendingConfirm = currentSignature !== "" && pendingSignature === currentSignature;
-  const selectedZone = options.zonas_just_in_time.find((zone) => zone.codigo === values.codigo_zona_jit);
+  const selectedRegion = options.zonas_just_in_time.find((region) => region.codigo === jitRegionCode);
+  const selectedZone = selectedRegion?.subzonas.find((zone) => zone.codigo === values.codigo_zona_jit);
   const selectedTruck = options.tipos_caminhao_paulo_cruz.find((truck) => truck.codigo === values.tipo_caminhao);
 
   return (
@@ -432,6 +439,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               const type = event.target.value as FreightTransportType;
               const source: FreightTariffSource | "" = type === "AGREGADO" ? "AGREGADOS_CD" : "";
               setValues((current) => ({ ...current, tipo_transporte: type, nome_transportador: "", id_motorista_agregado: "", id_motorista_transportadora: "", codigo_fonte_tarifa: source, rota_cidade: "", quantidade_entregas: "0", peso_kg: "0", quantidade_avarias: "0", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", km_inicial: "", km_final: "" }));
+              setJitRegionCode("");
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
               <option value="AGREGADO">Agregado</option>
@@ -465,6 +473,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
                 adicionais_jit: [],
                 tipo_caminhao: "",
               }));
+              setJitRegionCode("");
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} required disabled={busy || carrierDriversLoading || Boolean(carrierDriversError)}>
               <option value="">{carrierDriversLoading ? "Carregando motoristas..." : "Selecione o motorista"}</option>
@@ -492,6 +501,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <select id={sourceId} value={values.codigo_fonte_tarifa} onChange={(event) => {
               const source = event.target.value as FreightTariffSource;
               setValues((current) => ({ ...current, codigo_fonte_tarifa: source, rota_cidade: "", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "" }));
+              setJitRegionCode("");
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
               {sourceOptions.map((source) => <option key={source.codigo} value={source.codigo}>{source.nome}</option>)}
@@ -509,18 +519,30 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               <small>Preenchido pelo lançamento de Entregas; não pode ser editado aqui.</small>
             </div>
           ) : values.codigo_fonte_tarifa === "JUST_IN_TIME" ? (
-            <label className={cx(styles, "field")} htmlFor={zoneId}>Região / zona
-              <select id={zoneId} value={values.codigo_zona_jit} onChange={(event) => {
-                const zoneCode = event.target.value;
-                const zone = options.zonas_just_in_time.find((item) => item.codigo === zoneCode);
-                setValues((current) => ({ ...current, codigo_zona_jit: zoneCode, rota_cidade: zone?.nome ?? "" }));
-                setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
-              }} required disabled={busy}>
-                <option value="">Selecione a região</option>
-                {options.zonas_just_in_time.map((zone) => <option value={zone.codigo} key={zone.codigo}>{zone.nome}</option>)}
-              </select>
-              {selectedZone && <span className={cx(styles, "jit-zone-areas")}><strong>Áreas atendidas</strong><small>{selectedZone.areas}</small></span>}
-            </label>
+            <>
+              <label className={cx(styles, "field")} htmlFor={regionId}>Região
+                <select id={regionId} value={jitRegionCode} onChange={(event) => {
+                  setJitRegionCode(event.target.value);
+                  setValues((current) => ({ ...current, codigo_zona_jit: "", rota_cidade: "" }));
+                  setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
+                }} required disabled={busy}>
+                  <option value="">Selecione a região</option>
+                  {options.zonas_just_in_time.map((region) => <option value={region.codigo} key={region.codigo}>{region.nome}</option>)}
+                </select>
+              </label>
+              {selectedRegion && <label className={cx(styles, "field")} htmlFor={zoneId}>Área de atendimento
+                <select id={zoneId} value={values.codigo_zona_jit} onChange={(event) => {
+                  const zoneCode = event.target.value;
+                  const zone = selectedRegion.subzonas.find((item) => item.codigo === zoneCode);
+                  setValues((current) => ({ ...current, codigo_zona_jit: zoneCode, rota_cidade: zone?.nome ?? "" }));
+                  setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
+                }} required disabled={busy}>
+                  <option value="">Selecione a área de atendimento</option>
+                  {selectedRegion.subzonas.map((zone) => <option value={zone.codigo} key={zone.codigo}>{zone.nome}</option>)}
+                </select>
+                {selectedZone && <span className={cx(styles, "jit-zone-areas")}><strong>Áreas atendidas</strong><small>{selectedZone.areas}</small></span>}
+              </label>}
+            </>
           ) : values.codigo_fonte_tarifa === "PAULO_CRUZ" ? (
             <label className={cx(styles, "field")} htmlFor={routeId}>Cidade / rota
               <input id={routeId} value={values.rota_cidade} onChange={(event) => update("rota_cidade", event.target.value)} required minLength={2} maxLength={160} placeholder="Ex.: Macaé — região serrana" disabled={busy} />

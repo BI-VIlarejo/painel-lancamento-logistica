@@ -53,16 +53,21 @@ export type FreightDeliverySummary = {
   peso_total_kg: DecimalValue | null;
 };
 
-/** Zona JUST IN TIME com a relação de áreas atendidas. */
+/** Subzona tarifária JUST IN TIME com as áreas atendidas. */
 export type JustInTimeZoneOption = FreightCatalogOption & {
   areas: string;
+};
+
+/** Região selecionável da JUST IN TIME e respectivas subzonas da planilha. */
+export type JustInTimeRegionOption = FreightCatalogOption & {
+  subzonas: JustInTimeZoneOption[];
 };
 
 /** Estrutura de GET /freights/tariff-options. */
 export type FreightTariffOptions = {
   fontes: FreightCatalogOption[];
   rotas_agregados_cd: FreightCatalogOption[];
-  zonas_just_in_time: JustInTimeZoneOption[];
+  zonas_just_in_time: JustInTimeRegionOption[];
   adicionais_just_in_time: FreightCatalogOption[];
   tipos_caminhao_paulo_cruz: FreightCatalogOption[];
   retrato_tarifas_em: string;

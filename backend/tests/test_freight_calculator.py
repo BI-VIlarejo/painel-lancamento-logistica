@@ -9,7 +9,7 @@ from freight_support import payload
 from pydantic import ValidationError
 
 from app.modules.fretes.calculator import calculate_freight
-from app.modules.fretes.tariff_catalog import tariff_data
+from app.modules.fretes.tariff_catalog import tariff_data, tariff_options
 
 
 class FreightCalculatorTests(TestCase):
@@ -81,6 +81,26 @@ class FreightCalculatorTests(TestCase):
         result = calculate_freight(self.jit())
         self.assertEqual(result.valor_frete_bruto, Decimal("120.00"))
         self.assertEqual(result.percentual_frete, Decimal("0.012000"))
+
+    def test_jit_catalog_only_exposes_rio_and_serrana_and_keeps_tariff_subzones(self):
+        regions = tariff_options()["zonas_just_in_time"]
+        self.assertEqual(
+            [region["nome"] for region in regions],
+            ["Rio de Janeiro", "Região Serrana"],
+        )
+        self.assertEqual(
+            [zone["codigo"] for zone in regions[0]["subzonas"]],
+            ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"],
+        )
+        self.assertEqual(
+            [zone["codigo"] for zone in regions[1]["subzonas"]],
+            ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"],
+        )
+
+    def test_jit_rejects_tariff_zones_outside_rio_and_serrana(self):
+        result = calculate_freight(self.jit(codigo_zona_jit="NORTE_FLUMINENSE"))
+        self.assertEqual(result.status, "PENDENTE_CONFERENCIA")
+        self.assertIsNone(result.valor_frete_bruto)
 
     def test_jit_overlapping_limits_and_gaps_are_pending(self):
         for weight in ("50.5", "100", "500", "3500", "12001"):

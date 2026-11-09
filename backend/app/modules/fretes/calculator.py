@@ -8,7 +8,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from .schemas import FreightInput, FreightStatus
-from .tariff_catalog import normalize_label, tariff_data
+from .tariff_catalog import just_in_time_zone_codes, normalize_label, tariff_data
 
 CENT = Decimal("0.01")
 
@@ -160,7 +160,12 @@ def _calculate_just_in_time(
     """Resolve a zona e faixa JIT; só calcula quando há uma única tarifa aplicável."""
     jit = data["just_in_time"]
     zone = next(
-        (item for item in jit["zones"] if item["code"] == payload.codigo_zona_jit),
+        (
+            item
+            for item in jit["zones"]
+            if item["code"] == payload.codigo_zona_jit
+            and item["code"] in just_in_time_zone_codes()
+        ),
         None,
     )
     if zone is None:
