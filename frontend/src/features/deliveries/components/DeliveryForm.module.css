@@ -20,7 +20,6 @@
 .button-add > span { font-size: 16px; font-weight: 400; }
 .field-grid { display: grid; gap: 16px; }
 .form-field { display: flex; min-width: 0; flex-direction: column; gap: 7px; color: #475569; font-size: 13px; font-weight: 600; }
-.delivery-weight-field { max-width: 300px; margin-top: 10px; }
 .form-field > span b { color: var(--brand-blue); font-size: 14px; }
 .form-field input, .form-field select, .form-field textarea { width: 100%; min-width: 0; height: var(--ui-control-height); padding: 0 11px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-control-radius); outline: none; color: #344b66; background: #fff; font-size: 13px; font-weight: 400; transition: border-color .18s, box-shadow .18s; }
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(43, 163, 213, .14); }
@@ -33,8 +32,8 @@
 .delivery-line-title { display: flex; align-items: center; gap: 10px; }
 .delivery-line-title h3 { margin: 0 0 3px; color: #3b4d65; font-size: 14px; font-weight: 700; }
 .delivery-line-title p { margin: 0; color: #63748a; font-size: 12px; }
-.field-grid-delivery-top { grid-template-columns: minmax(180px, .6fr) minmax(240px, 1fr); margin-bottom: 13px; }
-.team-fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+.field-grid-delivery-top { grid-template-columns: minmax(145px, .95fr) minmax(180px, 1.2fr) minmax(175px, 1.2fr) minmax(140px, .8fr); margin-bottom: 13px; }
+.team-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px; }
 .team-fields .field-hint { margin-left: 4px; }
 .team-classification { display: flex; align-items: center; gap: 8px; margin-top: 9px; color: #63748a; font-size: 12px; }
 .transport-badge { display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 99px; color: #315b49; background: #e8f2ed; font-size: 11px; font-weight: 700; }
@@ -116,6 +115,7 @@
 .review-total-row strong:last-child { color: #a0804c; }
 
 @container (max-width: 900px) {
+  .field-grid-delivery-top { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .operation-entries { grid-template-columns: 1fr; }
 }
 

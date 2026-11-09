@@ -417,14 +417,15 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch,
               {originalItem && !localities.some((locality) => String(locality.id_localidade) === line.locality) && <option value={line.locality}>{originalItem.nome_localidade}</option>}
               {localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}
             </select>{errors[`${prefix}-locality`] && <small className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-locality`]}</small>}</label>
-          </div>
-
-          <div className={cx(styles, commonStyles, "team-fields")}>
             <label className={cx(styles, commonStyles, "form-field")}><span>Motorista <b>*</b></span><select value={line.driver} onChange={(event) => updateLine(line.key, { driver: event.target.value })} required>
               <option value="">Selecione o motorista</option>
               {originalItem?.participantes.filter((person) => person.papel_participante === "MOTORISTA" && !drivers.some((candidate) => String(candidate.id_pessoa) === line.driver)).map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</option>)}
               {drivers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao} · {deliveryTransportLabel(person.tipo_transporte_entrega)}</option>)}
             </select>{errors[`${prefix}-driver`] && <small className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-driver`]}</small>}</label>
+            <label className={cx(styles, commonStyles, "form-field")}><span>Peso total (kg) <b>*</b></span><input type="text" inputMode="decimal" value={line.pesoTotalKg} onChange={(event) => updateLine(line.key, { pesoTotalKg: event.target.value })} placeholder="Ex.: 125,500" aria-invalid={Boolean(errors[`${prefix}-weight`])} aria-describedby={errors[`${prefix}-weight`] ? `${prefix}-weight-error` : undefined} />{errors[`${prefix}-weight`] && <small id={`${prefix}-weight-error`} className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-weight`]}</small>}</label>
+          </div>
+
+          <div className={cx(styles, commonStyles, "team-fields")}>
             {line.helpers.map((helperId, helperIndex) => <label className={cx(styles, commonStyles, "form-field")} key={`helper-${helperIndex}`}><span>Ajudante {helperIndex + 1} <small className={cx(styles, commonStyles, "field-hint")}>opcional</small></span><select value={helperId} onChange={(event) => {
               const nextHelpers: [string, string] = [line.helpers[0], line.helpers[1]];
               nextHelpers[helperIndex] = event.target.value;
@@ -436,8 +437,6 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch,
           </div>
           <div className={cx(styles, commonStyles, "team-classification")}><span>Tipo do transporte</span><strong className={cx(styles, commonStyles, `transport-badge${teamTypeLabel.includes("pendente") || teamTypeLabel === "Equipe mista" ? " transport-badge-warning" : ""}`)}>{teamTypeLabel}</strong></div>
           {errors[`${prefix}-team`] && <small className={cx(styles, commonStyles, "field-error team-error")}>{errors[`${prefix}-team`]}</small>}
-
-          <label className={cx(styles, commonStyles, "form-field delivery-weight-field")}><span>Peso total (kg) <b>*</b></span><input type="text" inputMode="decimal" value={line.pesoTotalKg} onChange={(event) => updateLine(line.key, { pesoTotalKg: event.target.value })} placeholder="Ex.: 125,500" aria-invalid={Boolean(errors[`${prefix}-weight`])} aria-describedby={errors[`${prefix}-weight`] ? `${prefix}-weight-error` : undefined} /><small className={cx(styles, commonStyles, "field-hint")}>Peso somado das entregas neste registro; use zero quando houver somente coletas.</small>{errors[`${prefix}-weight`] && <small id={`${prefix}-weight-error`} className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-weight`]}</small>}</label>
 
           <div className={cx(styles, commonStyles, "operation-entries")}>
             {renderOperationFields(line, index, "ENTREGA", originalItem)}
