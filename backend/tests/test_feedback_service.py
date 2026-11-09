@@ -34,6 +34,7 @@ from app.modules.deliveries.service import (
     cancel_confirmed_launch,
     confirm_draft,
     create_draft,
+    list_drafts,
     list_launch_events,
     start_correction_draft,
     update_draft,
@@ -168,6 +169,7 @@ class FeedbackServiceTests(unittest.TestCase):
                     id_localidade=3,
                     quantidade_realizada=12,
                     quantidade_nao_realizada=0,
+                    peso_total_kg=None,
                     quantidade_entregas_no_prazo=10,
                     quantidade_entregas_completas=9,
                     observacao=None,
@@ -246,6 +248,7 @@ class FeedbackServiceTests(unittest.TestCase):
         return dict(
             data_entrega=self.delivery_date, id_localidade=3,
             quantidade_realizada=1, quantidade_nao_realizada=1,
+            peso_total_kg="50.000",
             quantidade_coleta_realizada=1, quantidade_coleta_nao_realizada=1,
             participantes=[dict(id_pessoa=4, papel_participante="MOTORISTA")],
             motivos=[
@@ -266,6 +269,38 @@ class FeedbackServiceTests(unittest.TestCase):
         for detail in (draft, confirmed, correction):
             self.assertEqual({(reason.tipo_operacao, reason.codigo_cliente) for reason in detail.itens[0].motivos},
                              {("ENTREGA", "000123"), ("COLETA", "000456")})
+
+    def test_delivery_history_filters_by_reason_group_and_reason(self):
+        item = self._customer_code_item()
+        draft = create_draft(
+            self.db,
+            payload=DeliveryDraftCreateRequest(itens=[item]),
+            idempotency_key=uuid4(),
+            access=self._access(permission="ENTREGAS_DIARIAS:CRIAR"),
+        )
+        confirm_draft(
+            self.db,
+            codigo_lancamento=draft.codigo_lancamento,
+            idempotency_key=uuid4(),
+            access=self._access(permission="ENTREGAS_DIARIAS:CRIAR"),
+        )
+        filters = dict(
+            access=self._access(permission="ENTREGAS_DIARIAS:VER"),
+            estado=None,
+            data_de=None,
+            data_ate=None,
+            id_localidade=None,
+            id_motorista=None,
+            id_motivo_nao_entrega=11,
+            tipo_operacao="ENTREGA",
+            criado_por=None,
+            limit=50,
+            offset=0,
+        )
+        matching = list_drafts(self.db, grupo_motivo="LOGISTICA", **filters)
+        excluded = list_drafts(self.db, grupo_motivo="LOJA", **filters)
+        self.assertEqual(matching.total, 1)
+        self.assertEqual(excluded.total, 0)
 
     def test_legacy_correction_requires_codes_but_preserves_original_history(self):
         item = self._customer_code_item()

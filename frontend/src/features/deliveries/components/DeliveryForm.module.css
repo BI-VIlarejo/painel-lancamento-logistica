@@ -20,6 +20,7 @@
 .button-add > span { font-size: 16px; font-weight: 400; }
 .field-grid { display: grid; gap: 16px; }
 .form-field { display: flex; min-width: 0; flex-direction: column; gap: 7px; color: #475569; font-size: 13px; font-weight: 600; }
+.delivery-weight-field { max-width: 300px; margin-top: 10px; }
 .form-field > span b { color: var(--brand-blue); font-size: 14px; }
 .form-field input, .form-field select, .form-field textarea { width: 100%; min-width: 0; height: var(--ui-control-height); padding: 0 11px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-control-radius); outline: none; color: #344b66; background: #fff; font-size: 13px; font-weight: 400; transition: border-color .18s, box-shadow .18s; }
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(43, 163, 213, .14); }

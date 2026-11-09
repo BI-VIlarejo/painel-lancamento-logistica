@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from datetime import date, datetime
+from decimal import Decimal
 from app.core.orm import Base
 from sqlalchemy import (
     BigInteger,
@@ -14,6 +15,7 @@ from sqlalchemy import (
     Index,
     Integer,
     JSON,
+    Numeric,
     SmallInteger,
     String,
     Text,
@@ -416,6 +418,9 @@ class EntregaDiaria(Base):
     )
     quantidade_coleta_nao_realizada: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
+    )
+    peso_total_kg: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 3), nullable=True
     )
     # Legacy columns retained for database compatibility; the API and OTIF ignore them.
     quantidade_entregas_no_prazo: Mapped[int | None] = mapped_column(

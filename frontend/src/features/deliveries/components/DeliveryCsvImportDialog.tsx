@@ -32,6 +32,7 @@ type CsvPreviewRow = {
   deliveryNotCompleted: string;
   collectionCompleted: string;
   collectionNotCompleted: string;
+  weightKg: string;
   errors: string[];
 };
 
@@ -51,6 +52,7 @@ const templateHeader = [
   "quantidade_nao_realizada",
   "quantidade_coleta_realizada",
   "quantidade_coleta_nao_realizada",
+  "peso_total_kg",
   "motivos",
   "codigos_clientes",
   "observacoes_motivos",
@@ -96,6 +98,10 @@ const headerAliases: Record<string, string> = {
   coletas_realizadas: "quantidade_coleta_realizada",
   quantidade_coleta_nao_realizada: "quantidade_coleta_nao_realizada",
   coletas_nao_realizadas: "quantidade_coleta_nao_realizada",
+  peso: "peso_total_kg",
+  peso_kg: "peso_total_kg",
+  peso_total: "peso_total_kg",
+  peso_total_kg: "peso_total_kg",
   quantidade_entregas_no_prazo: "quantidade_entregas_no_prazo",
   entregas_no_prazo: "quantidade_entregas_no_prazo",
   quantidade_entregas_completas: "quantidade_entregas_completas",
@@ -216,6 +222,13 @@ function quantity(value: string): number | undefined {
   return Number.isSafeInteger(parsed) && parsed <= 2_147_483_647 ? parsed : undefined;
 }
 
+function weightKg(value: string): number | undefined {
+  const normalized = value.trim().replace(",", ".");
+  if (!/^\d{1,9}(?:\.\d{1,3})?$/.test(normalized)) return undefined;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function resolvePerson(value: string, options: PersonCatalogItem[]): { person?: PersonCatalogItem; error?: string } {
   if (!value) return {};
   const matches = /^\d+$/.test(value)
@@ -251,6 +264,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     "quantidade_nao_realizada",
     "quantidade_coleta_realizada",
     "quantidade_coleta_nao_realizada",
+    "peso_total_kg",
     // Aceita cabeçalhos antigos de importação, mas ignora essas contagens legadas.
     "quantidade_entregas_no_prazo",
     "quantidade_entregas_completas",
@@ -298,6 +312,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     const rawDeliveryNotCompleted = get("quantidade_nao_realizada");
     const rawCollectionCompleted = get("quantidade_coleta_realizada");
     const rawCollectionNotCompleted = get("quantidade_coleta_nao_realizada");
+    const rawWeight = get("peso_total_kg");
     const parsedDeliveryCompleted = rawDeliveryCompleted ? quantity(rawDeliveryCompleted) : 0;
     const parsedDeliveryNotCompleted = rawDeliveryNotCompleted ? quantity(rawDeliveryNotCompleted) : 0;
     const parsedCollectionCompleted = rawCollectionCompleted ? quantity(rawCollectionCompleted) : (legacyOperation === "COLETA" ? parsedDeliveryCompleted : 0);
@@ -306,6 +321,9 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     const deliveryNotCompleted = legacyOperation === "COLETA" ? 0 : parsedDeliveryNotCompleted;
     const collectionCompleted = parsedCollectionCompleted;
     const collectionNotCompleted = parsedCollectionNotCompleted;
+    const parsedWeight = rawWeight ? weightKg(rawWeight) : undefined;
+    const deliveryQuantity = (deliveryCompleted ?? 0) + (deliveryNotCompleted ?? 0);
+    const deliveryWeight = parsedWeight ?? (deliveryQuantity === 0 ? 0 : undefined);
     const previewRow: CsvPreviewRow = {
       line,
       date,
@@ -315,6 +333,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
       deliveryNotCompleted: String(deliveryNotCompleted ?? 0),
       collectionCompleted: String(collectionCompleted ?? 0),
       collectionNotCompleted: String(collectionNotCompleted ?? 0),
+      weightKg: deliveryWeight === undefined ? rawWeight || "Não informado" : String(deliveryWeight),
       errors: [],
     };
     rows.push(previewRow);
@@ -350,6 +369,11 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
     if (parsedDeliveryNotCompleted === undefined) previewRow.errors.push("quantidade_nao_realizada: informe um inteiro não negativo.");
     if (collectionCompleted === undefined) previewRow.errors.push("quantidade_coleta_realizada: informe um inteiro não negativo.");
     if (collectionNotCompleted === undefined) previewRow.errors.push("quantidade_coleta_nao_realizada: informe um inteiro não negativo.");
+    if (deliveryQuantity > 0 && (deliveryWeight === undefined || deliveryWeight <= 0)) {
+      previewRow.errors.push("peso_total_kg: informe o peso total das entregas em kg, maior que zero e com até três casas decimais.");
+    } else if (deliveryQuantity === 0 && deliveryWeight !== 0) {
+      previewRow.errors.push("peso_total_kg: informe zero em registros somente de coleta.");
+    }
     const allQuantities = [deliveryCompleted, deliveryNotCompleted, collectionCompleted, collectionNotCompleted];
     if (allQuantities.every((value) => value !== undefined) && allQuantities.reduce<number>((total, value) => total + (value ?? 0), 0) === 0) {
       previewRow.errors.push("Informe ao menos uma entrega ou coleta realizada ou não realizada.");
@@ -460,6 +484,7 @@ function parsePreview(text: string, catalogs: CsvCatalogs): CsvPreview {
         quantidade_nao_realizada: deliveryNotCompleted ?? 0,
         quantidade_coleta_realizada: collectionCompleted ?? 0,
         quantidade_coleta_nao_realizada: collectionNotCompleted ?? 0,
+        peso_total_kg: deliveryWeight ?? 0,
         participantes: participants,
         motivos: reasons,
       });
@@ -553,7 +578,7 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
         <p className={cx(styles, commonStyles, "csv-import-description")}>O CSV pode ser validado antes de registrar os lançamentos. Cada linha compartilha a data, localidade e equipe entre entregas e coletas. Importamos até 100 registros por vez; nenhum registro é gravado se houver erro.</p>
 
         <div className={cx(styles, commonStyles, "csv-template-help")}>
-          <div><strong>Prepare o arquivo</strong><span>Uma linha representa a mesma data, localidade, motorista e equipe para as duas operações. Informe as quantidades de entrega e de coleta nas respectivas colunas. Para cada item não realizado, informe um código do cliente na mesma ordem dos motivos, separado por |. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Para motivos repetidos, use CODIGO_MOTIVO:QUANTIDADE e separe motivos diferentes com |; use motivos_coleta, codigos_clientes_coleta e observacoes_motivos_coleta para coletas. Arquivos antigos com tipo_operacao ainda são aceitos e convertidos para este formato. A coluna antiga observacao não é aceita.</span></div>
+          <div><strong>Prepare o arquivo</strong><span>Uma linha representa a mesma data, localidade, motorista e equipe para as duas operações. Informe o peso total em kg quando houver entregas; para registros somente de coleta, use zero. Informe as quantidades de entrega e de coleta nas respectivas colunas. Para cada item não realizado, informe um código do cliente na mesma ordem dos motivos, separado por |. Datas aceitam AAAA-MM-DD ou DD/MM/AAAA. Para motivos repetidos, use CODIGO_MOTIVO:QUANTIDADE e separe motivos diferentes com |; use motivos_coleta, codigos_clientes_coleta e observacoes_motivos_coleta para coletas. Arquivos antigos com tipo_operacao ainda são aceitos e convertidos para este formato. A coluna antiga observacao não é aceita.</span></div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={downloadTemplate}>Baixar modelo CSV</button>
         </div>
         <p className={cx(styles, commonStyles, "csv-template-columns")}><strong>Colunas:</strong> {templateHeader.join(" · ")}</p>
@@ -572,8 +597,8 @@ export function DeliveryCsvImportDialog({ onClose, onImported }: { onClose: () =
             <span>{preview.payload ? "Será criado um rascunho para conferência; depois você confirma o lançamento." : `${preview.rows.length} linhas lidas; corrija os problemas antes de gravar.`}</span>
           </div>
           {preview.errors.map((error) => <p className={cx(styles, commonStyles, "csv-import-error")} key={error}>{error}</p>)}
-          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "data-table-scroll data-table-scroll-compact csv-preview-scroll")} role="region" aria-label="Prévia de importação de entregas" tabIndex={0}><table className={cx(styles, commonStyles, "data-table csv-preview-table")}><thead><tr><th>Linha</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Entregas R</th><th>Entregas NR</th><th>Coletas R</th><th>Coletas NR</th><th>Validação</th></tr></thead><tbody>
-            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.deliveryCompleted}</td><td>{row.deliveryNotCompleted}</td><td>{row.collectionCompleted}</td><td>{row.collectionNotCompleted}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
+          {preview.rows.length > 0 && <div className={cx(styles, commonStyles, "data-table-scroll data-table-scroll-compact csv-preview-scroll")} role="region" aria-label="Prévia de importação de entregas" tabIndex={0}><table className={cx(styles, commonStyles, "data-table csv-preview-table")}><thead><tr><th>Linha</th><th>Data</th><th>Localidade</th><th>Motorista</th><th>Entregas R</th><th>Entregas NR</th><th>Coletas R</th><th>Coletas NR</th><th>Peso kg</th><th>Validação</th></tr></thead><tbody>
+            {preview.rows.slice(0, 15).map((row) => <tr className={cx(styles, commonStyles, row.errors.length ? "csv-row-error" : "")} key={row.line}><td>{row.line}</td><td>{row.date || "—"}</td><td>{row.locality || "—"}</td><td>{row.driver || "—"}</td><td>{row.deliveryCompleted}</td><td>{row.deliveryNotCompleted}</td><td>{row.collectionCompleted}</td><td>{row.collectionNotCompleted}</td><td>{row.weightKg}</td><td>{row.errors.length ? row.errors.join(" ") : "Pronta"}</td></tr>)}
           </tbody></table>{preview.rows.length > 15 && <small>Exibindo as 15 primeiras de {preview.rows.length} linhas.</small>}</div>}
         </>}
 

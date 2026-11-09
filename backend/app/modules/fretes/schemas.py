@@ -263,3 +263,4 @@ class FreightDeliverySummary(BaseModel):
     quantidade_entregas: int
     quantidade_avarias: int
     quantidade_registros: int
+    peso_total_kg: Decimal | None

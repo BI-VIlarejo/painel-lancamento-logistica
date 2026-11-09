@@ -282,6 +282,7 @@ def list_visible_launches(
     id_localidade: int | None,
     id_motorista: int | None,
     id_motivo_nao_entrega: int | None,
+    grupo_motivo: str | None,
     tipo_operacao: str | None,
     criado_por: int | None,
     limit: int,
@@ -329,6 +330,31 @@ def list_visible_launches(
         item_conditions.append(
             exists(
                 select(EntregaMotivo.id_entrega_motivo).where(*reason_conditions)
+            )
+        )
+    if grupo_motivo is not None:
+        reason_conditions = [
+            EntregaMotivo.id_entrega_diaria == EntregaDiaria.id_entrega_diaria,
+            MotivoNaoEntrega.id_motivo_nao_entrega
+            == EntregaMotivo.id_motivo_nao_entrega,
+            MotivoNaoEntrega.grupo_motivo == grupo_motivo,
+        ]
+        if tipo_operacao is not None:
+            reason_conditions.append(EntregaMotivo.tipo_operacao == tipo_operacao)
+        if id_motivo_nao_entrega is not None:
+            reason_conditions.append(
+                EntregaMotivo.id_motivo_nao_entrega == id_motivo_nao_entrega
+            )
+        item_conditions.append(
+            exists(
+                select(EntregaMotivo.id_entrega_motivo)
+                .select_from(EntregaMotivo)
+                .join(
+                    MotivoNaoEntrega,
+                    MotivoNaoEntrega.id_motivo_nao_entrega
+                    == EntregaMotivo.id_motivo_nao_entrega,
+                )
+                .where(*reason_conditions)
             )
         )
     if tipo_operacao == "ENTREGA":

@@ -1,6 +1,7 @@
 """Testes unitários das validações que sustentam Entregas."""
 
 from datetime import date
+from decimal import Decimal
 from unittest import TestCase
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ class DeliveryRequestTests(TestCase):
                             data_entrega="2026-11-03", id_localidade=1,
                             quantidade_realizada=1, quantidade_nao_realizada=int(operation == "ENTREGA"),
                             quantidade_coleta_nao_realizada=int(operation == "COLETA"),
+                            peso_total_kg="10.250",
                             participantes=[dict(id_pessoa=10, papel_participante="MOTORISTA")],
                             motivos=[dict(id_motivo_nao_entrega=5, tipo_operacao=operation, codigo_cliente=code)],
                         )
@@ -62,6 +64,7 @@ class DeliveryRequestTests(TestCase):
             id_localidade=1,
             quantidade_realizada=4,
             quantidade_nao_realizada=2,
+            peso_total_kg="125.500",
             quantidade_coleta_realizada=1,
             quantidade_coleta_nao_realizada=2,
             participantes=[
@@ -116,12 +119,41 @@ class DeliveryRequestTests(TestCase):
             id_localidade=1,
             quantidade_realizada=4,
             quantidade_nao_realizada=0,
+            peso_total_kg="10.000",
             participantes=[
                 DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
             ],
         )
 
         self.assertEqual(item.codigo_item_lancamento, item_code)
+
+    def test_new_delivery_request_requires_weight_and_collection_only_uses_zero(self) -> None:
+        item = {
+            "data_entrega": date(2026, 10, 20),
+            "id_localidade": 1,
+            "quantidade_realizada": 1,
+            "quantidade_nao_realizada": 0,
+            "quantidade_coleta_realizada": 0,
+            "quantidade_coleta_nao_realizada": 0,
+            "participantes": [
+                DeliveryParticipantInput(id_pessoa=10, papel_participante="MOTORISTA")
+            ],
+        }
+        with self.assertRaises(ValidationError):
+            DeliveryDraftCreateRequest(itens=[item])
+        with self.assertRaises(ValidationError):
+            DeliveryDraftCreateRequest(itens=[item | {"peso_total_kg": 0}])
+        request = DeliveryDraftCreateRequest(itens=[item | {"peso_total_kg": "75.125"}])
+        self.assertEqual(request.itens[0].peso_total_kg, Decimal("75.125"))
+
+        collection = item | {
+            "quantidade_realizada": 0,
+            "quantidade_coleta_realizada": 1,
+            "peso_total_kg": 0,
+        }
+        self.assertEqual(DeliveryDraftCreateRequest(itens=[collection]).itens[0].peso_total_kg, 0)
+        with self.assertRaises(ValidationError):
+            DeliveryDraftCreateRequest(itens=[collection | {"peso_total_kg": 1}])
 
     def test_request_rejects_legacy_otif_count_fields(self) -> None:
         base = {

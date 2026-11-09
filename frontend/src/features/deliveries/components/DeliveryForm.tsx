@@ -28,6 +28,7 @@ type DeliveryDraftLine = {
   helpers: [string, string];
   entregas: OperationDraft;
   coletas: OperationDraft;
+  pesoTotalKg: string;
   legacyObservation: string;
 };
 
@@ -59,7 +60,7 @@ function operationDraft(): OperationDraft {
 function newLine(): DeliveryDraftLine {
   return {
     key: crypto.randomUUID(), date: localDate(), locality: "", driver: "",
-    helpers: ["", ""], entregas: operationDraft(), coletas: operationDraft(), legacyObservation: "",
+    helpers: ["", ""], entregas: operationDraft(), coletas: operationDraft(), pesoTotalKg: "0", legacyObservation: "",
   };
 }
 
@@ -102,6 +103,7 @@ function linesFromLaunch(launch: DeliveryLaunchDetail): DeliveryDraftLine[] {
         notCompleted: String(item.quantidade_coleta_nao_realizada ?? (legacyCollection ? item.quantidade_nao_realizada : 0)),
         reasons: reasonsFor("COLETA"),
       },
+      pesoTotalKg: item.peso_total_kg == null ? "" : String(item.peso_total_kg),
       legacyObservation: item.observacao ?? "",
     };
   });
@@ -159,6 +161,14 @@ function validateLines(
       errors[`${prefix}-total`] = `As quantidades devem ser inteiros entre zero e ${maximumQuantity}.`;
     }
     if (quantities.reduce((total, value) => total + value, 0) <= 0) errors[`${prefix}-total`] = "Informe ao menos uma entrega ou coleta realizada ou não realizada.";
+    const hasDeliveries = numberValue(line.entregas.completed) + numberValue(line.entregas.notCompleted) > 0;
+    const normalizedWeight = line.pesoTotalKg.trim().replace(",", ".");
+    const weight = /^\d{1,9}(?:\.\d{1,3})?$/.test(normalizedWeight) ? Number(normalizedWeight) : Number.NaN;
+    if (!Number.isFinite(weight) || (hasDeliveries ? weight <= 0 : weight !== 0)) {
+      errors[`${prefix}-weight`] = hasDeliveries
+        ? "Informe o peso total das entregas em kg, maior que zero e com até três casas decimais."
+        : "Em registros somente de coleta, informe peso zero.";
+    }
     const selectedPeople = [line.driver, ...line.helpers].filter(Boolean);
     if (new Set(selectedPeople).size !== selectedPeople.length) errors[`${prefix}-team`] = "Uma pessoa não pode ocupar dois papéis.";
     const selectedTypes = selectedPeople.map((id) => personTransportType(id, line, drivers, helpers, initialLaunch));
@@ -212,6 +222,7 @@ function toPayloadLine(line: DeliveryDraftLine): DeliveryItemInput {
     quantidade_nao_realizada: numberValue(line.entregas.notCompleted),
     quantidade_coleta_realizada: numberValue(line.coletas.completed),
     quantidade_coleta_nao_realizada: numberValue(line.coletas.notCompleted),
+    peso_total_kg: Number(line.pesoTotalKg.trim().replace(",", ".")),
     participantes: participants,
     motivos: ([
       ...line.entregas.reasons.map((reason) => ({ reason, operation: "ENTREGA" as const })),
@@ -425,6 +436,8 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch,
           </div>
           <div className={cx(styles, commonStyles, "team-classification")}><span>Tipo do transporte</span><strong className={cx(styles, commonStyles, `transport-badge${teamTypeLabel.includes("pendente") || teamTypeLabel === "Equipe mista" ? " transport-badge-warning" : ""}`)}>{teamTypeLabel}</strong></div>
           {errors[`${prefix}-team`] && <small className={cx(styles, commonStyles, "field-error team-error")}>{errors[`${prefix}-team`]}</small>}
+
+          <label className={cx(styles, commonStyles, "form-field delivery-weight-field")}><span>Peso total (kg) <b>*</b></span><input type="text" inputMode="decimal" value={line.pesoTotalKg} onChange={(event) => updateLine(line.key, { pesoTotalKg: event.target.value })} placeholder="Ex.: 125,500" aria-invalid={Boolean(errors[`${prefix}-weight`])} aria-describedby={errors[`${prefix}-weight`] ? `${prefix}-weight-error` : undefined} /><small className={cx(styles, commonStyles, "field-hint")}>Peso somado das entregas neste registro; use zero quando houver somente coletas.</small>{errors[`${prefix}-weight`] && <small id={`${prefix}-weight-error`} className={cx(styles, commonStyles, "field-error")}>{errors[`${prefix}-weight`]}</small>}</label>
 
           <div className={cx(styles, commonStyles, "operation-entries")}>
             {renderOperationFields(line, index, "ENTREGA", originalItem)}

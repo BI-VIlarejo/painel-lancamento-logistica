@@ -41,7 +41,6 @@ const supportSectorPermissionCodes = [
   "ENTREGAS_DIARIAS:VER",
   "ENTREGAS_DIARIAS:CRIAR",
   "FEEDBACK_CLIENTES:ACESSAR",
-  "PAINEL_GERENCIAL:ACESSAR",
 ];
 const transportSectorPermissionCodes = ["FRETES:VER", "FRETES:CRIAR", "AGREGADOS:VER"];
 
@@ -94,7 +93,7 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
     });
   };
 
-  const supportFolderVisible = (canCreate || canView || canAccessFeedback || canViewDashboard)
+  const supportFolderVisible = (canCreate || canView || canAccessFeedback)
     && hasScopedSectorPermission(supportSectorId, supportSectorPermissionCodes);
   const transportFolderVisible = (canCreateFreights || canViewFreights || canViewAggregatePayments)
     && hasScopedSectorPermission(transportSectorId, transportSectorPermissionCodes);
@@ -142,6 +141,27 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
 
   const configuredSections: AppNavItem[] = [
     {
+      id: "indicators",
+      label: "Indicadores",
+      visible: canViewDashboard,
+      children: [
+        {
+          id: "management-dashboard",
+          path: "/painel",
+          label: "Painel Gerencial",
+          visible: canViewDashboard,
+          icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
+        },
+        {
+          id: "people-indicators",
+          path: "/indicadores/pessoas",
+          label: "Ranking de pessoas",
+          visible: canViewDashboard,
+          icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
+        },
+      ],
+    },
+    {
       id: "support",
       label: "Suporte",
       visible: supportFolderVisible,
@@ -179,27 +199,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
               label: "Reclamações e elogios",
               visible: canAccessFeedback && hasScopedSectorPermission(supportSectorId, ["FEEDBACK_CLIENTES:ACESSAR"]),
               icon: <svg viewBox="0 0 24 24"><path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6l-4.5 3v-3H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" /><path d="M8 10h8M8 13.5h5" /></svg>,
-            },
-          ],
-        },
-        {
-          id: "support-indicators",
-          label: "Indicadores",
-          visible: canViewDashboard && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]),
-          children: [
-            {
-              id: "management-dashboard",
-              path: "/painel",
-              label: "Painel Gerencial",
-              visible: canViewDashboard && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]),
-              icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
-            },
-            {
-              id: "people-indicators",
-              path: "/indicadores/pessoas",
-              label: "Indicadores por pessoa",
-              visible: canViewDashboard && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]),
-              icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
             },
           ],
         },

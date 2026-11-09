@@ -22,7 +22,7 @@ class FreightServiceTests(TestCase):
         self.period = dict(data_de=date(2026, 11, 1), data_ate=date(2026, 11, 30))
         delivery_summary_patch = patch(
             "app.modules.fretes.repository.get_driver_delivery_summary",
-            return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1),
+            return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1, Decimal("1000.000")),
         )
         delivery_summary_patch.start()
         self.addCleanup(delivery_summary_patch.stop)
@@ -68,6 +68,7 @@ class FreightServiceTests(TestCase):
         self.assertEqual(first.rota_cidade, "Rio das Ostras")
         self.assertEqual(first.quantidade_entregas, 10)
         self.assertEqual(first.quantidade_avarias, 2)
+        self.assertEqual(first.peso_kg, Decimal("1000.000"))
         self.assertEqual(first.valor_frete_pago, Decimal("480.00"))
         self.assertNotIn("request_fingerprint", first.detalhe_calculo)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 1)
@@ -93,6 +94,15 @@ class FreightServiceTests(TestCase):
         )
         self.assertEqual(result.status_calculo, "CALCULADO")
         self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 0)
+
+    def test_aggregate_freight_requires_complete_delivery_weights(self):
+        with patch(
+            "app.modules.fretes.repository.get_driver_delivery_summary",
+            return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1, None),
+        ), self.assertRaisesRegex(ConflictError, "peso total registrado"):
+            service.quote_freight(
+                self.db, payload=payload(), access=access(scope="SETOR", sector_id=10)
+            )
 
     def test_carrier_driver_options_include_one_named_driver_per_company(self):
         options = service.get_carrier_drivers(

@@ -244,7 +244,7 @@ def _prepare_freight_payload(
             "O motorista não está ativo como agregado classificado na data do serviço."
         )
 
-    route, cities, deliveries, damages, delivery_rows = repository.get_driver_delivery_summary(
+    route, cities, deliveries, damages, delivery_rows, weight = repository.get_driver_delivery_summary(
         db,
         id_motorista=driver_id,
         data_servico=payload.data_servico,
@@ -253,12 +253,17 @@ def _prepare_freight_payload(
         raise ConflictError(
             "Não há entregas confirmadas para esse motorista na data selecionada."
         )
+    if require_delivery_data and (weight is None or weight <= 0):
+        raise ConflictError(
+            "Há Entregas confirmadas sem peso total registrado; corrija os lançamentos antes de lançar o frete."
+        )
     prepared = payload.model_copy(
         update={
             "nome_transportador": driver.nome_exibicao,
             "rota_cidade": route or payload.rota_cidade,
             "quantidade_entregas": deliveries,
             "quantidade_avarias": damages,
+            "peso_kg": weight if weight is not None else payload.peso_kg,
         }
     )
     source_detail: dict[str, object] = {
@@ -269,6 +274,7 @@ def _prepare_freight_payload(
         "quantidade_entregas_origem": deliveries,
         "quantidade_avarias_origem": damages,
         "quantidade_registros_entrega": delivery_rows,
+        "peso_total_kg_origem": str(weight) if weight is not None else None,
     }
     return prepared, source_detail
 
@@ -402,7 +408,7 @@ def get_delivery_summary(
             raise NotFoundError(
                 "O motorista não está ativo como agregado classificado na data do serviço."
             )
-        route, cities, deliveries, damages, delivery_rows = repository.get_driver_delivery_summary(
+        route, cities, deliveries, damages, delivery_rows, weight = repository.get_driver_delivery_summary(
             db,
             id_motorista=id_motorista,
             data_servico=data_servico,
@@ -415,6 +421,7 @@ def get_delivery_summary(
             quantidade_entregas=deliveries,
             quantidade_avarias=damages,
             quantidade_registros=delivery_rows,
+            peso_total_kg=weight,
         )
     except PermissionDeniedError, NotFoundError:
         raise

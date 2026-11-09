@@ -545,6 +545,7 @@ export const freightsDemoApi = {
       quantidade_entregas: 18,
       quantidade_avarias: 2,
       quantidade_registros: 1,
+      peso_total_kg: "2250.000",
     };
   },
 

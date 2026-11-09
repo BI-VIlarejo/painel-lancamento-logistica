@@ -89,6 +89,7 @@ function makeItem(
     quantidade_nao_realizada: notCompleted,
     quantidade_coleta_realizada: 0,
     quantidade_coleta_nao_realizada: 0,
+    peso_total_kg: Math.max(1, completed + notCompleted) * 125,
     observacao: null,
     participantes: [
       { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1, tipo_transporte_entrega: people.find((person) => person.id_pessoa === driverId)?.tipo_transporte_entrega ?? null },
@@ -221,6 +222,7 @@ function toResponseItem(item: DeliveryDraftRequest["itens"][number]): DeliveryIt
     quantidade_nao_realizada: legacyCollection ? 0 : item.quantidade_nao_realizada,
     quantidade_coleta_realizada: item.quantidade_coleta_realizada ?? (legacyCollection ? item.quantidade_realizada : 0),
     quantidade_coleta_nao_realizada: item.quantidade_coleta_nao_realizada ?? (legacyCollection ? item.quantidade_nao_realizada : 0),
+    peso_total_kg: item.peso_total_kg,
     codigo_localidade: locality.codigo_localidade,
     nome_localidade: locality.nome_localidade,
     observacao: null,
@@ -291,7 +293,7 @@ export const demoApi = {
       .filter((launch) => launch.itens.some((item) =>
         (filters.id_localidade === undefined || item.id_localidade === filters.id_localidade) &&
         (filters.id_motorista === undefined || item.participantes.some((participant) => participant.papel_participante === "MOTORISTA" && participant.id_pessoa === filters.id_motorista)) &&
-        (filters.id_motivo_nao_entrega === undefined || item.motivos.some((reason) => reason.id_motivo_nao_entrega === filters.id_motivo_nao_entrega && (!filters.tipo_operacao || reason.tipo_operacao === filters.tipo_operacao))) &&
+        ((filters.id_motivo_nao_entrega === undefined && !filters.grupo_motivo) || item.motivos.some((reason) => (filters.id_motivo_nao_entrega === undefined || reason.id_motivo_nao_entrega === filters.id_motivo_nao_entrega) && (!filters.grupo_motivo || reason.grupo_motivo === filters.grupo_motivo) && (!filters.tipo_operacao || reason.tipo_operacao === filters.tipo_operacao))) &&
         (!filters.tipo_operacao || (filters.tipo_operacao === "ENTREGA" ? item.quantidade_realizada + item.quantidade_nao_realizada > 0 : (item.quantidade_coleta_realizada ?? 0) + (item.quantidade_coleta_nao_realizada ?? 0) > 0)) &&
         (!filters.data_de || item.data_entrega >= filters.data_de) &&
         (!filters.data_ate || item.data_entrega <= filters.data_ate)

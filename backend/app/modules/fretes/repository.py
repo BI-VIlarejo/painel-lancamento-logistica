@@ -1,9 +1,10 @@
 """Persistência do módulo de Fretes."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.modules.access_control.catalog import DELIVERY_SECTOR_CODE
@@ -123,6 +124,7 @@ def _confirmed_delivery_rows_statement(*, id_motorista: int, data_servico: date)
             EntregaDiaria.id_entrega_diaria.label("id_entrega_diaria"),
             city.label("cidade"),
             delivery_quantity.label("quantidade_entregas"),
+            EntregaDiaria.peso_total_kg.label("peso_total_kg"),
         )
         .select_from(EntregaDiaria)
         .join(
@@ -151,6 +153,10 @@ def _confirmed_delivery_rows_statement(*, id_motorista: int, data_servico: date)
             FormularioVersao.id_setor == Lancamento.id_setor,
             Setor.codigo == DELIVERY_SECTOR_CODE,
             Setor.ativo.is_(True),
+            or_(
+                EntregaDiaria.quantidade_realizada > 0,
+                EntregaDiaria.quantidade_nao_realizada > 0,
+            ),
         )
         .distinct()
     )
@@ -161,8 +167,8 @@ def get_driver_delivery_summary(
     *,
     id_motorista: int,
     data_servico: date,
-) -> tuple[str, list[str], int, int, int]:
-    """Soma entregas e avarias e retorna as cidades das revisões confirmadas."""
+) -> tuple[str, list[str], int, int, int, Decimal | None]:
+    """Soma volumes, pesos e avarias das Entregas confirmadas."""
     delivery_rows = _confirmed_delivery_rows_statement(
         id_motorista=id_motorista,
         data_servico=data_servico,
@@ -177,6 +183,22 @@ def get_driver_delivery_summary(
     quantity = sum(int(row[1] or 0) for row in city_rows)
     delivery_count = int(
         db.scalar(select(func.count()).select_from(delivery_rows)) or 0
+    )
+    weighted_rows = int(
+        db.scalar(
+            select(func.count())
+            .select_from(delivery_rows)
+            .where(delivery_rows.c.peso_total_kg.is_not(None))
+        )
+        or 0
+    )
+    total_weight = db.scalar(
+        select(func.sum(delivery_rows.c.peso_total_kg))
+    )
+    weight = (
+        Decimal(total_weight or 0)
+        if weighted_rows == delivery_count
+        else None
     )
 
     damage_count = int(
@@ -202,7 +224,7 @@ def get_driver_delivery_summary(
     route = " / ".join(cities)
     if len(route) > 160:
         route = f"Múltiplas cidades ({len(cities)})"
-    return route, cities, quantity, damage_count, delivery_count
+    return route, cities, quantity, damage_count, delivery_count, weight
 
 
 def get_freight_by_idempotency_key(

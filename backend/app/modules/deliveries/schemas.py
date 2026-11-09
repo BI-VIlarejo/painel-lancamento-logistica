@@ -1,6 +1,7 @@
 """Contratos de gravação e consulta dos rascunhos de Entregas."""
 
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Any, Literal
 from uuid import UUID
 
@@ -56,6 +57,13 @@ class DeliveryItemInput(BaseModel):
     quantidade_nao_realizada: int = Field(ge=0, le=2_147_483_647)
     quantidade_coleta_realizada: int = Field(default=0, ge=0, le=2_147_483_647)
     quantidade_coleta_nao_realizada: int = Field(default=0, ge=0, le=2_147_483_647)
+    peso_total_kg: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=12,
+        decimal_places=3,
+        allow_inf_nan=False,
+    )
     # Empty values are tolerated for the currently deployed frontend; a new
     # non-empty delivery-level observation is rejected below.
     observacao: str | None = Field(
@@ -117,6 +125,9 @@ class DeliveryItemInput(BaseModel):
             == 0
         ):
             raise ValueError("Informe ao menos uma entrega ou coleta realizada ou não realizada.")
+        delivery_quantity = self.quantidade_realizada + self.quantidade_nao_realizada
+        if delivery_quantity == 0 and self.peso_total_kg not in (None, Decimal("0")):
+            raise ValueError("O peso deve ser zero quando o registro tiver somente coletas.")
         drivers = [
             item for item in self.participantes
             if item.papel_participante == "MOTORISTA"
@@ -159,6 +170,15 @@ class DeliveryDraftCreateRequest(BaseModel):
     @model_validator(mode="after")
     def validate_customer_codes(self) -> "DeliveryDraftCreateRequest":
         if any(
+            item.peso_total_kg is None
+            or (
+                item.quantidade_realizada + item.quantidade_nao_realizada > 0
+                and item.peso_total_kg <= 0
+            )
+            for item in self.itens
+        ):
+            raise ValueError("Informe o peso total em kg; use zero em registros somente de coleta.")
+        if any(
             not reason.codigo_cliente
             for item in self.itens
             for reason in item.motivos
@@ -176,6 +196,15 @@ class DeliveryDraftUpdateRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_customer_codes(self) -> "DeliveryDraftUpdateRequest":
+        if any(
+            item.peso_total_kg is None
+            or (
+                item.quantidade_realizada + item.quantidade_nao_realizada > 0
+                and item.peso_total_kg <= 0
+            )
+            for item in self.itens
+        ):
+            raise ValueError("Informe o peso total em kg; use zero em registros somente de coleta.")
         if any(
             not reason.codigo_cliente
             for item in self.itens
@@ -245,6 +274,7 @@ class DeliveryItemResponse(BaseModel):
     quantidade_nao_realizada: int
     quantidade_coleta_realizada: int
     quantidade_coleta_nao_realizada: int
+    peso_total_kg: Decimal | None
     observacao: str | None
     participantes: list[DeliveryParticipantResponse]
     motivos: list[DeliveryReasonResponse]

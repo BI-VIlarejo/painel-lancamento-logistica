@@ -54,7 +54,7 @@ class FreightRouterTests(TestCase):
         settings_patch = patch("app.api.v1.dependencies.get_settings", return_value=self.settings)
         delivery_summary_patch = patch(
             "app.modules.fretes.repository.get_driver_delivery_summary",
-            return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1),
+            return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1, 1000),
         )
         auth_patch.start()
         settings_patch.start()

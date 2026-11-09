@@ -57,6 +57,7 @@ export type DeliveryItemInput = {
   quantidade_nao_realizada: number;
   quantidade_coleta_realizada: number;
   quantidade_coleta_nao_realizada: number;
+  peso_total_kg: number;
   participantes: DeliveryParticipantInput[];
   motivos: DeliveryReasonInput[];
 };
@@ -77,12 +78,14 @@ export type DeliveryReasonResponse = Omit<DeliveryReasonInput, "codigo_cliente">
   grupo_motivo: NonDeliveryReasonGroup | null;
   observacao: string | null;
 };
-export type DeliveryItemResponse = Omit<DeliveryItemInput, "participantes" | "motivos"> & {
+export type DeliveryItemResponse = Omit<DeliveryItemInput, "participantes" | "motivos" | "peso_total_kg"> & {
   codigo_item_lancamento: string;
   /** Present only in responses from the previous API version. */
   tipo_operacao?: "ENTREGA" | "COLETA";
   nome_localidade: string;
   codigo_localidade: string;
+  /** Legacy API responses can omit weight; old records can have no saved weight. */
+  peso_total_kg?: number | string | null;
   observacao: string | null;
   participantes: DeliveryParticipantResponse[];
   motivos: DeliveryReasonResponse[];
@@ -150,6 +153,7 @@ export type DeliveryHistoryFilters = {
   id_localidade?: number;
   id_motorista?: number;
   id_motivo_nao_entrega?: number;
+  grupo_motivo?: NonDeliveryReasonGroup;
   tipo_operacao?: "ENTREGA" | "COLETA";
   criado_por?: number;
   limit?: number;

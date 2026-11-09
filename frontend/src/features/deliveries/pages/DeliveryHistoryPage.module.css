@@ -19,16 +19,17 @@
 .clear-filters:hover { border-color: #c4d1c8; color: var(--brand-navy); background: #f3f7f4; }
 .clear-filters:focus-visible { outline: 3px solid var(--brand-blue-line); outline-offset: 2px; }
 .clear-filters svg { width: 16px; height: 16px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
-.history-table.history-table { min-width: 1200px; table-layout: fixed; }
+.history-table.history-table { min-width: 1320px; table-layout: fixed; }
 .history-table th:nth-child(1) { width: 118px; }
 .history-table th:nth-child(2) { width: 160px; }
 .history-table th:nth-child(3) { width: 230px; }
 .history-table th:nth-child(4) { width: 160px; }
 .history-table th:nth-child(5), .history-table th:nth-child(6) { width: 112px; text-align: center; }
-.history-table th:nth-child(7) { width: 80px; text-align: center; }
-.history-table th:nth-child(8) { width: 220px; }
-.history-table td:nth-child(8) { text-align: center; vertical-align: middle; }
-.history-table td:nth-child(5), .history-table td:nth-child(6), .history-table td:nth-child(7) { text-align: center; vertical-align: middle; }
+.history-table th:nth-child(7) { width: 95px; text-align: center; }
+.history-table th:nth-child(8) { width: 80px; text-align: center; }
+.history-table th:nth-child(9) { width: 220px; }
+.history-table td:nth-child(9) { text-align: center; vertical-align: middle; }
+.history-table td:nth-child(5), .history-table td:nth-child(6), .history-table td:nth-child(7), .history-table td:nth-child(8) { text-align: center; vertical-align: middle; }
 .history-team-cell { display: flex; flex-direction: column; gap: 4px; }
 .history-team-cell > span { display: block; overflow-wrap: anywhere; }
 .history-team-cell b { display: inline-block; margin-right: 5px; padding: 2px 4px; border-radius: 4px; color: #738178; background: #f1f5f2; font-size: 9px; font-weight: 700; letter-spacing: .035em; text-transform: uppercase; vertical-align: 1px; }
@@ -121,7 +122,7 @@
 .detail-item-heading strong, .detail-item-heading small { display: block; }
 .detail-item-heading strong { color: #344b66; font-size: 14px; }
 .detail-item-heading small { margin-top: 3px; color: #63748a; font-size: 12px; }
-.detail-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; margin: 13px 0; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.detail-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 9px; margin: 13px 0; padding: 10px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .detail-metrics div { display: flex; align-items: baseline; gap: 6px; }
 .detail-metrics strong { color: var(--brand-navy); font-size: 15px; }
 .detail-metrics div:nth-child(2) strong { color: #a1804e; }

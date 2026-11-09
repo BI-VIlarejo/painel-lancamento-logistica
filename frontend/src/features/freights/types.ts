@@ -50,6 +50,7 @@ export type FreightDeliverySummary = {
   quantidade_entregas: number;
   quantidade_avarias: number;
   quantidade_registros: number;
+  peso_total_kg: DecimalValue | null;
 };
 
 /** Zona JUST IN TIME com a relação de áreas atendidas. */
