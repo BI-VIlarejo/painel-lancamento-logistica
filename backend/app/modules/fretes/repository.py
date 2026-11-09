@@ -32,6 +32,7 @@ def list_aggregate_drivers(db: Session, *, data_servico: date) -> list[Pessoa]:
         .where(
             Pessoa.tipo_funcao == "MOTORISTA",
             Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+            Pessoa.modalidade_terceirizada == "AGREGADO",
             Pessoa.ativo.is_(True),
             Pessoa.vigente_desde <= data_servico,
             (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
@@ -52,6 +53,7 @@ def get_aggregate_driver(
         Pessoa.id_pessoa == id_motorista,
         Pessoa.tipo_funcao == "MOTORISTA",
         Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+        Pessoa.modalidade_terceirizada == "AGREGADO",
         Pessoa.ativo.is_(True),
         Pessoa.vigente_desde <= data_servico,
         (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
@@ -70,9 +72,7 @@ def _confirmed_delivery_rows_statement(*, id_motorista: int, data_servico: date)
         .scalar_subquery()
     )
     city = func.coalesce(func.nullif(func.trim(Localidade.cidade), ""), Localidade.nome_localidade)
-    delivery_quantity = (
-        EntregaDiaria.quantidade_realizada + EntregaDiaria.quantidade_nao_realizada
-    )
+    delivery_quantity = EntregaDiaria.quantidade_realizada
     return (
         select(
             EntregaDiaria.id_entrega_diaria.label("id_entrega_diaria"),

@@ -2,11 +2,54 @@ import { demoApi } from "../deliveries/demoApi";
 import { demoFeedbackApi } from "../feedback/demoApi";
 import { demoAdministrationApi } from "../administration/demoApi";
 import type { DeliveryTransportType } from "../deliveries/classifications";
-import type { DashboardFilters, DashboardResponse } from "./types";
+import type { DashboardFilters, DashboardGoal, DashboardResponse } from "./types";
 
 const percentage = (count: number, total: number): number | null =>
   total ? Math.round((count / total) * 10_000) / 100 : null;
 type Operation = "ENTREGA" | "COLETA";
+const goalStorageKey = "lancamento-logistica:dashboard-goal";
+
+function demoGoal(
+  value = 95,
+  periodicidade: DashboardGoal["periodicidade"] = "MENSAL",
+  escopo_operacao: DashboardGoal["escopo_operacao"] = "TODAS",
+): DashboardGoal {
+  return {
+    indicador: "TAXA_REALIZACAO",
+    valor_percentual: value,
+    periodicidade,
+    escopo_operacao,
+    atualizado_em: null,
+    atualizado_por: null,
+    pode_editar: true,
+  };
+}
+
+function readDemoGoal(): DashboardGoal {
+  if (typeof window === "undefined") return demoGoal();
+  try {
+    const saved = window.localStorage.getItem(goalStorageKey);
+    if (!saved) return demoGoal();
+    const parsed: unknown = JSON.parse(saved);
+    if (typeof parsed === "number") return demoGoal(parsed >= 0 && parsed <= 100 ? parsed : 95);
+    if (typeof parsed !== "object" || parsed === null) return demoGoal();
+    const record = parsed as { value?: unknown; periodicidade?: unknown; escopo_operacao?: unknown; updatedAt?: unknown; updatedBy?: unknown };
+    const value = Number(record.value);
+    const periodicidade = record.periodicidade === "TRIMESTRAL" || record.periodicidade === "ANUAL"
+      ? record.periodicidade
+      : "MENSAL";
+    const escopo_operacao = record.escopo_operacao === "ENTREGAS" || record.escopo_operacao === "COLETAS"
+      ? record.escopo_operacao
+      : "TODAS";
+    return {
+      ...demoGoal(Number.isFinite(value) && value >= 0 && value <= 100 ? value : 95, periodicidade, escopo_operacao),
+      atualizado_em: typeof record.updatedAt === "string" ? record.updatedAt : null,
+      atualizado_por: typeof record.updatedBy === "string" ? record.updatedBy : null,
+    };
+  } catch {
+    return demoGoal();
+  }
+}
 
 function operationRows(item: {
   tipo_operacao?: Operation;
@@ -31,6 +74,28 @@ function operationRows(item: {
 }
 
 export const demoAnalyticsApi = {
+  async goal(): Promise<DashboardGoal> {
+    return readDemoGoal();
+  },
+  async updateGoal(
+    value: number,
+    periodicidade: DashboardGoal["periodicidade"],
+    escopo_operacao: DashboardGoal["escopo_operacao"],
+  ): Promise<DashboardGoal> {
+    if (!Number.isFinite(value) || value < 0 || value > 100 || Math.round(value * 100) !== value * 100) {
+      throw new Error("Informe uma meta entre 0 e 100%, com até duas casas decimais.");
+    }
+    const updatedAt = new Date().toISOString();
+    const updatedBy = "Demonstração";
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(goalStorageKey, JSON.stringify({ value, periodicidade, escopo_operacao, updatedAt, updatedBy }));
+    }
+    return {
+      ...demoGoal(value, periodicidade, escopo_operacao),
+      atualizado_em: updatedAt,
+      atualizado_por: updatedBy,
+    };
+  },
   async dashboard(filters: DashboardFilters = {}): Promise<DashboardResponse> {
     const page = await demoApi.listDeliveries({ estado: "TODOS", limit: 500, offset: 0 });
     const catalogPeople = await demoAdministrationApi.people();
@@ -54,17 +119,28 @@ export const demoAnalyticsApi = {
 
     const people = new Map<number, {
       name: string; role: string; teams: Set<string>; planned: number; completed: number;
-      notCompleted: number; praise: number; complaint: number;
+      notCompleted: number; deliveryCompleted: number; deliveryNotCompleted: number;
+      collectionCompleted: number; collectionNotCompleted: number; praise: number; complaint: number;
       reasons: Map<string, { id: number; operation: "ENTREGA" | "COLETA"; name: string; group: string | null; quantity: number }>;
     }>();
     const teams = new Map<string, {
-      name: string; members: number[]; launches: Set<string>; planned: number;
-      completed: number; notCompleted: number; praise: number; complaint: number;
+      name: string; members: number[]; idMotorista: number | null; motorista: string | null;
+      launches: Set<string>; planned: number;
+      completed: number; notCompleted: number; deliveryCompleted: number; deliveryNotCompleted: number;
+      collectionCompleted: number; collectionNotCompleted: number; praise: number; complaint: number;
     }>();
     const teamByItem = new Map<string, string>();
+    const teamOperations = new Map<string, {
+      ENTREGA: { completed: number; notCompleted: number };
+      COLETA: { completed: number; notCompleted: number };
+    }>();
+    const teamReasons = new Map<string, Map<string, {
+      id: number; operation: Operation; name: string; group: string | null; quantity: number;
+    }>>();
     const localities = new Map<number, {
       name: string; launches: Set<string>; planned: number; completed: number;
-      notCompleted: number; praise: number; complaint: number;
+      notCompleted: number; deliveryCompleted: number; deliveryNotCompleted: number;
+      collectionCompleted: number; collectionNotCompleted: number; praise: number; complaint: number;
     }>();
     const reasons = new Map<string, { id: number; operation: "ENTREGA" | "COLETA"; name: string; group: string | null; quantity: number }>();
     const deliveryTypes = new Map<string | null, {
@@ -72,25 +148,54 @@ export const demoAnalyticsApi = {
       deliveryRecords: number; collectionRecords: number; deliveryPlanned: number;
       deliveryCompleted: number; deliveryNotCompleted: number; collectionPlanned: number;
       collectionCompleted: number; collectionNotCompleted: number;
+      drivers: Map<number, {
+        name: string; planned: number; completed: number; notCompleted: number;
+        deliveryPlanned: number; deliveryCompleted: number; deliveryNotCompleted: number;
+        collectionPlanned: number; collectionCompleted: number; collectionNotCompleted: number;
+        motivos: Map<string, { id: number; operation: Operation; name: string; group: string | null; quantity: number }>;
+      }>;
     }>();
-    const days = new Map<string, { planned: number; completed: number; notCompleted: number }>();
+    const days = new Map<string, {
+      planned: number; completed: number; notCompleted: number;
+      deliveryCompleted: number; deliveryNotCompleted: number;
+      collectionCompleted: number; collectionNotCompleted: number;
+    }>();
 
     for (const { launch, item, operation, completed, notCompleted } of registeredOperations) {
       const planned = completed + notCompleted;
       const locality = localities.get(item.id_localidade) ?? {
         name: item.nome_localidade, launches: new Set<string>(), planned: 0,
-        completed: 0, notCompleted: 0, praise: 0, complaint: 0,
+        completed: 0, notCompleted: 0, deliveryCompleted: 0, deliveryNotCompleted: 0,
+        collectionCompleted: 0, collectionNotCompleted: 0, praise: 0, complaint: 0,
       };
       locality.launches.add(launch.codigo_lancamento);
       locality.planned += planned;
       locality.completed += completed;
       locality.notCompleted += notCompleted;
+      if (operation === "ENTREGA") {
+        locality.deliveryCompleted += completed;
+        locality.deliveryNotCompleted += notCompleted;
+      } else {
+        locality.collectionCompleted += completed;
+        locality.collectionNotCompleted += notCompleted;
+      }
       localities.set(item.id_localidade, locality);
 
-      const day = days.get(item.data_entrega) ?? { planned: 0, completed: 0, notCompleted: 0 };
+      const day = days.get(item.data_entrega) ?? {
+        planned: 0, completed: 0, notCompleted: 0,
+        deliveryCompleted: 0, deliveryNotCompleted: 0,
+        collectionCompleted: 0, collectionNotCompleted: 0,
+      };
       day.planned += planned;
       day.completed += completed;
       day.notCompleted += notCompleted;
+      if (operation === "ENTREGA") {
+        day.deliveryCompleted += completed;
+        day.deliveryNotCompleted += notCompleted;
+      } else {
+        day.collectionCompleted += completed;
+        day.collectionNotCompleted += notCompleted;
+      }
       days.set(item.data_entrega, day);
 
       for (const reason of item.motivos.filter((entry) => (entry.tipo_operacao ?? (item.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA")) === operation)) {
@@ -116,11 +221,46 @@ export const demoAnalyticsApi = {
         deliveryRecords: 0, collectionRecords: 0, deliveryPlanned: 0,
         deliveryCompleted: 0, deliveryNotCompleted: 0, collectionPlanned: 0,
         collectionCompleted: 0, collectionNotCompleted: 0,
+        drivers: new Map(),
       };
       typeTotals.records += 1;
       typeTotals.planned += planned;
       typeTotals.completed += completed;
       typeTotals.notCompleted += notCompleted;
+      const driver = item.participantes.find((person) => person.papel_participante === "MOTORISTA");
+      if (driver) {
+        const driverTotals = typeTotals.drivers.get(driver.id_pessoa) ?? {
+          name: driver.nome_exibicao, planned: 0, completed: 0, notCompleted: 0,
+          deliveryPlanned: 0, deliveryCompleted: 0, deliveryNotCompleted: 0,
+          collectionPlanned: 0, collectionCompleted: 0, collectionNotCompleted: 0,
+          motivos: new Map(),
+        };
+        driverTotals.planned += planned;
+        driverTotals.completed += completed;
+        driverTotals.notCompleted += notCompleted;
+        if (operation === "ENTREGA") {
+          driverTotals.deliveryPlanned += planned;
+          driverTotals.deliveryCompleted += completed;
+          driverTotals.deliveryNotCompleted += notCompleted;
+        } else {
+          driverTotals.collectionPlanned += planned;
+          driverTotals.collectionCompleted += completed;
+          driverTotals.collectionNotCompleted += notCompleted;
+        }
+        for (const reason of item.motivos.filter((entry) => (entry.tipo_operacao ?? (item.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA")) === operation)) {
+          const motiveKey = `${operation}:${reason.id_motivo_nao_entrega}`;
+          const motive = driverTotals.motivos.get(motiveKey) ?? {
+            id: reason.id_motivo_nao_entrega,
+            operation,
+            name: reason.descricao_motivo,
+            group: reason.grupo_motivo,
+            quantity: 0,
+          };
+          motive.quantity += reason.quantidade;
+          driverTotals.motivos.set(motiveKey, motive);
+        }
+        typeTotals.drivers.set(driver.id_pessoa, driverTotals);
+      }
       if (operation === "ENTREGA") {
         typeTotals.deliveryRecords += 1;
         typeTotals.deliveryPlanned += planned;
@@ -137,23 +277,59 @@ export const demoAnalyticsApi = {
       const ordered = [...item.participantes].sort((a, b) =>
         (a.papel_participante === "MOTORISTA" ? 0 : 1) - (b.papel_participante === "MOTORISTA" ? 0 : 1)
         || a.ordem - b.ordem || a.id_pessoa - b.id_pessoa);
+      const leadDriver = ordered.find((person) => person.papel_participante === "MOTORISTA");
       const teamKey = ordered.map((person) => person.id_pessoa).join(":");
       teamByItem.set(item.codigo_item_lancamento, teamKey);
       const team = teams.get(teamKey) ?? {
         name: ordered.map((person) => person.nome_exibicao).join(" · "),
-        members: ordered.map((person) => person.id_pessoa), launches: new Set<string>(),
-        planned: 0, completed: 0, notCompleted: 0, praise: 0, complaint: 0,
+        members: ordered.map((person) => person.id_pessoa),
+        idMotorista: leadDriver?.id_pessoa ?? null,
+        motorista: leadDriver?.nome_exibicao ?? null,
+        launches: new Set<string>(),
+        planned: 0, completed: 0, notCompleted: 0,
+        deliveryCompleted: 0, deliveryNotCompleted: 0, collectionCompleted: 0, collectionNotCompleted: 0,
+        praise: 0, complaint: 0,
       };
       team.launches.add(launch.codigo_lancamento);
       team.planned += planned;
       team.completed += completed;
       team.notCompleted += notCompleted;
+      if (operation === "ENTREGA") {
+        team.deliveryCompleted += completed;
+        team.deliveryNotCompleted += notCompleted;
+      } else {
+        team.collectionCompleted += completed;
+        team.collectionNotCompleted += notCompleted;
+      }
       teams.set(teamKey, team);
+
+      const operationTotals = teamOperations.get(teamKey) ?? {
+        ENTREGA: { completed: 0, notCompleted: 0 },
+        COLETA: { completed: 0, notCompleted: 0 },
+      };
+      operationTotals[operation].completed += completed;
+      operationTotals[operation].notCompleted += notCompleted;
+      teamOperations.set(teamKey, operationTotals);
+      for (const reason of item.motivos.filter((entry) => (entry.tipo_operacao ?? (item.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA")) === operation)) {
+        const reasonKey = `${operation}:${reason.id_motivo_nao_entrega}`;
+        const teamReasonMap = teamReasons.get(teamKey) ?? new Map();
+        const teamReason = teamReasonMap.get(reasonKey) ?? {
+          id: reason.id_motivo_nao_entrega,
+          operation,
+          name: reason.descricao_motivo,
+          group: reason.grupo_motivo,
+          quantity: 0,
+        };
+        teamReason.quantity += reason.quantidade;
+        teamReasonMap.set(reasonKey, teamReason);
+        teamReasons.set(teamKey, teamReasonMap);
+      }
 
       for (const participant of ordered) {
         const person = people.get(participant.id_pessoa) ?? {
           name: participant.nome_exibicao, role: participant.papel_participante,
           teams: new Set<string>(), planned: 0, completed: 0, notCompleted: 0,
+          deliveryCompleted: 0, deliveryNotCompleted: 0, collectionCompleted: 0, collectionNotCompleted: 0,
           praise: 0, complaint: 0, reasons: new Map(),
         };
         person.teams.add(teamKey);
@@ -162,6 +338,13 @@ export const demoAnalyticsApi = {
         person.planned += planned;
         person.completed += completed;
         person.notCompleted += notCompleted;
+        if (operation === "ENTREGA") {
+          person.deliveryCompleted += completed;
+          person.deliveryNotCompleted += notCompleted;
+        } else {
+          person.collectionCompleted += completed;
+          person.collectionNotCompleted += notCompleted;
+        }
         for (const reason of item.motivos.filter((entry) => (entry.tipo_operacao ?? (item.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA")) === operation)) {
           const reasonKey = `${operation}:${reason.id_motivo_nao_entrega}`;
           const reasonTotal = person.reasons.get(reasonKey) ?? {
@@ -214,6 +397,36 @@ export const demoAnalyticsApi = {
       reasonGroups.set(groupKey, group);
     }
 
+    const teamReasonOutput = (teamKey: string) => {
+      const operationTotals = teamOperations.get(teamKey);
+      return [...(teamReasons.get(teamKey)?.values() ?? [])].map((reason) => {
+        const totals = operationTotals?.[reason.operation] ?? { completed: 0, notCompleted: 0 };
+        const total = totals.completed + totals.notCompleted;
+        return {
+          tipo_operacao: reason.operation,
+          id_motivo: reason.id,
+          motivo: reason.name,
+          grupo_motivo: reason.group,
+          quantidade: reason.quantity,
+          percentual_das_nao_realizadas: percentage(reason.quantity, totals.notCompleted),
+          incidencia_sobre_total: percentage(reason.quantity, total),
+        };
+      }).sort((a, b) => b.quantidade - a.quantidade || a.motivo.localeCompare(b.motivo, "pt-BR"));
+    };
+
+    const reasonTeamsOutput = (operation: Operation, reasonId: number) => [...teams.entries()]
+      .flatMap(([teamKey, team]) => {
+        const reason = teamReasons.get(teamKey)?.get(`${operation}:${reasonId}`);
+        return reason ? [{
+          chave: teamKey,
+          equipe: team.name,
+          quantidade: reason.quantity,
+          id_motorista: team.idMotorista,
+          motorista: team.motorista,
+        }] : [];
+      })
+      .sort((a, b) => b.quantidade - a.quantidade || a.equipe.localeCompare(b.equipe, "pt-BR"));
+
     const byPeople = [...people.entries()].map(([id, value]) => ({
       id_pessoa: id, nome: value.name, funcao: value.role,
       ativo: activeByPersonId.get(id) ?? true,
@@ -221,6 +434,10 @@ export const demoAnalyticsApi = {
       realizadas: value.completed, nao_realizadas: value.notCompleted,
       taxa_realizacao: percentage(value.completed, value.planned),
       otif_percentual: percentage(value.notCompleted, value.planned),
+      entregas_realizadas: value.deliveryCompleted,
+      entregas_nao_realizadas: value.deliveryNotCompleted,
+      coletas_realizadas: value.collectionCompleted,
+      coletas_nao_realizadas: value.collectionNotCompleted,
       elogios: value.praise, reclamacoes: value.complaint,
       score_atendimento: value.praise - value.complaint,
       motivos_da_equipe: [...value.reasons.values()].map((reason) => ({
@@ -252,12 +469,20 @@ export const demoAnalyticsApi = {
         data: date, planejadas: value.planned, realizadas: value.completed,
         nao_realizadas: value.notCompleted, taxa_realizacao: percentage(value.completed, value.planned),
         otif_percentual: percentage(value.notCompleted, value.planned),
+        entregas_realizadas: value.deliveryCompleted,
+        entregas_nao_realizadas: value.deliveryNotCompleted,
+        coletas_realizadas: value.collectionCompleted,
+        coletas_nao_realizadas: value.collectionNotCompleted,
       })),
       por_localidade: [...localities.entries()].map(([id, value]) => ({
         id_localidade: id, nome: value.name, lancamentos: value.launches.size,
         itens_planejados: value.planned, realizadas: value.completed,
         nao_realizadas: value.notCompleted, taxa_realizacao: percentage(value.completed, value.planned),
         otif_percentual: percentage(value.notCompleted, value.planned),
+        entregas_realizadas: value.deliveryCompleted,
+        entregas_nao_realizadas: value.deliveryNotCompleted,
+        coletas_realizadas: value.collectionCompleted,
+        coletas_nao_realizadas: value.collectionNotCompleted,
         elogios: value.praise, reclamacoes: value.complaint,
       })).sort((a, b) => b.itens_planejados - a.itens_planejados || a.nome.localeCompare(b.nome, "pt-BR")),
       por_motivo: [...reasons.values()].map((value) => ({
@@ -268,6 +493,7 @@ export const demoAnalyticsApi = {
         quantidade: value.quantity,
         percentual_das_nao_realizadas: percentage(value.quantity, operationTotals[value.operation].notCompleted),
         incidencia_sobre_total: percentage(value.quantity, operationTotals[value.operation].completed + operationTotals[value.operation].notCompleted),
+        equipes: reasonTeamsOutput(value.operation, value.id),
       })).sort((a, b) => b.quantidade - a.quantidade || a.motivo.localeCompare(b.motivo, "pt-BR")),
       por_grupo_motivo: [...reasonGroups.values()].map(({ operation, group, quantity }) => ({
         tipo_operacao: operation,
@@ -291,14 +517,40 @@ export const demoAnalyticsApi = {
         coletas_nao_realizadas: value.collectionNotCompleted,
         taxa_realizacao: percentage(value.completed, value.planned),
         otif_percentual: percentage(value.notCompleted, value.planned),
+        motoristas: [...value.drivers.entries()].map(([id_pessoa, driver]) => ({
+          id_pessoa,
+          nome: driver.name,
+          entregas_planejadas: driver.deliveryPlanned,
+          entregas_realizadas: driver.deliveryCompleted,
+          entregas_nao_realizadas: driver.deliveryNotCompleted,
+          coletas_planejadas: driver.collectionPlanned,
+          coletas_realizadas: driver.collectionCompleted,
+          coletas_nao_realizadas: driver.collectionNotCompleted,
+          taxa_realizacao: percentage(driver.completed, driver.planned),
+          motivos: [...driver.motivos.values()].map((motive) => ({
+            tipo_operacao: motive.operation,
+            id_motivo: motive.id,
+            motivo: motive.name,
+            grupo_motivo: motive.group,
+            quantidade: motive.quantity,
+          })).sort((a, b) => b.quantidade - a.quantidade || a.motivo.localeCompare(b.motivo, "pt-BR")),
+        })).sort((a, b) => b.entregas_nao_realizadas - a.entregas_nao_realizadas
+          || b.entregas_realizadas - a.entregas_realizadas || a.nome.localeCompare(b.nome, "pt-BR")),
       })),
       por_pessoa: byPeople,
       por_equipe: [...teams.entries()].map(([key, value]) => ({
-        chave: key, equipe: value.name, itens_planejados: value.planned,
+        chave: key, equipe: value.name,
+        id_motorista: value.idMotorista, motorista: value.motorista,
+        itens_planejados: value.planned,
         realizadas: value.completed, nao_realizadas: value.notCompleted,
         taxa_realizacao: percentage(value.completed, value.planned),
         otif_percentual: percentage(value.notCompleted, value.planned),
+        entregas_realizadas: value.deliveryCompleted,
+        entregas_nao_realizadas: value.deliveryNotCompleted,
+        coletas_realizadas: value.collectionCompleted,
+        coletas_nao_realizadas: value.collectionNotCompleted,
         lancamentos: value.launches.size, elogios: value.praise, reclamacoes: value.complaint,
+        motivos: teamReasonOutput(key),
       })).sort((a, b) => (b.taxa_realizacao ?? -1) - (a.taxa_realizacao ?? -1)
         || b.itens_planejados - a.itens_planejados || a.equipe.localeCompare(b.equipe, "pt-BR")),
     };

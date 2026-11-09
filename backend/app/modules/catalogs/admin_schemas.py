@@ -102,6 +102,8 @@ class PersonAdminItem(BaseModel):
     nome_exibicao: str
     tipo_funcao: str
     tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"] | None
+    modalidade_terceirizada: Literal["AGREGADO", "TRANSPORTADORA_INDEPENDENTE"] | None
+    codigo_transportadora_independente: Literal["PAULO_CRUZ", "JUST_IN_TIME"] | None
     ativo: bool
     vigente_desde: date
     vigente_ate: date | None
@@ -116,6 +118,8 @@ class PersonCreateRequest(BaseModel):
     nome_exibicao: str = Field(min_length=1, max_length=160)
     tipo_funcao: Literal["MOTORISTA", "AJUDANTE"]
     tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"]
+    modalidade_terceirizada: Literal["AGREGADO", "TRANSPORTADORA_INDEPENDENTE"] | None = None
+    codigo_transportadora_independente: Literal["PAULO_CRUZ", "JUST_IN_TIME"] | None = None
     sistema_origem: str | None = Field(default=None, min_length=1, max_length=40)
     codigo_pessoa_origem: str | None = Field(default=None, min_length=1, max_length=120)
 
@@ -139,6 +143,31 @@ class PersonCreateRequest(BaseModel):
     def validate_origin_pair(self) -> "PersonCreateRequest":
         if (self.sistema_origem is None) != (self.codigo_pessoa_origem is None):
             raise ValueError("Informe sistema e código de origem juntos.")
+        is_outsourced_driver = (
+            self.tipo_funcao == "MOTORISTA"
+            and self.tipo_transporte_entrega == "TERCEIRIZADA"
+        )
+        if is_outsourced_driver and self.modalidade_terceirizada is None:
+            raise ValueError("Selecione Agregado ou Transportadora independente.")
+        if not is_outsourced_driver and (
+            self.modalidade_terceirizada is not None
+            or self.codigo_transportadora_independente is not None
+        ):
+            raise ValueError(
+                "A modalidade de Fretes só se aplica a motoristas terceirizados."
+            )
+        if (
+            self.modalidade_terceirizada == "TRANSPORTADORA_INDEPENDENTE"
+            and self.codigo_transportadora_independente is None
+        ):
+            raise ValueError("Selecione Paulo Cruz ou Just In Time.")
+        if (
+            self.modalidade_terceirizada != "TRANSPORTADORA_INDEPENDENTE"
+            and self.codigo_transportadora_independente is not None
+        ):
+            raise ValueError(
+                "A transportadora só se aplica à modalidade independente."
+            )
         return self
 
 

@@ -98,6 +98,17 @@ class Pessoa(Base):
             name="ck_op_logistica_pessoa_tipo_transporte",
         ),
         CheckConstraint(
+            "(modalidade_terceirizada is null and "
+            "codigo_transportadora_independente is null) or "
+            "(tipo_funcao = 'MOTORISTA' and "
+            "tipo_transporte_entrega = 'TERCEIRIZADA' and "
+            "((modalidade_terceirizada = 'AGREGADO' and "
+            "codigo_transportadora_independente is null) or "
+            "(modalidade_terceirizada = 'TRANSPORTADORA_INDEPENDENTE' and "
+            "codigo_transportadora_independente in ('PAULO_CRUZ', 'JUST_IN_TIME'))))",
+            name="ck_op_logistica_pessoa_modalidade_terceirizada",
+        ),
+        CheckConstraint(
             "vigente_ate is null or vigente_ate > vigente_desde",
             name="ck_op_logistica_pessoa_periodo",
         ),
@@ -119,6 +130,8 @@ class Pessoa(Base):
     nome_exibicao: Mapped[str] = mapped_column(String(160), nullable=False)
     tipo_funcao: Mapped[str] = mapped_column(String(24), nullable=False)
     tipo_transporte_entrega: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    modalidade_terceirizada: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    codigo_transportadora_independente: Mapped[str | None] = mapped_column(String(24), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     vigente_desde: Mapped[date] = mapped_column(Date, nullable=False)
     vigente_ate: Mapped[date | None] = mapped_column(Date, nullable=True)

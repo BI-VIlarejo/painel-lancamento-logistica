@@ -40,6 +40,8 @@ class PersonCatalogItem(BaseModel):
     nome_exibicao: str
     tipo_funcao: str
     tipo_transporte_entrega: str | None
+    modalidade_terceirizada: str | None
+    codigo_transportadora_independente: str | None
 
 
 class NonDeliveryReasonCatalogItem(BaseModel):

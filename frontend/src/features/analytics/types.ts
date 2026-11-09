@@ -12,6 +12,20 @@ export type DashboardTrendPoint = {
   nao_realizadas: number;
   taxa_realizacao: number | null;
   otif_percentual: number | null;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  coletas_realizadas: number;
+  coletas_nao_realizadas: number;
+};
+
+export type DashboardGoal = {
+  indicador: "TAXA_REALIZACAO";
+  valor_percentual: number;
+  periodicidade: "MENSAL" | "TRIMESTRAL" | "ANUAL";
+  escopo_operacao: "TODAS" | "ENTREGAS" | "COLETAS";
+  atualizado_em: string | null;
+  atualizado_por: string | null;
+  pode_editar: boolean;
 };
 
 export type DashboardLocality = {
@@ -23,11 +37,32 @@ export type DashboardLocality = {
   nao_realizadas: number;
   taxa_realizacao: number | null;
   otif_percentual: number | null;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  coletas_realizadas: number;
+  coletas_nao_realizadas: number;
   elogios: number | null;
   reclamacoes: number | null;
 };
 
 export type DashboardReason = {
+  tipo_operacao: "ENTREGA" | "COLETA";
+  id_motivo: number;
+  motivo: string;
+  grupo_motivo: string | null;
+  quantidade: number;
+  percentual_das_nao_realizadas: number | null;
+  incidencia_sobre_total: number | null;
+  equipes: DashboardReasonTeam[];
+};
+export type DashboardReasonTeam = {
+  chave: string;
+  equipe: string;
+  quantidade: number;
+  id_motorista?: number | null;
+  motorista?: string | null;
+};
+export type DashboardTeamReason = {
   tipo_operacao: "ENTREGA" | "COLETA";
   id_motivo: number;
   motivo: string;
@@ -58,6 +93,26 @@ export type DashboardDeliveryType = {
   coletas_nao_realizadas: number;
   taxa_realizacao: number | null;
   otif_percentual: number | null;
+  motoristas: DashboardDeliveryDriver[];
+};
+export type DashboardDeliveryDriver = {
+  id_pessoa: number;
+  nome: string;
+  entregas_planejadas: number;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  coletas_planejadas: number;
+  coletas_realizadas: number;
+  coletas_nao_realizadas: number;
+  taxa_realizacao: number | null;
+  motivos: DashboardDeliveryDriverReason[];
+};
+export type DashboardDeliveryDriverReason = {
+  tipo_operacao: "ENTREGA" | "COLETA";
+  id_motivo: number;
+  motivo: string;
+  grupo_motivo: string | null;
+  quantidade: number;
 };
 export type DashboardPersonReason = {
   tipo_operacao: "ENTREGA" | "COLETA";
@@ -78,6 +133,10 @@ export type DashboardPerson = {
   nao_realizadas: number;
   taxa_realizacao: number | null;
   otif_percentual: number | null;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  coletas_realizadas: number;
+  coletas_nao_realizadas: number;
   elogios: number | null;
   reclamacoes: number | null;
   score_atendimento: number;
@@ -87,14 +146,21 @@ export type DashboardPerson = {
 export type DashboardTeam = {
   chave: string;
   equipe: string;
+  id_motorista?: number | null;
+  motorista?: string | null;
   itens_planejados: number;
   realizadas: number;
   nao_realizadas: number;
   taxa_realizacao: number | null;
   otif_percentual: number | null;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  coletas_realizadas: number;
+  coletas_nao_realizadas: number;
   lancamentos: number;
   elogios: number | null;
   reclamacoes: number | null;
+  motivos: DashboardTeamReason[];
 };
 
 export type DashboardResponse = {

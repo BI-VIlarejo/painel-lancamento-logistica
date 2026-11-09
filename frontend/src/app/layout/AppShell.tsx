@@ -1,8 +1,8 @@
 import styles from "./AppShell.module.css";
 import commonStyles from "../../shared/styles/common.module.css";
 import { cx } from "../../shared/styles/classNames";
-import { Fragment, useEffect, useState } from "react";
-import type { MouseEvent, ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { isDemoMode } from "../../shared/api/apiClient";
 import { BrandMark } from "../../shared/components/BrandMark";
 import { catalogsApi } from "../../features/catalogs/api";
@@ -19,8 +19,16 @@ type AppShellProps = {
   children: ReactNode;
 };
 
-type AppNavItem = { path: string; label: string; visible: boolean; icon: ReactNode; groupLabel?: string };
-type AppNavSection = { id: string; label: string; visible: boolean; items: AppNavItem[]; sectorCode?: string };
+type AppNavItem = {
+  id: string;
+  label: string;
+  visible: boolean;
+  path?: string;
+  icon?: ReactNode;
+  children?: AppNavItem[];
+  sectorCode?: string;
+};
+
 const sectorCatalogPermissionCodes = [
   "ENTREGAS_DIARIAS:VER",
   "FEEDBACK_CLIENTES:ACESSAR",
@@ -41,20 +49,27 @@ function initials(name: string): string {
   return name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 }
 
+function visibleNavigationItems(items: AppNavItem[]): AppNavItem[] {
+  return items.flatMap((item) => {
+    if (!item.visible) return [];
+    const children = item.children ? visibleNavigationItems(item.children) : undefined;
+    if (item.children && children?.length === 0) return [];
+    return [{ ...item, ...(children ? { children } : {}) }];
+  });
+}
+
+function isNavigationItemActive(item: AppNavItem, path: string): boolean {
+  return item.path === path || Boolean(item.children?.some((child) => isNavigationItemActive(child, path)));
+}
+
 export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOut, children }: AppShellProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [sectorFilterExpanded, setSectorFilterExpanded] = useState(false);
   const [sectorCatalog, setSectorCatalog] = useState<SectorCatalogItem[]>([]);
   const [selectedSectorCodes, setSelectedSectorCodes] = useState<string[] | null>(null);
+  const [openNavPath, setOpenNavPath] = useState<string[]>([]);
+  const navigationRef = useRef<HTMLDivElement | null>(null);
+  const lastDisclosureButtonRef = useRef<HTMLButtonElement | null>(null);
   const scopedSectorIds = [...new Set(scopes.flatMap((scope) => scope.id_setor === null ? [] : [scope.id_setor]))];
-  const activeSection = path.startsWith("/fretes") ? "transport" : path === "/cadastros" || path === "/auditoria" ? "administration" : path === "/trocar-senha" ? "account" : "support";
-  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>(() => ({
-    support: !path.startsWith("/fretes") && path !== "/cadastros" && path !== "/auditoria" && path !== "/trocar-senha",
-    transport: path.startsWith("/fretes"),
-    administration: path === "/cadastros" || path === "/auditoria",
-    account: path === "/trocar-senha",
-  }));
   const canView = permissions.includes("ENTREGAS_DIARIAS:VER");
   const canCreate = permissions.includes("ENTREGAS_DIARIAS:CRIAR") && canView;
   const canAccessFeedback = permissions.includes("FEEDBACK_CLIENTES:ACESSAR");
@@ -67,6 +82,7 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
   const canViewAggregatePayments = permissions.includes("AGREGADOS:VER");
   const supportSectorId = sectorCatalog.find((sector) => sector.codigo === "SUPORTE")?.id_setor;
   const transportSectorId = sectorCatalog.find((sector) => sector.codigo === "TRANSPORTE")?.id_setor;
+
   const hasScopedSectorPermission = (sectorId: number | undefined, requiredPermissions: string[]) => {
     if (isDemoMode) return requiredPermissions.some((permission) => permissions.includes(permission));
     if (sectorId === undefined) return false;
@@ -77,6 +93,7 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
       return scope.tipo_escopo === "LOCALIDADE" && sectorCatalog.length === 1 && sectorCatalog[0].id_setor === sectorId;
     });
   };
+
   const supportFolderVisible = (canCreate || canView || canAccessFeedback || canViewDashboard)
     && hasScopedSectorPermission(supportSectorId, supportSectorPermissionCodes);
   const transportFolderVisible = (canCreateFreights || canViewFreights || canViewAggregatePayments)
@@ -88,7 +105,9 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
   const canFilterSectors = scopes.some((scope) => ["DIRETORIA", "DEV"].includes(scope.codigo_perfil))
     && sectorFilterOptions.length > 1;
   const activeSectorCodes = selectedSectorCodes ?? sectorFilterOptions.map((option) => option.code);
+
   const toggleSectorFilter = (sectorCode: string) => {
+    setOpenNavPath([]);
     setSelectedSectorCodes((current) => {
       const selected = current ?? sectorFilterOptions.map((option) => option.code);
       return selected.includes(sectorCode)
@@ -96,13 +115,18 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
         : [...selected, sectorCode];
     });
   };
-  const showAllSectors = () => setSelectedSectorCodes(sectorFilterOptions.map((option) => option.code));
+  const showAllSectors = () => {
+    setSelectedSectorCodes(sectorFilterOptions.map((option) => option.code));
+    setOpenNavPath([]);
+  };
+
   const administrationTitle = canManageCatalogs && canManageAccess
     ? "Cadastros e acessos"
     : canManageCatalogs
       ? "Cadastros operacionais"
       : "Usuários e acessos";
-  const visibleSectorLabels = [supportFolderVisible ? "Suporte" : null, transportFolderVisible ? "Transporte" : null].filter((label): label is string => label !== null);
+  const visibleSectorLabels = [supportFolderVisible ? "Suporte" : null, transportFolderVisible ? "Transporte" : null]
+    .filter((label): label is string => label !== null);
   const sectorLabel = visibleSectorLabels.length > 1
     ? "Vários setores"
     : visibleSectorLabels[0]
@@ -115,47 +139,69 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
             : isDemoMode
               ? "Suporte"
               : null);
-  const sections: AppNavSection[] = [
+
+  const configuredSections: AppNavItem[] = [
     {
       id: "support",
       label: "Suporte",
       visible: supportFolderVisible,
       sectorCode: "SUPORTE",
-      items: [
+      children: [
         {
-          groupLabel: "Operação",
-          path: "/entregas",
-          label: "Lançar Entrega",
-          visible: canCreate && hasScopedSectorPermission(supportSectorId, ["ENTREGAS_DIARIAS:CRIAR"]),
-          icon: <svg viewBox="0 0 24 24"><path d="M4 5.5h16M4 12h16M4 18.5h10" /></svg>,
+          id: "support-operation",
+          label: "Operação",
+          visible: true,
+          children: [
+            {
+              id: "delivery-launch",
+              path: "/entregas",
+              label: "Lançar Entrega",
+              visible: canCreate && hasScopedSectorPermission(supportSectorId, ["ENTREGAS_DIARIAS:CRIAR"]),
+              icon: <svg viewBox="0 0 24 24"><path d="M4 5.5h16M4 12h16M4 18.5h10" /></svg>,
+            },
+            {
+              id: "delivery-history",
+              path: "/historico",
+              label: "Histórico de Entregas",
+              visible: canView && hasScopedSectorPermission(supportSectorId, ["ENTREGAS_DIARIAS:VER"]),
+              icon: <svg viewBox="0 0 24 24"><path d="M4.5 7.5A8 8 0 1 1 4 13M4 4v4h4M12 7v5l3 2" /></svg>,
+            },
+          ],
         },
         {
-          groupLabel: "Operação",
-          path: "/historico",
-          label: "Histórico de Entregas",
-          visible: canView && hasScopedSectorPermission(supportSectorId, ["ENTREGAS_DIARIAS:VER"]),
-          icon: <svg viewBox="0 0 24 24"><path d="M4.5 7.5A8 8 0 1 1 4 13M4 4v4h4M12 7v5l3 2" /></svg>,
-        },
-        {
-          groupLabel: "Relacionamento",
-          path: "/feedback",
-          label: "Reclamações e elogios",
+          id: "support-relationship",
+          label: "Relacionamento",
           visible: canAccessFeedback && hasScopedSectorPermission(supportSectorId, ["FEEDBACK_CLIENTES:ACESSAR"]),
-          icon: <svg viewBox="0 0 24 24"><path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6l-4.5 3v-3H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" /><path d="M8 10h8M8 13.5h5" /></svg>,
+          children: [
+            {
+              id: "feedback",
+              path: "/feedback",
+              label: "Reclamações e elogios",
+              visible: canAccessFeedback && hasScopedSectorPermission(supportSectorId, ["FEEDBACK_CLIENTES:ACESSAR"]),
+              icon: <svg viewBox="0 0 24 24"><path d="M5 5.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6l-4.5 3v-3H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2Z" /><path d="M8 10h8M8 13.5h5" /></svg>,
+            },
+          ],
         },
         {
-          groupLabel: "Indicadores",
-          path: "/painel",
-          label: "Painel Gerencial",
+          id: "support-indicators",
+          label: "Indicadores",
           visible: canViewDashboard && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]),
-          icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
-        },
-        {
-          groupLabel: "Indicadores",
-          path: "/indicadores/pessoas",
-          label: "Indicadores por pessoa",
-          visible: canViewDashboard && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]),
-          icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
+          children: [
+            {
+              id: "management-dashboard",
+              path: "/painel",
+              label: "Painel Gerencial",
+              visible: canViewDashboard && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]),
+              icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
+            },
+            {
+              id: "people-indicators",
+              path: "/indicadores/pessoas",
+              label: "Indicadores por pessoa",
+              visible: canViewDashboard && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]),
+              icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
+            },
+          ],
         },
       ],
     },
@@ -164,27 +210,41 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
       label: "Transporte",
       visible: transportFolderVisible,
       sectorCode: "TRANSPORTE",
-      items: [
+      children: [
         {
-          groupLabel: "Fretes",
-          path: "/fretes",
-          label: "Lançar frete",
-          visible: canCreateFreights && hasScopedSectorPermission(transportSectorId, ["FRETES:CRIAR"]),
-          icon: <svg viewBox="0 0 24 24"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z" /><circle cx="7" cy="18" r="1.7" /><circle cx="18" cy="18" r="1.7" /><path d="M7 4v6M4 7h6" /></svg>,
+          id: "transport-freights",
+          label: "Fretes",
+          visible: canCreateFreights || canViewFreights,
+          children: [
+            {
+              id: "freight-launch",
+              path: "/fretes",
+              label: "Lançar frete",
+              visible: canCreateFreights && hasScopedSectorPermission(transportSectorId, ["FRETES:CRIAR"]),
+              icon: <svg viewBox="0 0 24 24"><path d="M3 7h11v10H3zM14 10h4l3 3v4h-7z" /><circle cx="7" cy="18" r="1.7" /><circle cx="18" cy="18" r="1.7" /><path d="M7 4v6M4 7h6" /></svg>,
+            },
+            {
+              id: "freight-history",
+              path: "/fretes/historico",
+              label: "Histórico de fretes",
+              visible: canViewFreights && hasScopedSectorPermission(transportSectorId, ["FRETES:VER"]),
+              icon: <svg viewBox="0 0 24 24"><path d="M4.5 7.5A8 8 0 1 1 4 13M4 4v4h4M12 7v5l3 2" /></svg>,
+            },
+          ],
         },
         {
-          groupLabel: "Fretes",
-          path: "/fretes/historico",
-          label: "Histórico de fretes",
-          visible: canViewFreights && hasScopedSectorPermission(transportSectorId, ["FRETES:VER"]),
-          icon: <svg viewBox="0 0 24 24"><path d="M4.5 7.5A8 8 0 1 1 4 13M4 4v4h4M12 7v5l3 2" /></svg>,
-        },
-        {
-          groupLabel: "Pagamentos",
-          path: "/fretes/pagamentos",
-          label: "Pagamentos de transporte",
+          id: "transport-aggregates",
+          label: "Agregados",
           visible: canViewAggregatePayments && hasScopedSectorPermission(transportSectorId, ["AGREGADOS:VER"]),
-          icon: <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></svg>,
+          children: [
+            {
+              id: "aggregate-payments",
+              path: "/fretes/pagamentos",
+              label: "Pagamentos de transporte",
+              visible: canViewAggregatePayments && hasScopedSectorPermission(transportSectorId, ["AGREGADOS:VER"]),
+              icon: <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></svg>,
+            },
+          ],
         },
       ],
     },
@@ -192,14 +252,16 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
       id: "administration",
       label: "Administração",
       visible: canManageCatalogs || canManageAccess || canViewAudit,
-      items: [
+      children: [
         {
+          id: "registries",
           path: "/cadastros",
           label: administrationTitle,
           visible: canManageCatalogs || canManageAccess,
           icon: <svg viewBox="0 0 24 24"><path d="M4.5 6.5h15M4.5 12h15M4.5 17.5h9" /><circle cx="18" cy="17.5" r="2.5" /></svg>,
         },
         {
+          id: "audit",
           path: "/auditoria",
           label: "Auditoria",
           visible: canViewAudit,
@@ -211,8 +273,9 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
       id: "account",
       label: "Conta",
       visible: true,
-      items: [
+      children: [
         {
+          id: "change-password",
           path: "/trocar-senha",
           label: "Minha senha",
           visible: true,
@@ -220,11 +283,25 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
         },
       ],
     },
-  ].filter((section) => section.visible && (!canFilterSectors || !section.sectorCode || activeSectorCodes.includes(section.sectorCode)));
+  ];
+  const sections = visibleNavigationItems(configuredSections).filter((section) =>
+    !canFilterSectors || !section.sectorCode || activeSectorCodes.includes(section.sectorCode),
+  );
 
   useEffect(() => {
-    setExpandedSections((current) => ({ ...current, [activeSection]: true }));
-  }, [activeSection]);
+    const closeWhenOutside = (event: PointerEvent) => {
+      if (!navigationRef.current?.contains(event.target as Node)) {
+        setOpenNavPath([]);
+        setSectorFilterExpanded(false);
+      }
+    };
+    document.addEventListener("pointerdown", closeWhenOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenOutside);
+  }, []);
+
+  useEffect(() => {
+    setOpenNavPath([]);
+  }, [path]);
 
   useEffect(() => {
     let active = true;
@@ -243,141 +320,192 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
 
   const navigate = (event: MouseEvent<HTMLAnchorElement>, target: string) => {
     event.preventDefault();
-    setMenuOpen(false);
+    setOpenNavPath([]);
+    setSectorFilterExpanded(false);
     onNavigate(target);
+  };
+  const toggleNavFolder = (event: MouseEvent<HTMLButtonElement>, itemPath: string[]) => {
+    lastDisclosureButtonRef.current = event.currentTarget;
+    const alreadyOpen = itemPath.every((segment, index) => openNavPath[index] === segment);
+    setOpenNavPath(alreadyOpen ? itemPath.slice(0, -1) : itemPath);
+    setSectorFilterExpanded(false);
+  };
+  const handleNavigationKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape" && (openNavPath.length > 0 || sectorFilterExpanded)) {
+      event.preventDefault();
+      setOpenNavPath([]);
+      setSectorFilterExpanded(false);
+      lastDisclosureButtonRef.current?.focus();
+    }
   };
   const pageTitle = path === "/indicadores/pessoas"
     ? "Indicadores por pessoa"
     : path === "/painel"
-    ? "Painel gerencial"
-    : path === "/cadastros"
-      ? administrationTitle
-    : path === "/feedback"
-      ? "Reclamações e elogios"
-    : path === "/auditoria"
-      ? "Auditoria"
-    : path === "/trocar-senha"
-      ? "Minha senha"
-    : path === "/fretes"
-      ? "Lançar frete"
-    : path === "/fretes/historico"
-      ? "Histórico de fretes"
-    : path === "/fretes/pagamentos"
-      ? "Pagamentos de transporte"
-    : path === "/historico"
-      ? "Histórico de entregas"
-      : "Lançar entrega";
-  const pageSection = path === "/painel" || path === "/indicadores/pessoas" ? "Indicadores" : path === "/cadastros" || path === "/auditoria" ? "Administração" : path === "/feedback" ? "Relacionamento" : path === "/trocar-senha" ? "Conta" : path.startsWith("/fretes") ? "Fretes" : "Entregas";
+      ? "Painel gerencial"
+      : path === "/cadastros"
+        ? administrationTitle
+        : path === "/feedback"
+          ? "Reclamações e elogios"
+          : path === "/auditoria"
+            ? "Auditoria"
+            : path === "/trocar-senha"
+              ? "Minha senha"
+              : path === "/fretes"
+                ? "Lançar frete"
+                : path === "/fretes/historico"
+                  ? "Histórico de fretes"
+                  : path === "/fretes/pagamentos"
+                    ? "Pagamentos de transporte"
+                    : path === "/historico"
+                      ? "Histórico de entregas"
+                      : "Lançar entrega";
+  const pageSection = path === "/painel" || path === "/indicadores/pessoas"
+    ? "Indicadores"
+    : path === "/cadastros" || path === "/auditoria"
+      ? "Administração"
+      : path === "/feedback"
+        ? "Relacionamento"
+        : path === "/trocar-senha"
+          ? "Conta"
+          : path.startsWith("/fretes")
+            ? "Fretes"
+            : "Entregas";
+
+  const renderNavigationItems = (items: AppNavItem[], parents: string[] = [], depth = 0): ReactNode => (
+    <ul className={cx(styles, commonStyles, `disclosure-list${depth === 0 ? " disclosure-root-list" : ""}`)}>
+      {items.map((item) => {
+        const itemPath = [...parents, item.id];
+        const active = isNavigationItemActive(item, path);
+        const hasChildren = Boolean(item.children?.length);
+        const expanded = hasChildren && itemPath.every((segment, index) => openNavPath[index] === segment);
+        const panelId = `portal-nav-panel-${itemPath.join("-")}`;
+
+        if (hasChildren) {
+          return (
+            <li className={cx(styles, commonStyles, `disclosure-node${depth === 0 ? " disclosure-root-node" : ""}`)} key={item.id}>
+              <button
+                className={cx(styles, commonStyles, `${depth === 0 ? "disclosure-root-toggle" : "disclosure-folder-toggle"}${active ? " disclosure-toggle-active" : ""}${expanded ? " disclosure-toggle-expanded" : ""}`)}
+                type="button"
+                aria-expanded={expanded}
+                aria-controls={panelId}
+                onClick={(event) => toggleNavFolder(event, itemPath)}
+              >
+                <span>{item.label}</span>
+                <svg className={cx(styles, commonStyles, `disclosure-chevron${depth === 0 ? " disclosure-chevron-down" : " disclosure-chevron-right"}${expanded ? " disclosure-chevron-expanded" : ""}`)} viewBox="0 0 20 20" aria-hidden="true">
+                  <path d={depth === 0 ? "m5 7.5 5 5 5-5" : "m7.5 4.5 5 5-5 5"} />
+                </svg>
+              </button>
+              <div className={cx(styles, commonStyles, `disclosure-panel${depth === 0 ? " disclosure-panel-root" : " disclosure-panel-nested"}`)} id={panelId} hidden={!expanded}>
+                {renderNavigationItems(item.children ?? [], itemPath, depth + 1)}
+              </div>
+            </li>
+          );
+        }
+
+        if (!item.path) return null;
+        return (
+          <li className={cx(styles, commonStyles, "disclosure-node")} key={item.id}>
+            <a
+              className={cx(styles, commonStyles, `disclosure-link${active ? " disclosure-link-active" : ""}`)}
+              href={item.path}
+              aria-current={path === item.path ? "page" : undefined}
+              onClick={(event) => navigate(event, item.path!)}
+            >
+              {item.icon && <span className={cx(styles, commonStyles, "disclosure-link-icon")} aria-hidden="true">{item.icon}</span>}
+              <span>{item.label}</span>
+              {path === item.path && <span className={cx(styles, commonStyles, "disclosure-current-indicator")} aria-hidden="true" />}
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  );
 
   return (
-    <div className={cx(styles, commonStyles, `app-layout${sidebarCollapsed ? " app-layout-sidebar-collapsed" : ""}`)}>
-      <aside id="portal-sidebar" className={cx(styles, commonStyles, `app-sidebar${menuOpen ? " app-sidebar-open" : ""}${sidebarCollapsed ? " app-sidebar-collapsed" : ""}`)}>
-        <div className={cx(styles, commonStyles, "sidebar-brand")}>
-          <BrandMark light />
-          <button className={cx(styles, commonStyles, "sidebar-collapse-button")} type="button" aria-label="Recolher menu lateral" aria-controls="portal-sidebar" aria-expanded={!sidebarCollapsed} title="Recolher menu lateral" onClick={() => setSidebarCollapsed(true)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9 5v14m7-7h-5m0 0 2.5-2.5M11 12l2.5 2.5" /></svg>
-          </button>
-        </div>
-        <div className={cx(styles, commonStyles, "sidebar-rule")} />
-        <div className={cx(styles, commonStyles, "sidebar-navigation")}>
-          <p className={cx(styles, commonStyles, "sidebar-caption")}>MENU PRINCIPAL</p>
-          {canFilterSectors && <section className={cx(styles, commonStyles, "sector-filter")} aria-labelledby="sector-filter-title">
-            <button className={cx(styles, commonStyles, `sector-filter-toggle${sectorFilterExpanded ? " sector-filter-toggle-expanded" : ""}`)} id="sector-filter-title" type="button" aria-expanded={sectorFilterExpanded} aria-controls="sector-filter-controls" onClick={() => setSectorFilterExpanded((expanded) => !expanded)}>
-              <span className={cx(styles, commonStyles, "sector-filter-icon")} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16l-6.5 7.2v5.2l-3 1.6v-6.8L4 5Z" /></svg></span>
-              <span className={cx(styles, commonStyles, "sector-filter-toggle-copy")}>
-                <strong>Filtrar por setor</strong>
-                <small>{activeSectorCodes.length === 0 ? "Nenhum selecionado" : sectorFilterOptions.filter((option) => activeSectorCodes.includes(option.code)).map((option) => option.label).join(" · ")}</small>
-              </span>
-              <span className={cx(styles, commonStyles, "sector-filter-count")}>{activeSectorCodes.length}/{sectorFilterOptions.length}</span>
-              <svg className={cx(styles, commonStyles, `sector-filter-chevron${sectorFilterExpanded ? " sector-filter-chevron-open" : ""}`)} viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>
-            </button>
-            <div className={cx(styles, commonStyles, "sector-filter-controls")} id="sector-filter-controls" hidden={!sectorFilterExpanded}>
-              <div className={cx(styles, commonStyles, "sector-filter-options")} role="group" aria-label="Setores exibidos no menu">
-                {sectorFilterOptions.map((option) => {
-                  const checked = activeSectorCodes.includes(option.code);
-                  return <label className={cx(styles, commonStyles, `sector-filter-option${checked ? " sector-filter-option-checked" : ""}`)} key={option.code}>
-                    <input className={cx(styles, commonStyles, "sector-filter-checkbox")} type="checkbox" checked={checked} onChange={() => toggleSectorFilter(option.code)} />
-                    <span className={cx(styles, commonStyles, `sector-filter-dot sector-filter-dot-${option.code.toLowerCase()}`)} aria-hidden="true" />
-                    <span className={cx(styles, commonStyles, "sector-filter-label")}>{option.label}</span>
-                    <span className={cx(styles, commonStyles, "sector-filter-state")}>{checked ? "ATIVO" : "OCULTO"}</span>
-                  </label>;
-                })}
-              </div>
-              {activeSectorCodes.length !== sectorFilterOptions.length && <button className={cx(styles, commonStyles, "sector-filter-reset")} type="button" onClick={showAllSectors}>Mostrar todos</button>}
+    <div className={cx(styles, commonStyles, "app-layout")}>
+      <div className={cx(styles, commonStyles, "workspace")}>
+        <header className={cx(styles, commonStyles, "portal-header")}>
+          <div className={cx(styles, commonStyles, "topbar")}>
+            <div className={cx(styles, commonStyles, "topbar-brand")} role="img" aria-label="Vilarejo Logística">
+              <div className={cx(styles, commonStyles, "topbar-brand-scale")}><BrandMark /></div>
             </div>
-          </section>}
-          <nav className={cx(styles, commonStyles, "primary-nav")} aria-label="Navegação principal">
-            {sections.map((section) => {
-              const expanded = Boolean(expandedSections[section.id]);
-              const sectionActive = section.id === activeSection;
-              const panelId = `nav-section-${section.id}`;
+            <div className={cx(styles, commonStyles, "topbar-context")}>
+              <span className={cx(styles, commonStyles, "topbar-context-mark")} />
+              <span>{pageSection}</span>
+              <span className={cx(styles, commonStyles, "topbar-context-slash")}>/</span>
+              <strong>{pageTitle}</strong>
+            </div>
+            <div className={cx(styles, commonStyles, "topbar-actions")}>
+              {isDemoMode && <span className={cx(styles, commonStyles, "environment-badge")}><i /> DEMONSTRAÇÃO</span>}
+              <div className={cx(styles, commonStyles, "topbar-user")}>
+                <span className={cx(styles, commonStyles, "topbar-avatar")}>{initials(user.nome_completo)}</span>
+                <span className={cx(styles, commonStyles, "topbar-user-name")}>{user.nome_completo.split(" ")[0]}</span>
+                {sectorLabel && <span className={cx(styles, commonStyles, "topbar-sector")} title={`Setor: ${sectorLabel}`}>{sectorLabel}</span>}
+              </div>
+              <button className={cx(styles, commonStyles, "sign-out-button")} type="button" aria-label="Sair do portal" title="Sair" onClick={onSignOut}>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" /></svg>
+              </button>
+            </div>
+          </div>
 
-              return (
-                <div className={cx(styles, commonStyles, "nav-section")} key={section.id}>
-                  <button
-                    className={cx(styles, commonStyles, `nav-section-toggle${sectionActive ? " nav-section-toggle-active" : ""}`)}
-                    type="button"
-                    aria-expanded={expanded}
-                    aria-controls={panelId}
-                    onClick={() => setExpandedSections((current) => ({ ...current, [section.id]: !current[section.id] }))}
-                  >
-                    <span>{section.label}</span>
-                    <svg className={cx(styles, commonStyles, `nav-section-chevron${expanded ? " nav-section-chevron-open" : ""}`)} viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>
-                  </button>
-                  <div
-                    className={cx(styles, commonStyles, "nav-section-items")}
-                    id={panelId}
-                    hidden={!expanded}
-                  >
-                    {section.items.filter((item) => item.visible).map((item, index, visibleItems) => {
-                      const active = path === item.path;
-                      return (
-                        <Fragment key={item.path}>
-                          {item.groupLabel && item.groupLabel !== visibleItems[index - 1]?.groupLabel && <div className={cx(styles, commonStyles, "nav-subgroup-label")}>{item.groupLabel}</div>}
-                          <a
-                            className={cx(styles, commonStyles, `nav-link nav-link-nested${active ? " nav-link-active" : ""}`)}
-                            href={item.path}
-                            aria-current={active ? "page" : undefined}
-                            onClick={(event) => navigate(event, item.path)}
-                          >
-                            <span className={cx(styles, commonStyles, "nav-icon")} aria-hidden="true">{item.icon}</span>
-                            <span>{item.label}</span>
-                            <span className={cx(styles, commonStyles, "nav-active-mark")} />
-                          </a>
-                        </Fragment>
-                      );
-                    })}
-                  </div>
+          <div
+            className={cx(styles, commonStyles, "portal-navigation")}
+            ref={navigationRef}
+            onKeyDown={handleNavigationKeyDown}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                setOpenNavPath([]);
+                setSectorFilterExpanded(false);
+              }
+            }}
+          >
+            <nav className={cx(styles, commonStyles, "disclosure-nav")} aria-label="Navegação principal">
+              {renderNavigationItems(sections)}
+            </nav>
+            {canFilterSectors && <section className={cx(styles, commonStyles, "sector-filter")} aria-labelledby="sector-filter-title">
+              <button
+                className={cx(styles, commonStyles, `sector-filter-toggle${sectorFilterExpanded ? " sector-filter-toggle-expanded" : ""}`)}
+                id="sector-filter-title"
+                type="button"
+                aria-expanded={sectorFilterExpanded}
+                aria-controls="sector-filter-controls"
+                onClick={(event) => {
+                  lastDisclosureButtonRef.current = event.currentTarget;
+                  setOpenNavPath([]);
+                  setSectorFilterExpanded((expanded) => !expanded);
+                }}
+              >
+                <span className={cx(styles, commonStyles, "sector-filter-icon")} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 5h16l-6.5 7.2v5.2l-3 1.6v-6.8L4 5Z" /></svg></span>
+                <span className={cx(styles, commonStyles, "sector-filter-toggle-copy")}>
+                  <strong>Filtrar por setor</strong>
+                  <small>{activeSectorCodes.length === 0 ? "Nenhum selecionado" : sectorFilterOptions.filter((option) => activeSectorCodes.includes(option.code)).map((option) => option.label).join(" · ")}</small>
+                </span>
+                <span className={cx(styles, commonStyles, "sector-filter-count")}>{activeSectorCodes.length}/{sectorFilterOptions.length}</span>
+                <svg className={cx(styles, commonStyles, `sector-filter-chevron${sectorFilterExpanded ? " sector-filter-chevron-open" : ""}`)} viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" /></svg>
+              </button>
+              <div className={cx(styles, commonStyles, "sector-filter-controls")} id="sector-filter-controls" hidden={!sectorFilterExpanded}>
+                <div className={cx(styles, commonStyles, "sector-filter-options")} role="group" aria-label="Setores exibidos na navegação">
+                  {sectorFilterOptions.map((option) => {
+                    const checked = activeSectorCodes.includes(option.code);
+                    return <label className={cx(styles, commonStyles, `sector-filter-option${checked ? " sector-filter-option-checked" : ""}`)} key={option.code}>
+                      <input className={cx(styles, commonStyles, "sector-filter-checkbox")} type="checkbox" checked={checked} onChange={() => toggleSectorFilter(option.code)} />
+                      <span className={cx(styles, commonStyles, `sector-filter-dot sector-filter-dot-${option.code.toLowerCase()}`)} aria-hidden="true" />
+                      <span className={cx(styles, commonStyles, "sector-filter-label")}>{option.label}</span>
+                      <span className={cx(styles, commonStyles, "sector-filter-state")}>{checked ? "ATIVO" : "OCULTO"}</span>
+                    </label>;
+                  })}
                 </div>
-              );
-            })}
-          </nav>
-        </div>
-
-        <div className={cx(styles, commonStyles, "sidebar-user")}>
-          <span className={cx(styles, commonStyles, "user-avatar")}>{initials(user.nome_completo)}</span>
-          <div className={cx(styles, commonStyles, "sidebar-user-info")}><strong>{user.nome_completo}</strong><span>Portal de Logística</span></div>
-          <button className={cx(styles, commonStyles, "sign-out-button")} type="button" aria-label="Sair do portal" title="Sair" onClick={onSignOut}><svg viewBox="0 0 24 24"><path d="M10 5H5v14h5M14 8l4 4-4 4M18 12H9" /></svg></button>
-        </div>
-      </aside>
-
-      {sidebarCollapsed && <button className={cx(styles, commonStyles, "sidebar-reopen-button")} type="button" aria-label="Abrir menu lateral" aria-controls="portal-sidebar" aria-expanded={false} title="Abrir menu lateral" onClick={() => setSidebarCollapsed(false)}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2" /><path d="M9 5v14m2-7h5m0 0-2.5-2.5M16 12l-2.5 2.5" /></svg>
-      </button>}
-
-      <button className={cx(styles, commonStyles, `sidebar-scrim${menuOpen ? " sidebar-scrim-visible" : ""}`)} aria-label="Fechar menu" onClick={() => setMenuOpen(false)} />
-
-      <div className={cx(styles, commonStyles, `workspace${sidebarCollapsed ? " workspace-sidebar-collapsed" : ""}`)}>
-        <header className={cx(styles, commonStyles, "topbar")}>
-          <button className={cx(styles, commonStyles, "mobile-menu-button")} type="button" aria-label="Abrir menu" onClick={() => setMenuOpen(true)}><span /><span /><span /></button>
-          <div className={cx(styles, commonStyles, "topbar-context")}><span className={cx(styles, commonStyles, "topbar-context-mark")} /> <span>{pageSection}</span><span className={cx(styles, commonStyles, "topbar-context-slash")}>/</span><strong>{pageTitle}</strong></div>
-          <div className={cx(styles, commonStyles, "topbar-actions")}>
-            {isDemoMode && <span className={cx(styles, commonStyles, "environment-badge")}><i /> DEMONSTRAÇÃO</span>}
-            <div className={cx(styles, commonStyles, "topbar-user")}><span className={cx(styles, commonStyles, "topbar-avatar")}>{initials(user.nome_completo)}</span><span className={cx(styles, commonStyles, "topbar-user-name")}>{user.nome_completo.split(" ")[0]}</span>{sectorLabel && <span className={cx(styles, commonStyles, "topbar-sector")} title={`Setor: ${sectorLabel}`}>{sectorLabel}</span>}</div>
+                {activeSectorCodes.length !== sectorFilterOptions.length && <button className={cx(styles, commonStyles, "sector-filter-reset")} type="button" onClick={showAllSectors}>Mostrar todos</button>}
+              </div>
+            </section>}
           </div>
         </header>
+
         <main className={cx(styles, commonStyles, `workspace-content${path.startsWith("/fretes") ? " workspace-content-wide" : ""}`)}>{children}</main>
-        <footer className={cx(styles, commonStyles, "workspace-footer")}><span>VILAREJO ACABAMENTOS <i /> PORTAL DE LOGÍSTICA</span><span>Dados de operação tratados com responsabilidade.</span></footer>
+        <footer className={cx(styles, commonStyles, "workspace-footer")}>
+          <span>VILAREJO ACABAMENTOS <i /> PORTAL DE LOGÍSTICA</span>
+          <span>Dados de operação tratados com responsabilidade.</span>
+        </footer>
       </div>
     </div>
   );

@@ -1,22 +1,42 @@
-# Módulo de Fretes — plano atualizado em 04/11/2026
+# Módulo de Fretes — plano atualizado em 06/11/2026
 
-**Atualizado em:** 04/11/2026
+**Atualizado em:** 06/11/2026
 **Objetivo:** registrar o estado da implementação, as regras que ainda dependem de decisão e os pré-requisitos para publicar em staging.
 
-## Escopo operacional confirmado — 04/11/2026
+## Retomada de 05/11/2026 — publicar em staging
+
+Estado conferido em 04/11: o código do Portal está em `staging` e sincronizado com `origin` até `23582fc`; as migrations `f8a2d6c1e407` e `c7e3a91b5d42` estão em `VilarejoBI/logistica`, no commit `416eecf`, também sincronizado com `origin`. A migration anterior `d4e7c9b2a610` faz parte da cadeia. A implantação da API e a aplicação das migrations em staging ainda não foram confirmadas. O resultado do CI depois do commit `23582fc` também precisa ser conferido.
+
+Faça nesta ordem:
+
+1. [ ] No GitHub Actions, confirme que o CI do `staging` passou depois do commit `23582fc`. Se falhar, corrigir e enviar somente os arquivos necessários.
+2. [ ] No Vercel, confirme que há um Preview `Ready` para o commit atual do `staging`; o frontend é publicado separadamente da API.
+3. [ ] Antes de alterar o banco, confirme o banco/ambiente de staging, a revisão atual do Alembic e um snapshot recente do RDS. O deploy da API não executa migrations; o perfil usado anteriormente não tinha `rds:DescribeDBInstances`.
+4. [ ] Aplicar e conferir, na cadeia `logistica`, as migrations pendentes na ordem `d4e7c9b2a610` → `f8a2d6c1e407` → `c7e3a91b5d42`. Não aplicar em produção.
+5. [ ] Com CI verde e banco atualizado, executar manualmente no GitHub Actions **Deploy Portal API to Staging** e conferir o resultado/health da API.
+6. [ ] Confirmar no banco de staging o setor/escopo `TRANSPORTE` e as permissões de Fretes para a conta de suporte que fará a validação.
+7. [ ] Abrir o portal pelo Preview e validar login, menu Transporte, seleção de motorista terceirizado, preenchimento vindo de Entregas, lançamento, histórico e pagamentos. Registrar problemas antes de liberar para uso operacional.
+
+**Ainda fora desta publicação:** a tela administrativa para reajustar tarifas não foi implementada; regras financeiras que seguem pendentes estão listadas abaixo. Não liberar produção até o aceite do staging.
+
+## Escopo operacional confirmado — 04/11/2026, com revisões de 06/11/2026
 
 - Novos lançamentos não oferecem a modalidade **Frota própria**. O tipo pode continuar no banco e no histórico apenas para compatibilidade com registros antigos.
-- Agregados são motoristas cadastrados em **Equipes** como `MOTORISTA` e `TERCEIRIZADA`; não haverá cadastro paralelo de agregados.
-- Ao escolher data e motorista, o formulário busca a última revisão confirmada das Entregas desse dia e preenche cidade/rota, soma de entregas realizadas e não realizadas e quantidade de avarias (`AVARIA`). Coletas não entram nessa soma.
+- Agregados são motoristas cadastrados em **Equipes** como `MOTORISTA`, `TERCEIRIZADA` e modalidade **Agregado**. A modalidade terceirizada também precisa distinguir **Transportadora independente** e, nesse caso, indicar **Paulo Cruz** ou **Just In Time**.
+- Ao escolher data e motorista, o formulário busca a última revisão confirmada das Entregas desse dia e preenche cidade/rota, quantidade de entregas **realizadas** e quantidade de avarias (`AVARIA`). Entregas não realizadas e coletas não entram na quantidade de entregas usada no frete.
+- [x] Correção solicitada em 06/11/2026: o resumo usa somente `quantidade_realizada` da revisão confirmada do motorista/data e não soma entregas não realizadas nem coletas.
+- [x] Alteração solicitada em 06/11/2026: o cadastro de motorista `TERCEIRIZADA` salva modalidade **Agregado** ou **Transportadora independente**; a segunda exige empresa **Paulo Cruz** ou **Just In Time**. O seletor de agregado aceita somente motoristas classificados como agregado.
+- [ ] Revisar e classificar os registros terceirizados já existentes; definir com a operação quem confirma essa classificação antes de habilitar o novo filtro.
+- [x] No Histórico de Fretes, tornar os números de volume/peso, hodômetro e valores pontos de entrada para as seções correspondentes, preservando período/filtros e o detalhe geral. A memória tarifária completa continua fora do diálogo.
 - A quantidade de ocorrências `AVARIA` vinda das Entregas é informativa e separada do campo financeiro. O controle `CONTROLE DE LANÇAMENTOS.xlsx`, coluna K (`R$ AVARIA`), registra o valor em reais descontado do frete; por isso o Portal mantém esse valor no lançamento.
 - A API recalcula os dados derivados das Entregas antes de cotar e gravar o frete.
-- A implementação está alterada localmente; as verificações automatizadas e a conferência visual ainda não foram feitas.
+- O código do Portal e as migrations de Fretes estão enviados às respectivas branches de staging (`LancamentoLogistica/staging` e `VilarejoBI/logistica`). O CI após `23582fc`, a aplicação das migrations, o deploy da API e a conferência visual ainda precisam ser confirmados; seguir o checklist acima.
 
 ## Solicitações novas da diretoria e da operação — 04/11/2026
 
 - [ ] **Administração de tarifas:** incluir na administração do Portal uma área para reajustar os valores de Agregados CD e das transportadoras independentes (JUST IN TIME e Paulo Cruz). Antes de liberar a edição, definir quais perfis podem alterar os valores, quando cada alteração entra em vigor, como auditar autor/data/valores anteriores e se o reajuste afeta apenas novas cotações. Fretes já lançados devem conservar a memória e o valor calculados originalmente. A alteração de tarifas ainda não foi implementada.
 - [ ] **Organização dos cadastros:** manter todos os cadastros na área **Cadastros** da Administração. Avaliar separar ou filtrar os catálogos por setor para que cada equipe encontre os registros da sua operação sem misturar cadastros de áreas diferentes.
-- [x] **Seleção de agregados:** usar o cadastro existente de equipes. O lançamento oferece motoristas `MOTORISTA / TERCEIRIZADA`, sem campo de nome livre ou catálogo duplicado, e guarda o vínculo e uma fotografia do nome.
+- [ ] **Seleção de agregados:** manter o cadastro existente de equipes, mas filtrar somente motoristas `MOTORISTA / TERCEIRIZADA / AGREGADO`. Não exibir motoristas classificados como `TRANSPORTADORA_INDEPENDENTE` como agregados; registrar a empresa associada (Paulo Cruz ou Just In Time) no cadastro.
 - [x] **Hodômetro de transportadora independente:** o formulário não solicita KM inicial, KM final nem KM rodado para esse tipo. O backend aceita esses campos nulos apenas em conjunto; agregados continuam informando hodômetro. A modalidade própria pode aparecer somente em registros legados.
 - [x] **Pagamentos por responsável:** a página permite filtrar e exportar por modalidade e responsável: transportadora independente ou agregado selecionado no cadastro de equipes. Dados legados sem nome continuam no filtro “Sem identificação”.
 
@@ -42,7 +62,7 @@ Esta atualização substitui o roteiro operacional abaixo, datado de 30/10. As r
 - [x] Router da API, registro ORM, permissões, bootstrap local e provisionamento de desenvolvimento integrados ao backend.
 - [x] DBML atualizado com frete e eventos; o motorista agregado é vinculado ao cadastro de equipes e o nome é gravado como fotografia, sem CPF.
 - [x] No frontend, `types.ts`, `api.ts` e `demoApi.ts` cobrem os contratos do módulo Fretes.
-- [x] Novos lançamentos de agregado selecionam o motorista cadastrado como entrega terceirizada; os registros anteriores sem nome seguem válidos como “Sem identificação”.
+- [x] A primeira versão selecionava como agregado qualquer motorista cadastrado como entrega terceirizada. Essa regra foi revisada em 06/11/2026: passa a ser necessário filtrar pela modalidade **Agregado**; ver pendência acima. Registros anteriores sem nome seguem válidos como “Sem identificação”.
 - [x] A migration Alembic existe em `VilarejoBI/alembic/versions/logistica/f8a2d6c1e407_create_freight_tables.py`. É uma revisão da cadeia compartilhada `logistica`, encadeada após `d4e7c9b2a610`; não criar uma segunda cadeia no Portal.
 - [x] O usuário confirmou as cidades e os valores de tarifa registrados no `initial_tariffs.json`, incluindo RO e MC em 1,2%.
 - [x] O usuário confirmou a matriz de perfis atual do catálogo de permissões.

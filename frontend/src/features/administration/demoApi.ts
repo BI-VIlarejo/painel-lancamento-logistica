@@ -33,10 +33,10 @@ let localities: LocalityAdminItem[] = [
   { id_localidade: 14, codigo_localidade: "CD", nome_localidade: "Centro de Distribuição", tipo_localidade: "CD", cidade: "Macaé", uf: "RJ", ativo: true },
 ];
 let people: PersonAdminItem[] = [
-  { id_pessoa: 21, codigo_pessoa: "demo-driver-1", nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
-  { id_pessoa: 22, codigo_pessoa: "demo-driver-2", nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "TERCEIRIZADA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
-  { id_pessoa: 31, codigo_pessoa: "demo-helper-1", nome_exibicao: "Marina Alves", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "PROPRIA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
-  { id_pessoa: 32, codigo_pessoa: "demo-helper-2", nome_exibicao: "Pedro Lima", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "TERCEIRIZADA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 21, codigo_pessoa: "demo-driver-1", nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA", modalidade_terceirizada: null, codigo_transportadora_independente: null, ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 22, codigo_pessoa: "demo-driver-2", nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "TERCEIRIZADA", modalidade_terceirizada: "AGREGADO", codigo_transportadora_independente: null, ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 31, codigo_pessoa: "demo-helper-1", nome_exibicao: "Marina Alves", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "PROPRIA", modalidade_terceirizada: null, codigo_transportadora_independente: null, ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
+  { id_pessoa: 32, codigo_pessoa: "demo-helper-2", nome_exibicao: "Pedro Lima", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "TERCEIRIZADA", modalidade_terceirizada: null, codigo_transportadora_independente: null, ativo: true, vigente_desde: "2025-01-01", vigente_ate: null, sistema_origem: null, codigo_pessoa_origem: null },
 ];
 let reasons: ReasonAdminItem[] = [
   { id_motivo_nao_entrega: 41, codigo_motivo: "CLIENTE_AUSENTE", descricao_motivo: "Cliente ausente", grupo_motivo: "LOJA", ativo: true, vigente_desde: "2025-01-01", vigente_ate: null },
@@ -136,7 +136,7 @@ export const demoAdministrationApi = {
     people = [...people, item];
     return item;
   },
-  async updatePerson(id: number, input: Pick<PersonAdminItem, "nome_exibicao" | "tipo_funcao" | "tipo_transporte_entrega">) {
+  async updatePerson(id: number, input: Pick<PersonAdminItem, "nome_exibicao" | "tipo_funcao" | "tipo_transporte_entrega" | "modalidade_terceirizada" | "codigo_transportadora_independente">) {
     await pause();
     const current = people.find((item) => item.id_pessoa === id);
     if (!current) throw new Error("Pessoa não encontrada.");

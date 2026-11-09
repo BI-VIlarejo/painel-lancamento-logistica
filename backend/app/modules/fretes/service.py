@@ -217,7 +217,7 @@ def _prepare_freight_payload(
     )
     if driver is None:
         raise NotFoundError(
-            "O motorista não está ativo como entrega terceirizada na data do serviço."
+            "O motorista não está ativo como agregado classificado na data do serviço."
         )
 
     route, cities, deliveries, damages, delivery_rows = repository.get_driver_delivery_summary(
@@ -329,7 +329,7 @@ def get_delivery_summary(
         )
         if driver is None:
             raise NotFoundError(
-                "O motorista não está ativo como entrega terceirizada na data do serviço."
+                "O motorista não está ativo como agregado classificado na data do serviço."
             )
         route, cities, deliveries, damages, delivery_rows = repository.get_driver_delivery_summary(
             db,

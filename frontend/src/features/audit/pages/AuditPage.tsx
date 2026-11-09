@@ -68,6 +68,8 @@ const fieldLabels: Record<string, string> = {
   nome_exibicao: "Nome",
   tipo_funcao: "Função",
   tipo_transporte_entrega: "Grupo de entrega",
+  modalidade_terceirizada: "Modalidade de Fretes",
+  codigo_transportadora_independente: "Transportadora independente",
   descricao_motivo: "Descrição",
   grupo_motivo: "Grupo do motivo",
   nome_localidade: "Localidade",

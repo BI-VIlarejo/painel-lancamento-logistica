@@ -1,6 +1,6 @@
 import { apiRequest, isDemoMode } from "../../shared/api/apiClient";
 import { demoAnalyticsApi } from "./demoApi";
-import type { DashboardFilters, DashboardResponse } from "./types";
+import type { DashboardFilters, DashboardGoal, DashboardResponse } from "./types";
 
 function queryFrom(filters: DashboardFilters): string {
   const params = new URLSearchParams();
@@ -16,5 +16,20 @@ export const analyticsApi = {
     if (isDemoMode) return demoAnalyticsApi.dashboard(filters);
     const query = queryFrom(filters);
     return apiRequest<DashboardResponse>(`/analytics/dashboard${query ? `?${query}` : ""}`);
+  },
+  goal(): Promise<DashboardGoal> {
+    if (isDemoMode) return demoAnalyticsApi.goal();
+    return apiRequest<DashboardGoal>("/analytics/goal");
+  },
+  updateGoal(
+    value: number,
+    periodicidade: DashboardGoal["periodicidade"],
+    escopo_operacao: DashboardGoal["escopo_operacao"],
+  ): Promise<DashboardGoal> {
+    if (isDemoMode) return demoAnalyticsApi.updateGoal(value, periodicidade, escopo_operacao);
+    return apiRequest<DashboardGoal>("/analytics/goal", {
+      method: "PUT",
+      body: { valor_percentual: value, periodicidade, escopo_operacao },
+    });
   },
 };

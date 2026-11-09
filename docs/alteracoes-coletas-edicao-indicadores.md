@@ -1,6 +1,6 @@
 # Entregas, coletas e indicadores por operação
 
-**Atualizado:** 27/10/2026
+**Atualizado:** 06/11/2026
 **Deploy de staging planejado:** 28/10/2026
 **Escopo:** Portal e API reais em staging. Produção será planejada depois do aceite do piloto.
 
@@ -10,6 +10,7 @@
 - No registro, a pessoa informa separadamente quantidades realizadas e não realizadas de entregas e de coletas. A coleta não cria outro lançamento, outra data nem outra equipe.
 - Cada entrega não realizada e cada coleta não realizada recebe seu próprio motivo e sua própria observação. O motivo também identifica se pertence à operação `ENTREGA` ou `COLETA`, para separar os indicadores.
 - A classificação da equipe (`PROPRIA` ou `TERCEIRIZADA`) continua vindo do cadastro das pessoas participantes. Os filtros e indicadores aplicam a mesma classificação às entregas e coletas daquele registro.
+- A subdivisão adicional solicitada em 06/11/2026 (`AGREGADO` ou `TRANSPORTADORA_INDEPENDENTE`, com empresa Paulo Cruz/Just In Time) serve para selecionar corretamente o responsável no módulo de Fretes. Não altera por si só os indicadores de Entregas, que continuam agrupando pela classificação base `PROPRIA`/`TERCEIRIZADA`; qualquer mudança desses grupos depende de decisão específica.
 - O OTIF combinado considera as quantidades não realizadas de entregas e coletas sobre o total registrado das duas operações. Os painéis também mostram os totais separados por operação e por grupo de motivo.
 - O fluxo de lançamento salva diretamente, sem etapa de conferência. O histórico permite consultar, editar ou cancelar; editar não pede justificativa e as ações continuam auditadas.
 
@@ -28,6 +29,14 @@
 - O histórico e os detalhes exibem as quatro quantidades e identificam se cada motivo/observação pertence à entrega ou à coleta.
 - O CSV novo usa uma linha por registro compartilhado, com colunas próprias para quantidades, motivos e observações de entrega e coleta. Arquivos antigos com `tipo_operacao` continuam aceitos e são convertidos para o formato combinado.
 - Cada unidade não realizada precisa de exatamente uma ocorrência de motivo, inclusive quando várias unidades usam o mesmo motivo; as observações não são compartilhadas.
+
+## Revisão do diretor — simplificação e detalhamento do histórico (06/11/2026)
+
+- Na lista principal do Histórico de Entregas, mostrar os números e manter apenas data, loja/localidade, equipe e tipo de transporte como informações textuais. Retirar motivos e observações das linhas; mantê-los acessíveis no detalhe específico de uma quantidade não realizada.
+- Cada quantidade realizada/não realizada de entrega e de coleta deve ser clicável separadamente e abrir somente o detalhamento daquela operação, estado e lançamento. Exemplo: `18/9` em entregas abre um detalhe para as 18 realizadas e outro para as 9 não realizadas. A seção de detalhes gerais ao final do histórico permanece.
+- Em **Não realizadas por motivos**, permitir abrir um motivo para ver a distribuição das ocorrências por operação e por equipe/pessoas associadas. Para cada motivo e operação, mostrar a quantidade, **% das não realizadas da operação** e **% do total da operação**. A fórmula proposta é `ocorrências do motivo ÷ não realizadas da operação` e `ocorrências do motivo ÷ (realizadas + não realizadas da operação)`; aguarda confirmação do diretor.
+- Os dados atuais identificam lançamento/equipe e associam motivos às ocorrências não realizadas; não identificam qual participante individual causou cada ocorrência. Definir como apresentar “quem mais teve o motivo” sem sugerir responsabilidade pessoal não registrada.
+- Confirmar se há uma fonte de dados por entrega realizada; os registros do Portal guardam totais agregados, não uma linha por entrega concluída. Também definir se situação/autor continuam visíveis na linha principal e como os controles de ação coexistem com a simplificação.
 
 ## Indicadores
 

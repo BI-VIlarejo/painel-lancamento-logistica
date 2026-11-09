@@ -29,10 +29,10 @@ export const administrationApi = {
     ? demoAdministrationApi.setLocalityActive(id, ativo)
     : apiRequest<LocalityAdminItem>(`/cadastros/localidades/${id}`, { method: "PATCH", body: { ativo } }),
   people: () => isDemoMode ? demoAdministrationApi.people() : cachedRequest("admin/people", () => apiRequest<PersonAdminItem[]>("/cadastros/pessoas")),
-  createPerson: (payload: { codigo_pessoa?: string; nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; tipo_transporte_entrega: DeliveryTransportType; sistema_origem?: string; codigo_pessoa_origem?: string }) => isDemoMode
+  createPerson: (payload: { codigo_pessoa?: string; nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; tipo_transporte_entrega: DeliveryTransportType; modalidade_terceirizada: "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null; codigo_transportadora_independente: "PAULO_CRUZ" | "JUST_IN_TIME" | null; sistema_origem?: string; codigo_pessoa_origem?: string }) => isDemoMode
     ? demoAdministrationApi.createPerson({ ...payload, codigo_pessoa: payload.codigo_pessoa ?? crypto.randomUUID(), sistema_origem: payload.sistema_origem ?? null, codigo_pessoa_origem: payload.codigo_pessoa_origem ?? null })
     : apiRequest<PersonAdminItem>("/cadastros/pessoas", { method: "POST", body: payload }),
-  updatePerson: (id: number, payload: { nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; tipo_transporte_entrega: DeliveryTransportType }) => isDemoMode
+  updatePerson: (id: number, payload: { nome_exibicao: string; tipo_funcao: "MOTORISTA" | "AJUDANTE"; tipo_transporte_entrega: DeliveryTransportType; modalidade_terceirizada: "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null; codigo_transportadora_independente: "PAULO_CRUZ" | "JUST_IN_TIME" | null }) => isDemoMode
     ? demoAdministrationApi.updatePerson(id, payload)
     : apiRequest<PersonAdminItem>(`/cadastros/pessoas/${id}`, { method: "PUT", body: payload }),
   deactivatePerson: (id: number) => isDemoMode

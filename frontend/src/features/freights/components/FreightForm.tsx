@@ -375,7 +375,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               {aggregateDrivers.map((driver) => <option key={driver.id_motorista} value={driver.id_motorista}>{driver.nome_motorista}</option>)}
             </select>
             {driversError && <small role="alert">{driversError}</small>}
-            {!driversLoading && !driversError && aggregateDrivers.length === 0 && <small role="status">Não há motoristas ativos como entregas terceirizadas para essa data.</small>}
+            {!driversLoading && !driversError && aggregateDrivers.length === 0 && <small role="status">Não há motoristas classificados como Agregado e vigentes nesta data.</small>}
           </label>}
           {values.tipo_transporte === "TRANSPORTADORA" && <label className={cx(styles, "field")} htmlFor={transporterId}>Transportadora
             <select id={transporterId} value={values.codigo_fonte_tarifa} required onChange={(event) => {

@@ -28,6 +28,8 @@ export type PersonAdminItem = {
   nome_exibicao: string;
   tipo_funcao: "MOTORISTA" | "AJUDANTE";
   tipo_transporte_entrega: DeliveryTransportType | null;
+  modalidade_terceirizada: "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null;
+  codigo_transportadora_independente: "PAULO_CRUZ" | "JUST_IN_TIME" | null;
   ativo: boolean;
   vigente_desde: string;
   vigente_ate: string | null;

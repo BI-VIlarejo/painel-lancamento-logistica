@@ -109,11 +109,15 @@ def _person_audit_values(person: Pessoa | None) -> dict[str, object | None]:
             "nome_exibicao": None,
             "tipo_funcao": None,
             "tipo_transporte_entrega": None,
+            "modalidade_terceirizada": None,
+            "codigo_transportadora_independente": None,
         }
     return {
         "nome_exibicao": person.nome_exibicao,
         "tipo_funcao": person.tipo_funcao,
         "tipo_transporte_entrega": person.tipo_transporte_entrega,
+        "modalidade_terceirizada": person.modalidade_terceirizada,
+        "codigo_transportadora_independente": person.codigo_transportadora_independente,
     }
 
 
@@ -362,6 +366,8 @@ def create_person(
             "nome_exibicao": payload.nome_exibicao,
             "tipo_funcao": payload.tipo_funcao,
             "tipo_transporte_entrega": payload.tipo_transporte_entrega,
+            "modalidade_terceirizada": payload.modalidade_terceirizada,
+            "codigo_transportadora_independente": payload.codigo_transportadora_independente,
         }
         changes = _audit_changes(_person_audit_values(None), values)
 
@@ -372,6 +378,8 @@ def create_person(
             nome_exibicao=payload.nome_exibicao,
             tipo_funcao=payload.tipo_funcao,
             tipo_transporte_entrega=payload.tipo_transporte_entrega,
+            modalidade_terceirizada=payload.modalidade_terceirizada,
+            codigo_transportadora_independente=payload.codigo_transportadora_independente,
             ativo=True,
             vigente_desde=_business_today(),
             vigente_ate=None,
@@ -430,6 +438,8 @@ def update_person(
             "nome_exibicao": payload.nome_exibicao,
             "tipo_funcao": payload.tipo_funcao,
             "tipo_transporte_entrega": payload.tipo_transporte_entrega,
+            "modalidade_terceirizada": payload.modalidade_terceirizada,
+            "codigo_transportadora_independente": payload.codigo_transportadora_independente,
         }
         changes = _audit_changes(before, after)
         if not changes:
@@ -439,6 +449,8 @@ def update_person(
         item.nome_exibicao = payload.nome_exibicao
         item.tipo_funcao = payload.tipo_funcao
         item.tipo_transporte_entrega = payload.tipo_transporte_entrega
+        item.modalidade_terceirizada = payload.modalidade_terceirizada
+        item.codigo_transportadora_independente = payload.codigo_transportadora_independente
         item.atualizado_em = _now()
         _event(
             db,

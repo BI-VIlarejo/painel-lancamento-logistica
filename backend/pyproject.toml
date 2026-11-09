@@ -13,4 +13,6 @@ indent-style = "space"
 # O Pyrefly deve resolver dependências externas pelo ambiente do backend.
 python-interpreter-path = ".venv/bin/python"
 python-version = "3.14"
+# Inclui os módulos locais do backend no projeto analisado.
+project-includes = ["app"]
 search-path = ["."]

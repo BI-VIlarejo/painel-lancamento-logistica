@@ -46,7 +46,6 @@ from app.modules.catalogs.models import (
 )
 from app.modules.deliveries.models import FormularioVersao
 
-
 PERMISSION_SEED = PERMISSION_DEFINITIONS
 
 
@@ -284,9 +283,7 @@ def _seed_sample_catalog(db: Session, *, actor_id: int, now: datetime) -> None:
         ("AJUDANTE", "AJUDANTE_DEV_01", "Ajudante de teste"),
     )
     for role, origin_code, display_name in sample_people:
-        existing = db.scalar(
-            select(Pessoa).where(Pessoa.codigo_pessoa_origem == origin_code)
-        )
+        existing = db.scalar(select(Pessoa).where(Pessoa.codigo_pessoa_origem == origin_code))
         if existing is None:
             db.add(
                 Pessoa(
@@ -376,11 +373,7 @@ def _ensure_local_feedback_idempotency(engine) -> None:
         return
 
     columns = {column["name"]: column for column in inspector.get_columns(table)}
-    index_names = {
-        index["name"]
-        for index in inspector.get_indexes(table)
-        if index.get("name")
-    }
+    index_names = {index["name"] for index in inspector.get_indexes(table) if index.get("name")}
     index_names.update(
         constraint["name"]
         for constraint in inspector.get_unique_constraints(table)
@@ -391,8 +384,7 @@ def _ensure_local_feedback_idempotency(engine) -> None:
         if "chave_idempotencia" not in columns:
             connection.execute(
                 text(
-                    "ALTER TABLE op_logistica_feedback "
-                    "ADD COLUMN chave_idempotencia CHAR(36) NULL"
+                    "ALTER TABLE op_logistica_feedback ADD COLUMN chave_idempotencia CHAR(36) NULL"
                 )
             )
         connection.execute(
@@ -402,9 +394,8 @@ def _ensure_local_feedback_idempotency(engine) -> None:
                 "WHERE chave_idempotencia IS NULL"
             )
         )
-        if (
-            "chave_idempotencia" not in columns
-            or columns["chave_idempotencia"].get("nullable", True)
+        if "chave_idempotencia" not in columns or columns["chave_idempotencia"].get(
+            "nullable", True
         ):
             connection.execute(
                 text(
@@ -445,10 +436,7 @@ def _ensure_local_delivery_otif_columns(engine) -> None:
         return
 
     columns = {column["name"] for column in inspector.get_columns(table)}
-    checks = {
-        constraint.get("name")
-        for constraint in inspector.get_check_constraints(table)
-    }
+    checks = {constraint.get("name") for constraint in inspector.get_check_constraints(table)}
     with engine.begin() as connection:
         if "quantidade_entregas_no_prazo" not in columns:
             connection.execute(
@@ -489,11 +477,7 @@ def _ensure_locality_address_columns(engine) -> None:
         return
 
     columns = {column["name"] for column in inspector.get_columns(table)}
-    index_names = {
-        index["name"]
-        for index in inspector.get_indexes(table)
-        if index.get("name")
-    }
+    index_names = {index["name"] for index in inspector.get_indexes(table) if index.get("name")}
     index_names.update(
         constraint["name"]
         for constraint in inspector.get_unique_constraints(table)
@@ -503,17 +487,11 @@ def _ensure_locality_address_columns(engine) -> None:
     with engine.begin() as connection:
         if "cidade" not in columns:
             connection.execute(
-                text(
-                    "ALTER TABLE op_logistica_localidade "
-                    "ADD COLUMN cidade VARCHAR(120) NULL"
-                )
+                text("ALTER TABLE op_logistica_localidade ADD COLUMN cidade VARCHAR(120) NULL")
             )
         if "uf" not in columns:
             connection.execute(
-                text(
-                    "ALTER TABLE op_logistica_localidade "
-                    "ADD COLUMN uf VARCHAR(2) NULL"
-                )
+                text("ALTER TABLE op_logistica_localidade ADD COLUMN uf VARCHAR(2) NULL")
             )
         if "uq_op_logistica_localidade_nome_cidade_uf" not in index_names:
             connection.execute(
@@ -547,24 +525,13 @@ def _ensure_local_authorization_event_checks(engine) -> None:
                 continue
 
             current_expression = existing.get(constraint.name, "")
-            expected_values = {
-                value
-                for value in constraint.sqltext.text.split("'")[1::2]
-                if value
-            }
-            if current_expression and all(
-                value in current_expression for value in expected_values
-            ):
+            expected_values = {value for value in constraint.sqltext.text.split("'")[1::2] if value}
+            if current_expression and all(value in current_expression for value in expected_values):
                 continue
 
             constraint_name = preparer.quote(constraint.name)
             if current_expression:
-                connection.execute(
-                    text(
-                        f"ALTER TABLE {table_name} "
-                        f"DROP CHECK {constraint_name}"
-                    )
-                )
+                connection.execute(text(f"ALTER TABLE {table_name} DROP CHECK {constraint_name}"))
 
             expression = constraint.sqltext.compile(
                 dialect=dialect,

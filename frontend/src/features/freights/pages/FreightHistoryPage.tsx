@@ -8,6 +8,7 @@ import type { FreightRecordedTransportType, FreightResponse } from "../types";
 import styles from "./FreightHistoryPage.module.css";
 
 type Props = { onNavigate: (path: string) => void; canCreate: boolean; canViewPayments: boolean };
+type FreightDetailSection = "Operação" | "Hodômetro" | "Valores e conferência";
 const pageSizeOptions = [10, 25, 50, 100];
 
 function transportTypeLabel(type: FreightRecordedTransportType): string {
@@ -49,6 +50,7 @@ function DetailField({ label, value }: { label: string; value: string }) {
 
 function FreightDetailsDialog({
   item,
+  focusSection,
   busy,
   error,
   onClose,
@@ -56,6 +58,7 @@ function FreightDetailsDialog({
   onCancel,
 }: {
   item: FreightResponse;
+  focusSection: FreightDetailSection | null;
   busy: boolean;
   error: string;
   onClose: () => void;
@@ -85,14 +88,19 @@ function FreightDetailsDialog({
     {
       title: "Operação",
       fields: [
-        ["KM inicial", formatNumber(item.km_inicial)],
-        ["KM final", formatNumber(item.km_final)],
-        ["KM rodado", item.km_rodado === null ? "Não se aplica" : `${formatNumber(item.km_rodado)} km`],
         ["Quantidade de entregas", item.quantidade_entregas.toLocaleString("pt-BR")],
         ["Peso", `${formatNumber(item.peso_kg)} kg`],
         ["Tipo de caminhão", truckLabel(item.tipo_caminhao)],
         ["Zona JUST IN TIME", item.codigo_zona_jit ?? "Não se aplica"],
         ["Adicionais", item.adicionais_jit.length ? item.adicionais_jit.join(", ") : "Nenhum"],
+      ],
+    },
+    {
+      title: "Hodômetro",
+      fields: [
+        ["KM inicial", formatNumber(item.km_inicial)],
+        ["KM final", formatNumber(item.km_final)],
+        ["KM rodado", item.km_rodado === null ? "Não se aplica" : `${formatNumber(item.km_rodado)} km`],
       ],
     },
     {
@@ -130,7 +138,7 @@ function FreightDetailsDialog({
         {item.cancelado && <div className={cx(styles, "cancellation-summary")}><strong>Cancelado em {formatDateTime(item.cancelado_em)}</strong><span>Usuário #{item.cancelado_por ?? "não informado"}</span><p>{item.justificativa_cancelamento || "Justificativa não informada."}</p></div>}
         {error && <div className={cx(styles, commonStyles, "notice notice-error", "freight-dialog-error")} role="alert">{error}</div>}
         <div className={cx(styles, "freight-detail-content")}>
-          {sections.map((section) => <section className={cx(styles, "detail-section")} key={section.title}>
+          {sections.filter((section) => focusSection === null || section.title === focusSection).map((section) => <section className={cx(styles, "detail-section")} key={section.title}>
             <h3>{section.title}</h3>
             <dl className={cx(styles, "detail-fields")}>
               {section.fields.map(([label, value]) => <DetailField key={label} label={label} value={value} />)}
@@ -155,6 +163,7 @@ function FreightRow({
   canManage,
   busy,
   onDetails,
+  onMetricDetails,
   onEdit,
   onCancel,
 }: {
@@ -162,6 +171,7 @@ function FreightRow({
   canManage: boolean;
   busy: boolean;
   onDetails: () => void;
+  onMetricDetails: (section: FreightDetailSection) => void;
   onEdit: () => void;
   onCancel: () => void;
 }) {
@@ -170,9 +180,9 @@ function FreightRow({
   return <tr>
     <td><strong>{formatDate(item.data_servico)}</strong>{item.cancelado && <small className={cx(styles, "cancelled-row-label")}>Cancelado</small>}</td>
     <td><strong>{transportTypeLabel(item.tipo_transporte)}</strong><small>{transportName(item)}</small></td>
-    <td><strong>{item.rota_cidade}</strong><small>{item.quantidade_entregas.toLocaleString("pt-BR")} entregas · {formatNumber(item.peso_kg)} kg</small></td>
-    <td>{item.tipo_transporte === "TRANSPORTADORA" ? <span>Não se aplica</span> : <><strong>{formatNumber(item.km_rodado)} km</strong><small>Inicial {formatNumber(item.km_inicial)} · Final {formatNumber(item.km_final)}</small></>}</td>
-    <td><strong>{formatMoney(item.valor_frete_bruto)}</strong><small>{item.quantidade_avarias} avarias · Valor da avaria {formatMoney(item.valor_avaria)} · Líquido {formatMoney(item.valor_frete_pago)}</small></td>
+    <td><strong>{item.rota_cidade}</strong><div className={cx(styles, "freight-row-metrics")}><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar quantidade de entregas">{item.quantidade_entregas.toLocaleString("pt-BR")} entregas</button><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar peso">{formatNumber(item.peso_kg)} kg</button></div></td>
+    <td>{item.tipo_transporte === "TRANSPORTADORA" ? <span>Não se aplica</span> : <><button className={cx(styles, "freight-row-primary-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar hodômetro rodado">{formatNumber(item.km_rodado)} km</button><small>Inicial <button className={cx(styles, "freight-row-inline-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar KM inicial">{formatNumber(item.km_inicial)}</button> · Final <button className={cx(styles, "freight-row-inline-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar KM final">{formatNumber(item.km_final)}</button></small></>}</td>
+    <td>{item.valor_frete_bruto === null ? <strong>{formatMoney(item.valor_frete_bruto)}</strong> : <button className={cx(styles, "freight-row-primary-metric")} type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar valor bruto do frete">{formatMoney(item.valor_frete_bruto)}</button>}<div className={cx(styles, "freight-row-metrics freight-row-value-metrics")}><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar quantidade de avarias">{item.quantidade_avarias} avarias</button><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar valor da avaria">Avaria {formatMoney(item.valor_avaria)}</button><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar total líquido">Líquido {formatMoney(item.valor_frete_pago)}</button></div></td>
     <td><div className={cx(styles, commonStyles, "history-row-actions")}>
       <span className={cx(styles, commonStyles, "history-main-actions")}>
         <button className={cx(styles, commonStyles, "table-action")} type="button" onClick={onDetails}>Detalhes</button>
@@ -197,6 +207,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<FreightResponse | null>(null);
+  const [selectedSection, setSelectedSection] = useState<FreightDetailSection | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -236,7 +247,13 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
 
   function startEdit(item: FreightResponse) {
     setSelected(null);
+    setSelectedSection(null);
     onNavigate(`/fretes/${encodeURIComponent(item.codigo_frete)}`);
+  }
+
+  function openDetails(item: FreightResponse, section: FreightDetailSection | null = null) {
+    setSelected(item);
+    setSelectedSection(section);
   }
 
   async function cancelFreight(item: FreightResponse) {
@@ -252,6 +269,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
     try {
       await freightsApi.cancel(item.codigo_frete, justification.trim(), crypto.randomUUID());
       setSelected(null);
+      setSelectedSection(null);
       setNotice("Frete cancelado e preservado no histórico.");
       setReloadVersion((version) => version + 1);
     } catch (cancelError: unknown) {
@@ -287,12 +305,13 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
       <section className={cx(styles, "table-card")} aria-label="Lançamentos de frete">
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando histórico...</div>
           : items.length === 0 ? <div className={cx(styles, "empty-state")}><span className={cx(styles, commonStyles, "empty-state-icon")}>↗</span><h2>Nenhum frete neste período</h2><p>Altere as datas ou registre um novo serviço.</p>{canCreate && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/fretes")}>Lançar frete</button>}</div>
-            : <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela do histórico de fretes" tabIndex={0}><table className={cx(styles, commonStyles, "data-table", "freight-table")}><thead><tr><th>Data</th><th>Transporte / responsável</th><th>Rota e volume</th><th>Hodômetro</th><th>Valores</th><th>Ações</th></tr></thead><tbody>{items.map((item) => <FreightRow
+            : <div className={cx(styles, commonStyles, "data-table-scroll history-table-scroll")} role="region" aria-label="Tabela do histórico de fretes" tabIndex={0}><table className={cx(styles, commonStyles, "data-table", "freight-table")}><thead><tr><th>Data</th><th>Transporte / responsável</th><th>Rota e volume</th><th>Hodômetro</th><th>Valores</th><th>Ações</th></tr></thead><tbody>{items.map((item) => <FreightRow
               item={item}
               key={item.id_frete}
               canManage={canCreate}
               busy={busyId === item.codigo_frete}
-              onDetails={() => setSelected(item)}
+              onDetails={() => openDetails(item)}
+              onMetricDetails={(section) => openDetails(item, section)}
               onEdit={() => startEdit(item)}
               onCancel={() => void cancelFreight(item)}
             />)}</tbody></table></div>}
@@ -305,12 +324,14 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
 
       {selected && <FreightDetailsDialog
         item={selected}
+        focusSection={selectedSection}
         busy={busyId === selected.codigo_frete}
         error={error}
-        onClose={() => setSelected(null)}
+        onClose={() => { setSelected(null); setSelectedSection(null); }}
         onEdit={canCreate && !selected.cancelado && selected.tipo_transporte !== "PROPRIO" ? () => startEdit(selected) : undefined}
         onCancel={canCreate && !selected.cancelado ? () => void cancelFreight(selected) : undefined}
       />}
     </div>
   );
 }
+

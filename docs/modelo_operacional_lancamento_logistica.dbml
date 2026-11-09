@@ -344,6 +344,8 @@ Table op_logistica_pessoa {
   nome_exibicao varchar(160) [not null]
   tipo_funcao varchar(24) [not null]
   tipo_transporte_entrega varchar(20) [note: 'PROPRIA ou TERCEIRIZADA. Nullable somente para versões históricas ainda não classificadas; novos cadastros exigem valor.']
+  modalidade_terceirizada varchar(32) [note: 'AGREGADO ou TRANSPORTADORA_INDEPENDENTE; obrigatório para novos motoristas terceirizados e nullable para cadastros antigos pendentes de classificação.']
+  codigo_transportadora_independente varchar(24) [note: 'PAULO_CRUZ ou JUST_IN_TIME somente quando modalidade_terceirizada = TRANSPORTADORA_INDEPENDENTE.']
   ativo boolean [not null]
   vigente_desde date [not null]
   vigente_ate date
@@ -362,11 +364,12 @@ Table op_logistica_pessoa {
   checks {
     `tipo_funcao in ('MOTORISTA', 'AJUDANTE')` [name: 'ck_op_logistica_pessoa_funcao']
     `tipo_transporte_entrega is null or tipo_transporte_entrega in ('PROPRIA', 'TERCEIRIZADA')` [name: 'ck_op_logistica_pessoa_tipo_transporte']
+    `(modalidade_terceirizada is null and codigo_transportadora_independente is null) or (tipo_funcao = 'MOTORISTA' and tipo_transporte_entrega = 'TERCEIRIZADA' and ((modalidade_terceirizada = 'AGREGADO' and codigo_transportadora_independente is null) or (modalidade_terceirizada = 'TRANSPORTADORA_INDEPENDENTE' and codigo_transportadora_independente in ('PAULO_CRUZ', 'JUST_IN_TIME'))))` [name: 'ck_op_logistica_pessoa_modalidade_terceirizada']
     `vigente_ate is null or vigente_ate > vigente_desde` [name: 'ck_op_logistica_pessoa_periodo']
     `(sistema_origem is null and codigo_pessoa_origem is null) or (sistema_origem is not null and codigo_pessoa_origem is not null)` [name: 'ck_op_logistica_pessoa_origem_par']
   }
 
-  Note: 'Não identificar pessoas pelo nome digitado. codigo_pessoa é gerado uma vez; quando houver código mestre confiável, guardar sua origem. O schema conserva id e vigência para referências históricas legadas, mas a edição administrativa atualiza a linha existente e não cria outra versão. Participantes já ligados à linha passam a exibir o nome/tipo atual; a auditoria preserva antes/depois. Novos lançamentos exigem equipe homogênea entre PROPRIA e TERCEIRIZADA; linhas antigas sem classificação continuam nulas até conferência.'
+  Note: 'Não identificar pessoas pelo nome digitado. codigo_pessoa é gerado uma vez; quando houver código mestre confiável, guardar sua origem. O schema conserva id e vigência para referências históricas legadas, mas a edição administrativa atualiza a linha existente e não cria outra versão. Participantes já ligados à linha passam a exibir o nome/tipo atual; a auditoria preserva antes/depois. Novos lançamentos exigem equipe homogênea entre PROPRIA e TERCEIRIZADA; linhas antigas sem classificação continuam nulas até conferência. Somente motorista terceirizado tem modalidade de Fretes; apenas AGREGADO pode ser escolhido como agregado.'
 }
 
 Table op_logistica_motivo_nao_entrega {
@@ -579,6 +582,56 @@ Table op_logistica_frete_evento {
 }
 
 // ==========================================
+// META DO PAINEL GERENCIAL
+// ==========================================
+
+Table op_logistica_meta_painel {
+  id_meta int [pk, note: 'Singleton: somente a linha 1 existe em cada catálogo.']
+  valor_percentual decimal(5,2) [not null, note: 'Meta global de taxa de realização; valor inicial 95%.']
+  periodicidade varchar(12) [not null, note: 'MENSAL, TRIMESTRAL ou ANUAL.']
+  escopo_operacao varchar(12) [not null, note: 'TODAS, ENTREGAS ou COLETAS.']
+  atualizado_em datetime [not null]
+  atualizado_por bigint [note: 'Usuário que realizou a última alteração; nulo para a meta inicial.']
+
+  checks {
+    `id_meta = 1` [name: 'ck_op_logistica_meta_painel_singleton']
+    `valor_percentual >= 0 and valor_percentual <= 100` [name: 'ck_op_logistica_meta_painel_percentual']
+    `periodicidade in ('MENSAL', 'TRIMESTRAL', 'ANUAL')` [name: 'ck_op_logistica_meta_painel_periodicidade']
+    `escopo_operacao in ('TODAS', 'ENTREGAS', 'COLETAS')` [name: 'ck_op_logistica_meta_painel_escopo']
+  }
+
+  Note: 'Configuração única e global do portal. Periodicidade e operação acompanhada são configuráveis. O período de referência selecionado determina os dados comparados; a edição é restrita a DIRETORIA/DEV global.'
+}
+
+Table op_logistica_meta_painel_evento {
+  id_evento bigint [pk, increment]
+  valor_anterior decimal(5,2)
+  valor_novo decimal(5,2) [not null]
+  periodicidade_anterior varchar(12)
+  periodicidade_nova varchar(12) [not null]
+  escopo_anterior varchar(12)
+  escopo_novo varchar(12) [not null]
+  id_usuario_ator bigint [not null]
+  ocorrido_em datetime [not null]
+
+  indexes {
+    (ocorrido_em) [name: 'ix_op_logistica_meta_painel_evento_data']
+    (id_usuario_ator, ocorrido_em) [name: 'ix_op_logistica_meta_painel_evento_ator_data']
+  }
+
+  checks {
+    `valor_anterior is null or (valor_anterior >= 0 and valor_anterior <= 100)` [name: 'ck_op_logistica_meta_painel_evento_anterior']
+    `valor_novo >= 0 and valor_novo <= 100` [name: 'ck_op_logistica_meta_painel_evento_novo']
+    `periodicidade_anterior is null or periodicidade_anterior in ('MENSAL', 'TRIMESTRAL', 'ANUAL')` [name: 'ck_op_logistica_meta_painel_evento_periodicidade_anterior']
+    `periodicidade_nova in ('MENSAL', 'TRIMESTRAL', 'ANUAL')` [name: 'ck_op_logistica_meta_painel_evento_periodicidade']
+    `escopo_anterior is null or escopo_anterior in ('TODAS', 'ENTREGAS', 'COLETAS')` [name: 'ck_op_logistica_meta_painel_evento_escopo_anterior']
+    `escopo_novo in ('TODAS', 'ENTREGAS', 'COLETAS')` [name: 'ck_op_logistica_meta_painel_evento_escopo']
+  }
+
+  Note: 'Histórico append-only de mudanças da meta; cada alteração registra percentual, periodicidade e operação anteriores/novos, usuário e horário.'
+}
+
+// ==========================================
 // RELACIONAMENTOS
 // ==========================================
 
@@ -636,4 +689,6 @@ Ref: op_logistica_frete.id_motorista_agregado > op_logistica_pessoa.id_pessoa
 Ref: op_logistica_frete.criado_por > op_logistica_usuario.id_usuario
 Ref: op_logistica_frete_evento.id_frete > op_logistica_frete.id_frete
 Ref: op_logistica_frete_evento.id_usuario_ator > op_logistica_usuario.id_usuario
+Ref: op_logistica_meta_painel.atualizado_por >? op_logistica_usuario.id_usuario
+Ref: op_logistica_meta_painel_evento.id_usuario_ator > op_logistica_usuario.id_usuario
 

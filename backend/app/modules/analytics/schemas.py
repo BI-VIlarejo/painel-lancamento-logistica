@@ -1,9 +1,12 @@
 """Contratos do painel gerencial, sem expor detalhes pessoais de feedback."""
 
-from datetime import date
+from __future__ import annotations
+
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DashboardSummary(BaseModel):
@@ -24,6 +27,10 @@ class TrendPoint(BaseModel):
     nao_realizadas: int
     taxa_realizacao: float | None
     otif_percentual: float | None
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
 
 
 class LocalityPerformance(BaseModel):
@@ -35,8 +42,20 @@ class LocalityPerformance(BaseModel):
     nao_realizadas: int
     taxa_realizacao: float | None
     otif_percentual: float | None
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
     elogios: int | None
     reclamacoes: int | None
+
+
+class ReasonTeamPerformance(BaseModel):
+    chave: str
+    equipe: str
+    quantidade: int
+    id_motorista: int | None = None
+    motorista: str | None = None
 
 
 class ReasonPerformance(BaseModel):
@@ -47,6 +66,7 @@ class ReasonPerformance(BaseModel):
     quantidade: int
     percentual_das_nao_realizadas: float | None
     incidencia_sobre_total: float | None
+    equipes: list[ReasonTeamPerformance] = Field(default_factory=list)
 
 
 class ReasonGroupPerformance(BaseModel):
@@ -55,6 +75,27 @@ class ReasonGroupPerformance(BaseModel):
     quantidade: int
     percentual_das_nao_realizadas: float | None
     incidencia_sobre_total: float | None
+
+
+class DeliveryDriverReason(BaseModel):
+    tipo_operacao: Literal["ENTREGA", "COLETA"]
+    id_motivo: int
+    motivo: str
+    grupo_motivo: str | None
+    quantidade: int
+
+
+class DeliveryDriverPerformance(BaseModel):
+    id_pessoa: int
+    nome: str
+    entregas_planejadas: int
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    coletas_planejadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
+    taxa_realizacao: float | None
+    motivos: list[DeliveryDriverReason] = Field(default_factory=list)
 
 
 class DeliveryTypePerformance(BaseModel):
@@ -72,6 +113,7 @@ class DeliveryTypePerformance(BaseModel):
     coletas_nao_realizadas: int
     taxa_realizacao: float | None
     otif_percentual: float | None
+    motoristas: list[DeliveryDriverPerformance] = Field(default_factory=list)
 
 
 class PersonReasonCount(BaseModel):
@@ -93,23 +135,44 @@ class PersonPerformance(BaseModel):
     nao_realizadas: int
     taxa_realizacao: float | None
     otif_percentual: float | None
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
     elogios: int | None
     reclamacoes: int | None
     score_atendimento: int
     motivos_da_equipe: list[PersonReasonCount]
 
 
+class TeamReasonPerformance(BaseModel):
+    tipo_operacao: Literal["ENTREGA", "COLETA"]
+    id_motivo: int
+    motivo: str
+    grupo_motivo: str | None
+    quantidade: int
+    percentual_das_nao_realizadas: float | None
+    incidencia_sobre_total: float | None
+
+
 class TeamPerformance(BaseModel):
     chave: str
     equipe: str
+    id_motorista: int | None = None
+    motorista: str | None = None
     itens_planejados: int
     realizadas: int
     nao_realizadas: int
     taxa_realizacao: float | None
     otif_percentual: float | None
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    coletas_realizadas: int
+    coletas_nao_realizadas: int
     lancamentos: int
     elogios: int | None
     reclamacoes: int | None
+    motivos: list[TeamReasonPerformance] = Field(default_factory=list)
 
 
 class FeedbackSummary(BaseModel):
@@ -132,3 +195,26 @@ class DashboardResponse(BaseModel):
     por_tipo_entrega: list[DeliveryTypePerformance]
     por_pessoa: list[PersonPerformance]
     por_equipe: list[TeamPerformance]
+
+
+class DashboardGoalResponse(BaseModel):
+    indicador: Literal["TAXA_REALIZACAO"] = "TAXA_REALIZACAO"
+    valor_percentual: float
+    periodicidade: Literal["MENSAL", "TRIMESTRAL", "ANUAL"]
+    escopo_operacao: Literal["TODAS", "ENTREGAS", "COLETAS"]
+    atualizado_em: datetime | None
+    atualizado_por: str | None
+    pode_editar: bool
+
+
+class DashboardGoalUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    valor_percentual: Decimal = Field(
+        ge=Decimal("0"),
+        le=Decimal("100"),
+        max_digits=5,
+        decimal_places=2,
+    )
+    periodicidade: Literal["MENSAL", "TRIMESTRAL", "ANUAL"]
+    escopo_operacao: Literal["TODAS", "ENTREGAS", "COLETAS"]

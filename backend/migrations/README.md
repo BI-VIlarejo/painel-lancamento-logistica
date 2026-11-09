@@ -21,6 +21,12 @@ com valor inicial zero, a FK e os checks correspondentes, além de permitir hod�
 transportadoras independentes. O vínculo usa o cadastro existente de pessoas/equipes, sem criar
 cadastro paralelo. As migrations devem ser revisadas contra o DBML e os modelos ORM.
 
+`e8d4b2a6c901` acrescenta a configuração única da aba Meta do Painel Gerencial e sua trilha de
+alterações. A configuração inicial é 95%, mensal e considera entregas e coletas; percentual,
+periodicidade e operação ficam auditados a cada alteração. Essa migration está no repositório
+VilarejoBI, que controla a cadeia `logistica`; aplique-a em staging antes de publicar o código do
+Portal que lê e grava a meta. Ela não altera lançamentos operacionais existentes.
+
 `d7c9a4f2b610` adiciona `quantidade_entregas_no_prazo` e
 `quantidade_entregas_completas`, ambas nullable. Essas colunas permanecem por compatibilidade com
 revisões existentes, mas o produto deixou de coletá-las e o cálculo atual do OTIF não as utiliza.

@@ -10,6 +10,7 @@ from app.modules.access_control import models as access_control_models  # noqa: 
 from app.modules.auth import models as auth_models  # noqa: F401
 from app.modules.catalogs import models as catalog_models  # noqa: F401
 from app.modules.deliveries import models as delivery_models  # noqa: F401
+from app.modules.analytics import models as analytics_models  # noqa: F401
 from app.modules.feedback import models as feedback_models  # noqa: F401
 # Importar o módulo registra suas tabelas no metadata usado pelo ORM local.
 from app.modules.fretes import models as freight_models  # noqa: F401

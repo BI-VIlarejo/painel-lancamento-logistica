@@ -7,12 +7,13 @@ import { cx } from "../../../shared/styles/classNames";
 type PaginatedTableProps<T> = {
   items: T[];
   label: string;
+  tableClassName?: string;
   children: (pageItems: T[], startIndex: number) => ReactNode;
 };
 
 const pageSizeOptions = [10, 25, 50];
 
-export function PaginatedTable<T>({ items, label, children }: PaginatedTableProps<T>) {
+export function PaginatedTable<T>({ items, label, tableClassName, children }: PaginatedTableProps<T>) {
   const [pageSize, setPageSize] = useState(10);
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
@@ -25,7 +26,7 @@ export function PaginatedTable<T>({ items, label, children }: PaginatedTableProp
   }, [items.length, pageSize]);
 
   return <>
-    <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label={`${label} — tabela`} tabIndex={0}>
+    <div className={cx(styles, commonStyles, "data-table-scroll", tableClassName)} role="region" aria-label={`${label} — tabela`} tabIndex={0}>
       {children(items.slice(startIndex, endIndex), startIndex)}
     </div>
     <div className={cx(styles, commonStyles, "table-pagination")} role="group" aria-label={`Paginação de ${label}`}>

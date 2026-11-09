@@ -5,11 +5,11 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from app.api.v1.dependencies import DatabaseSession, RequestId, require_permission
+from app.api.v1.dependencies import CsrfProtectedAuth, DatabaseSession, RequestId, require_permission
 from app.modules.access_control.catalog import PermissionCode
 from app.modules.access_control.service import AuthorizationContext
 from app.modules.analytics import service
-from app.modules.analytics.schemas import DashboardResponse
+from app.modules.analytics.schemas import DashboardGoalResponse, DashboardGoalUpdate, DashboardResponse
 
 router = APIRouter(prefix="/analytics", tags=["Indicadores"])
 _dashboard_access = require_permission(PermissionCode.DASHBOARD_ACCESS)
@@ -36,4 +36,33 @@ def get_dashboard(
         id_localidade=id_localidade,
         tipo_transporte_entrega=tipo_transporte_entrega,
         request_id=request_id,
+    )
+
+
+@router.get("/goal", response_model=DashboardGoalResponse)
+def get_goal(
+    db: DatabaseSession,
+    response: Response,
+    access: AuthorizationContext = Depends(_dashboard_access),
+) -> DashboardGoalResponse:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return service.get_dashboard_goal(db, access=access)
+
+
+@router.put("/goal", response_model=DashboardGoalResponse)
+def update_goal(
+    payload: DashboardGoalUpdate,
+    db: DatabaseSession,
+    auth: CsrfProtectedAuth,
+    response: Response,
+    access: AuthorizationContext = Depends(_dashboard_access),
+) -> DashboardGoalResponse:
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return service.update_dashboard_goal(
+        db,
+        access=access,
+        id_usuario_ator=auth.user.id_usuario,
+        payload=payload,
     )

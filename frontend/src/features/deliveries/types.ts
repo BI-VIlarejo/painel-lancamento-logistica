@@ -20,6 +20,8 @@ export type PersonCatalogItem = {
   nome_exibicao: string;
   tipo_funcao: string;
   tipo_transporte_entrega: DeliveryTransportType | null;
+  modalidade_terceirizada?: "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null;
+  codigo_transportadora_independente?: "PAULO_CRUZ" | "JUST_IN_TIME" | null;
 };
 export type NonDeliveryReasonCatalogItem = {
   id_motivo_nao_entrega: number;

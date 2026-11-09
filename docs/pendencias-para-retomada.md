@@ -1,7 +1,102 @@
 # Pendências para retomada — Portal de Logística
 
-**Atualizado:** 30/10/2026
+**Atualizado:** 06/11/2026
 **Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
+
+## Revisão do diretor — Painel e navegação — 06/11/2026
+
+### Painel gerencial
+
+- [ ] Criar uma aba **Meta** no Painel Gerencial e permitir que Vyctor, Diretor de Logística, altere a meta.
+- [ ] Definir antes da implementação qual indicador a meta representa, seu período e nível de aplicação (geral ou por loja/equipe), além de quem pode editar e como registrar alterações. O cálculo atual do OTIF permanece inalterado até uma decisão específica.
+- [ ] Na **Performance por loja**, permitir ordenar por nome da loja (A–Z) e por percentual de entregas concluídas, do maior para o menor (por exemplo, 90% antes de 87%). Definir se serão opções selecionáveis ou uma ordenação padrão com critério de desempate.
+- [ ] Tornar interativos todos os gráficos do Painel Gerencial: clicar no nome, barra, segmento ou ponto abre uma visualização de detalhes semelhante à usada no histórico, referente à categoria ou entidade selecionada e preservando período e filtros atuais. Os detalhes devem explicar os valores e percentuais com as quantidades e fatores relacionados; para lojas, incluir o que está funcionando, resultados ruins e motivos de não conclusão. Definir o conjunto exato de indicadores e a apresentação durante a revisão visual.
+
+### Históricos e detalhamento gerencial
+
+- [ ] Simplificar a lista do **Histórico de Entregas**: mostrar os números e manter como campos textuais somente data, loja/localidade, equipe e tipo de transporte. Retirar motivos e observações da linha principal; preservar a área de detalhes gerais que já aparece ao final.
+- [ ] Tornar cada quantidade de entrega/coleta realizada ou não realizada um controle clicável independente. Exemplo: em `18/9`, clicar em 18 abre somente o detalhe das entregas realizadas daquele lançamento; clicar em 9 abre somente o detalhe das entregas não realizadas, com os motivos e observações correspondentes. Aplicar a mesma separação para coletas.
+- [ ] Aplicar o mesmo padrão de detalhamento específico aos números do Histórico de Fretes e aos demais históricos e indicadores gerenciais: clicar em um número abre os dados que compõem aquele indicador, no contexto selecionado, sem substituir o detalhe geral existente.
+- [ ] No gráfico de **Não realizadas por motivos**, clicar no motivo deve mostrar suas ocorrências e a distribuição por equipe/pessoas associadas, permitindo identificar onde aquele motivo se concentra. Exibir separadamente entrega e coleta, com quantidade, **% das não realizadas da operação** e **% do total da operação**.
+
+**Dúvidas para fechar com o diretor antes de implementar:**
+
+- Confirmar os denominadores dos dois percentuais por motivo. A proposta registrada é: ocorrências do motivo ÷ todas as não realizadas da mesma operação; e ocorrências do motivo ÷ total registrado da mesma operação (realizadas + não realizadas). Confirmar se os dois percentuais serão exibidos para entregas e coletas.
+- Definir o significado de “quem” no detalhamento: equipe, motorista, ajudantes ou pessoa individual. Os lançamentos atuais são coletivos por equipe e não atribuem cada ocorrência a um participante específico; não apresentar uma pessoa como responsável individual sem dado que sustente essa atribuição.
+- Confirmar se, para quantidades realizadas, o detalhe agregado disponível é suficiente. O registro atual armazena totais por lançamento/equipe; uma lista individual de entregas realizadas pode depender de outra fonte de dados.
+- Confirmar quais campos não numéricos permanecem na linha principal do Histórico de Entregas além de data, loja/localidade, equipe e tipo de transporte — especialmente situação, autor e controles de ação. Botões necessários para abrir, editar ou cancelar continuam sendo ações da interface.
+- Definir o formato da visualização específica (painel, aba ou outra apresentação) e quais números do Histórico de Fretes terão detalhamento próprio. Não reintroduzir o código do frete nem a memória tarifária completa que já foram removidos dos detalhes gerais.
+- Definir como agir quando um número ou gráfico não tiver dados subjacentes suficientes para um detalhamento individual; não inventar registros nem atribuir causas não armazenadas.
+
+### Correção no lançamento de Fretes
+
+- [ ] Ao selecionar um agregado, preencher a quantidade de entregas somente com a soma das **entregas realizadas** na última revisão confirmada das Entregas daquele motorista/data. Excluir entregas não realizadas e coletas. Foi observado que o formulário atual inclui as não realizadas; corrigir e validar esse comportamento.
+
+### Cadastro de motoristas terceirizados e seleção em Fretes
+
+- [ ] No cadastro de motorista, quando o tipo de entrega for **Terceirizada**, acrescentar um seletor obrigatório de modalidade: **Agregado** ou **Transportadora independente**.
+- [ ] Se a modalidade for **Transportadora independente**, exibir outro seletor obrigatório com **Paulo Cruz** e **Just In Time**.
+- [ ] No lançamento de Fretes, listar no seletor de agregados somente motoristas classificados como **Terceirizada > Agregado**. Um motorista vinculado a uma transportadora independente não deve aparecer como agregado duplicado; para essa modalidade, selecionar a transportadora.
+- [ ] Classificar os cadastros terceirizados existentes antes de depender desse filtro.
+
+**Dúvidas para fechar:** quem classificará os cadastros existentes; se cada motorista pode ser vinculado a uma única transportadora ou se pode mudar/vincular-se a mais de uma; se os campos devem ser limpos ao trocar o tipo base para **Própria**; e se a classificação adicional deve afetar apenas Fretes ou também separar indicadores de Entregas que hoje agrupam todos como **Terceirizada**. Confirmar também que lançamentos de transportadora independente continuam selecionando a empresa sem exigir escolher um motorista individual.
+
+### Navegação do Portal
+
+- [ ] Substituir a navegação lateral por uma navegação hierárquica expansível inspirada no padrão de disclosure do [exemplo WAI-ARIA APG do W3C](https://www.w3.org/WAI/ARIA/apg/patterns/disclosure/examples/disclosure-navigation/#exampleusageoptions).
+- [ ] Aplicar a estrutura a todas as pastas existentes: clicar em uma pasta de primeiro nível, como **Suporte**, abre uma lista vertical de páginas e subpastas; clicar na seta de uma subpasta abre, ao lado, outra lista vertical com seus itens. Repetir o comportamento em todos os níveis.
+- [ ] Preservar a navegação por teclado e a indicação acessível de expandido/recolhido. Aguardar os prints prometidos para fechar detalhes visuais e de interação que ainda não foram especificados.
+
+Requisitos detalhados da navegação: [requisito de navegação hierárquica](./requisito-navegacao-sidebar-por-setor.md).
+
+## Fretes — próximos passos para amanhã (05/11/2026)
+
+- [x] Código do Portal enviado para `staging` até `23582fc`; migrations `f8a2d6c1e407` e `c7e3a91b5d42` enviadas em `VilarejoBI/logistica` (`416eecf`).
+- [ ] Confirmar CI verde após `23582fc` e Preview do frontend pronto no Vercel.
+- [ ] Confirmar snapshot recente do RDS e revisão Alembic de staging; aplicar a cadeia pendente `d4e7c9b2a610` → `f8a2d6c1e407` → `c7e3a91b5d42`.
+- [ ] Depois da migration, executar **Deploy Portal API to Staging**, conferir permissões/setor Transporte e validar o fluxo completo no portal.
+- [ ] Não publicar em produção antes do aceite do staging. A tela de administração de tarifas permanece pendente.
+
+Passo a passo, estado dos repositórios e observações: [pendências do módulo de Fretes](./pendencias-modulo-fretes.md).
+
+## Estado confirmado — 03/11/2026
+
+- [x] Exigência de `codigo_cliente` coberta para novas entregas e coletas, incluindo confirmação de correção sem alteração retroativa dos registros antigos; a API preserva o histórico anterior.
+- [x] Migration aditiva criada separadamente em `VilarejoBI/alembic/versions/logistica/d4e7c9b2a610_add_delivery_customer_code.py`. A coluna é nullable para preservar ocorrências antigas e o downgrade recusa apagar códigos existentes.
+- [x] Encadeamento revisado: staging está em `b17d4e82c906`; primeiro entra `d4e7c9b2a610` e em seguida `f8a2d6c1e407` para Fretes. No staging ainda não há a coluna nem as tabelas de Fretes.
+- [x] Migration testada, do zero e em repetição, em um MySQL 8 temporário; também passou o teste de preservação dos códigos legados em SQLite.
+- [x] Backend: testes unitários e HTTP incluem a obrigatoriedade do código, histórico antigo, CSRF, idempotência e filtros/permissões de Fretes.
+- [x] Frontend: build aprovado; sete páginas conferidas em 1440 px e 390 px; o fluxo de demonstração calculou R$ 496,00 bruto, R$ 16,00 de avaria e R$ 480,00 líquido.
+- [ ] Antes de aplicar as migrations em staging, verificar ou tirar um snapshot atualizado do RDS. A tentativa de consultar o inventário foi negada ao perfil IAM da instância (`rds:DescribeDBInstances`); alguém com acesso RDS precisa confirmar o snapshot.
+- [ ] Executar CI para estes commits, atualizar os dados/permissões de Transporte no staging e publicar a API somente depois de confirmar a migration.
+- [ ] A gerente Mônica e o diretor Vyctor ainda precisam validar visualmente o portal, as lojas/escopos e a densidade das telas.
+- [ ] A separação dos dados do painel segue aguardando instrução do usuário; não alterar os agrupamentos até receber o detalhamento.
+
+Esta atualização substitui o roteiro histórico de 31/10. As informações de 30/10 permanecem abaixo como registro do trabalho daquela data.
+
+## Resumo do trabalho de hoje — 30/10/2026
+
+### Painel gerencial
+
+- [x] Removidas as tabelas que repetiam, abaixo dos gráficos, os mesmos dados já apresentados nos gráficos. Commit: `25bfede` (`ux: remover tabelas redundantes do painel`).
+- [x] Removido o componente `PerformanceRate` que não era mais usado e causava o erro TypeScript `TS6133` no build. Commit: `d35ac10` (`fix: remover componente não usado do painel`).
+
+### Código do cliente nas não realizações
+
+- [x] Incluído no formulário um campo obrigatório de código do cliente para cada ocorrência não realizada, tanto em entrega quanto em coleta.
+- [x] Vinculado o código à ocorrência individual junto do motivo e da observação; a API valida create/update e impede confirmar uma correção antiga enquanto houver ocorrências sem código.
+- [x] Incluído o campo no modelo ORM e na resposta da API, com exibição no detalhe do histórico e na exportação CSV.
+- [x] Atualizado o importador/modelo CSV com `codigos_clientes` e `codigos_clientes_coleta`, alinhados por ordem às ocorrências dos motivos.
+- [ ] As alterações do código do cliente ainda não foram commitadas. Arquivos alterados: `backend/app/modules/deliveries/models.py`, `schemas.py` e `service.py`; `frontend/src/features/deliveries/types.ts`, `demoApi.ts`, `components/DeliveryForm.tsx`, `components/DeliveryForm.module.css`, `components/DeliveryCsvImportDialog.tsx` e `pages/DeliveryHistoryPage.tsx`.
+- [x] Migration aditiva `d4e7c9b2a610` criada e testada em MySQL temporário; staging continua em `b17d4e82c906`, sem essa coluna.
+- [x] Build e testes locais executados; ver o estado confirmado de 03/11 acima.
+
+## Próximos passos de amanhã — 31/10/2026
+
+1. Conferir/criar snapshot recente e publicar as migrations na sequência `d4e7c9b2a610` → `f8a2d6c1e407`.
+2. Confirmar o CI dos commits, preparar permissões/dados operacionais e implantar a API atualizada em staging.
+3. Revisar Entregas e Fretes com a API real; fazer aceite visual com Mônica e Vyctor.
+4. Receber o detalhamento do painel antes de implementar as separações pendentes.
 
 ## Feedback da gerente Mônica e do diretor Vyctor — 30/10/2026
 
@@ -27,7 +122,9 @@ O trabalho de Fretes foi pausado para priorizar estes pontos. Implementação in
 
 ### Lançamento de entregas
 
-- [x] Conferir o formulário atual: não existe subaba nem campo para digitar código de cliente no lançamento de entregas. Nenhum campo foi removido; a tela de Reclamações e Elogios mantém o campo próprio de nome do cliente.
+- [x] Exigir um código do cliente em cada ocorrência não realizada, tanto em entrega quanto em coleta. O código fica associado ao motivo e à observação daquela ocorrência, aparece no histórico e é incluído na exportação CSV.
+- [x] Atualizar o importador CSV para receber um código por ocorrência nas colunas `codigos_clientes` e `codigos_clientes_coleta`.
+- [ ] Aplicar a migration aditiva que cria `codigo_cliente` em `op_logistica_entrega_motivo`; registros antigos permanecem nulos e correções desses registros exigem preencher os códigos antes de confirmar.
 
 ### Histórico de entregas
 
