@@ -253,9 +253,11 @@ def _prepare_freight_payload(
         raise ConflictError(
             "Não há entregas confirmadas para esse motorista na data selecionada."
         )
-    if require_delivery_data and (weight is None or weight <= 0):
+    delivery_weight_available = weight is not None and weight > 0
+    effective_weight = weight if delivery_weight_available else payload.peso_kg
+    if require_delivery_data and effective_weight <= 0:
         raise ConflictError(
-            "Há Entregas confirmadas sem peso total registrado; corrija os lançamentos antes de lançar o frete."
+            "O peso total não foi informado nas Entregas; informe um peso maior que zero no lançamento do frete."
         )
     prepared = payload.model_copy(
         update={
@@ -263,7 +265,7 @@ def _prepare_freight_payload(
             "rota_cidade": route or payload.rota_cidade,
             "quantidade_entregas": deliveries,
             "quantidade_avarias": damages,
-            "peso_kg": weight if weight is not None else payload.peso_kg,
+            "peso_kg": effective_weight,
         }
     )
     source_detail: dict[str, object] = {
@@ -275,6 +277,8 @@ def _prepare_freight_payload(
         "quantidade_avarias_origem": damages,
         "quantidade_registros_entrega": delivery_rows,
         "peso_total_kg_origem": str(weight) if weight is not None else None,
+        "peso_total_kg_usado": str(effective_weight),
+        "peso_informado_manualmente": not delivery_weight_available,
     }
     return prepared, source_detail
 

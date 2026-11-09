@@ -95,14 +95,42 @@ class FreightServiceTests(TestCase):
         self.assertEqual(result.status_calculo, "CALCULADO")
         self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 0)
 
-    def test_aggregate_freight_requires_complete_delivery_weights(self):
+    def test_aggregate_freight_uses_manual_weight_when_delivery_weight_is_missing(self):
         with patch(
             "app.modules.fretes.repository.get_driver_delivery_summary",
             return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1, None),
-        ), self.assertRaisesRegex(ConflictError, "peso total registrado"):
-            service.quote_freight(
-                self.db, payload=payload(), access=access(scope="SETOR", sector_id=10)
+        ):
+            manual_quote = service.quote_freight(
+                self.db,
+                payload=payload(peso_kg="1500"),
+                access=access(scope="SETOR", sector_id=10),
             )
+            self.assertEqual(manual_quote.status_calculo, "CALCULADO")
+            origin = manual_quote.detalhe_calculo["origem_entregas"]
+            self.assertEqual(origin["peso_total_kg_origem"], None)
+            self.assertEqual(origin["peso_total_kg_usado"], "1500")
+            self.assertTrue(origin["peso_informado_manualmente"])
+
+            with self.assertRaisesRegex(ConflictError, "informe um peso maior que zero"):
+                service.quote_freight(
+                    self.db,
+                    payload=payload(peso_kg="0"),
+                    access=access(scope="SETOR", sector_id=10),
+                )
+
+    def test_aggregate_freight_prefers_delivery_weight_when_available(self):
+        with patch(
+            "app.modules.fretes.repository.get_driver_delivery_summary",
+            return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1, Decimal("1000")),
+        ):
+            quote = service.quote_freight(
+                self.db,
+                payload=payload(peso_kg="1500"),
+                access=access(scope="SETOR", sector_id=10),
+            )
+        origin = quote.detalhe_calculo["origem_entregas"]
+        self.assertEqual(origin["peso_total_kg_usado"], "1000")
+        self.assertFalse(origin["peso_informado_manualmente"])
 
     def test_carrier_driver_options_include_one_named_driver_per_company(self):
         options = service.get_carrier_drivers(

@@ -322,14 +322,16 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
     && deliverySummary.id_motorista === Number(values.id_motorista_agregado)
     && deliverySummary.data_servico === values.data_servico;
   const aggregateWeight = aggregateSummaryMatches ? numericValue(deliverySummary.peso_total_kg) : null;
+  const deliveryWeightAvailable = aggregateSummaryMatches && aggregateWeight !== null && aggregateWeight > 0;
+  const manuallyEnteredWeight = numericValue(values.peso_kg);
+  const manuallyEnteredWeightAvailable = manuallyEnteredWeight !== null && manuallyEnteredWeight > 0;
   const aggregateSummaryReady = values.tipo_transporte !== "AGREGADO"
     || (aggregateSummaryMatches
       && deliverySummary.quantidade_registros > 0
-      && aggregateWeight !== null
-      && aggregateWeight > 0);
+      && (deliveryWeightAvailable || manuallyEnteredWeightAvailable));
   const aggregateSummaryProblem = summaryError
     || (deliverySummary && deliverySummary.quantidade_registros > 0
-      ? "Corrija o peso total das Entregas confirmadas para continuar."
+      ? "Informe um peso total maior que zero para continuar."
       : "Selecione um motorista com Entregas confirmadas nesta data.");
   const selectedCarrierDriverExists = carrierDrivers.some(
     (driver) => String(driver.id_motorista) === values.id_motorista_transportadora
@@ -514,8 +516,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               {summaryError && <small role="alert">{summaryError}</small>}
               {deliverySummary && deliverySummary.cidades.length > 1 && <small>Cidades consideradas: {deliverySummary.cidades.join(", ")}</small>}
               {deliverySummary?.quantidade_registros === 0 && <small>Nenhuma Entrega confirmada para esse motorista nesta data.</small>}
-              {deliverySummary && deliverySummary.peso_total_kg === null && <small role="alert">Há Entregas confirmadas sem peso registrado. Corrija os lançamentos de Entregas para continuar.</small>}
-              {deliverySummary && aggregateWeight === 0 && <small role="alert">O peso total das Entregas confirmadas precisa ser maior que zero.</small>}
+              {deliverySummary && deliverySummary.quantidade_registros > 0 && !deliveryWeightAvailable && <small>O peso não está registrado nas Entregas; informe-o manualmente no campo abaixo.</small>}
               <small>Preenchido pelo lançamento de Entregas; não pode ser editado aqui.</small>
             </div>
           ) : values.codigo_fonte_tarifa === "JUST_IN_TIME" ? (
@@ -615,8 +616,8 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             {values.tipo_transporte === "AGREGADO" && <small>Soma das entregas realizadas e não realizadas nas Entregas confirmadas.</small>}
           </label>
           <label className={cx(styles, "field")} htmlFor={weightId}>Peso total (kg)
-            <input id={weightId} inputMode="decimal" type="text" value={values.peso_kg} onChange={(event) => update("peso_kg", event.target.value)} required readOnly={values.tipo_transporte === "AGREGADO"} disabled={busy || (values.tipo_transporte === "AGREGADO" && !aggregateSummaryReady)} />
-            {values.tipo_transporte === "AGREGADO" && <small>Soma automática do peso das Entregas confirmadas do motorista na data.</small>}
+            <input id={weightId} inputMode="decimal" type="text" value={values.peso_kg} onChange={(event) => update("peso_kg", event.target.value)} required readOnly={values.tipo_transporte === "AGREGADO" && deliveryWeightAvailable} disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
+            {values.tipo_transporte === "AGREGADO" && <small>{deliveryWeightAvailable ? "Preenchido automaticamente pelas Entregas confirmadas." : "Sem peso nas Entregas? Informe o total manualmente."}</small>}
           </label>
           <label className={cx(styles, "field")} htmlFor={invoiceId}>
             <span className={cx(styles, "field-label-row")}><span>Valor da nota</span>{values.codigo_fonte_tarifa === "AGREGADOS_CD" ? <span className={cx(styles, "required-label")}>Obrigatório</span> : <span className={cx(styles, "optional-label")}>Opcional</span>}</span>
