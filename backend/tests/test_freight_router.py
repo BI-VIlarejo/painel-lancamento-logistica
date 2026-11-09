@@ -78,6 +78,29 @@ class FreightRouterTests(TestCase):
         again = self.client.post("/freights", json=body, headers=self.headers)
         self.assertEqual(again.json()["codigo_frete"], created.json()["codigo_frete"])
 
+    def test_carrier_driver_options_include_driver_and_company_together(self):
+        response = self.client.get(
+            "/freights/carrier-drivers", params={"data_servico": "2026-11-03"}
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            response.json(),
+            [
+                {
+                    "id_motorista": 3,
+                    "nome_motorista": "Motorista Just In Time Teste",
+                    "codigo_transportadora": "JUST_IN_TIME",
+                    "nome_transportadora": "JUST IN TIME",
+                },
+                {
+                    "id_motorista": 2,
+                    "nome_motorista": "Motorista Paulo Cruz Teste",
+                    "codigo_transportadora": "PAULO_CRUZ",
+                    "nome_transportadora": "Paulo Cruz",
+                },
+            ],
+        )
+
     def test_create_requires_csrf_and_trusted_origin(self):
         for changes in ({"X-CSRF-Token": "invalid"}, {"Origin": "https://untrusted.invalid"}):
             with self.subTest(changes=changes):
@@ -105,6 +128,7 @@ class FreightRouterTests(TestCase):
         cases = [
             ("GET", "/freights", "FRETES:VER"),
             ("GET", "/freights/tariff-options", "FRETES:CRIAR"),
+            ("GET", "/freights/carrier-drivers", "FRETES:CRIAR"),
             ("POST", "/freights/quote", "FRETES:CRIAR"),
             ("POST", "/freights", "FRETES:CRIAR"),
             ("GET", "/freights/payments/report", "AGREGADOS:VER"),
@@ -113,11 +137,16 @@ class FreightRouterTests(TestCase):
         for method, path, permission in cases:
             with self.subTest(path=path):
                 self.allowed.remove(permission)
+                params = (
+                    {"data_servico": "2026-11-03"}
+                    if path == "/freights/carrier-drivers"
+                    else {"data_de": "2026-11-01", "data_ate": "2026-11-30"}
+                )
                 response = self.client.request(
                     method,
                     path,
                     headers=self.headers,
-                    params={"data_de": "2026-11-01", "data_ate": "2026-11-30"},
+                    params=params,
                     json=payload().model_dump(mode="json") if method == "POST" else None,
                 )
                 self.assertEqual(response.status_code, 403, response.text)

@@ -44,8 +44,8 @@ Registro das solicitações da revisão com a Diretoria. A navegação, os detal
 - [x] Ao selecionar um agregado, preencher a quantidade usando somente entregas realizadas da revisão confirmada do motorista/data; excluir não realizadas e coletas.
 - [x] No cadastro de motorista **Terceirizada**, acrescentar a modalidade **Agregado** ou **Transportadora independente**.
 - [x] Para transportadora independente, exigir seleção de **Paulo Cruz** ou **Just In Time**.
-- [x] No lançamento de Fretes, listar como agregados somente motoristas classificados como **Terceirizada > Agregado**; selecionar a empresa para transportadoras independentes, sem duplicar seus motoristas como agregados.
-- [x] Ao selecionar a empresa transportadora, listar seus motoristas ativos e vigentes; salvar o motorista no frete e manter a empresa como responsável financeiro.
+- [x] No lançamento de Fretes, listar como agregados somente motoristas classificados como **Terceirizada > Agregado**; mostrar cada motorista independente junto à sua transportadora em um único seletor.
+- [x] Selecionar diretamente o motorista ativo e vigente da transportadora; derivar a empresa e a tarifa dessa escolha, salvar o motorista no frete e manter a empresa como responsável financeiro.
 - [ ] Classificar os motoristas terceirizados já cadastrados.
 
 ## Decisões em aberto para a revisão

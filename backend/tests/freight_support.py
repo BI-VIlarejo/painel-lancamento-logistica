@@ -32,6 +32,10 @@ def payload(**changes) -> FreightInput:
         values["id_motorista_agregado"] = (
             1 if values["tipo_transporte"] == "AGREGADO" else None
         )
+    if "id_motorista_transportadora" not in changes:
+        values["id_motorista_transportadora"] = (
+            2 if values["tipo_transporte"] == "TRANSPORTADORA" else None
+        )
     return FreightInput.model_validate(values)
 
 
@@ -103,6 +107,46 @@ def database():
             nome_exibicao="Motorista Agregado Teste",
             tipo_funcao="MOTORISTA",
             tipo_transporte_entrega="TERCEIRIZADA",
+            modalidade_terceirizada="AGREGADO",
+            codigo_transportadora_independente=None,
+            ativo=True,
+            vigente_desde=date(2026, 1, 1),
+            vigente_ate=None,
+            criado_por=1,
+            criado_em=now,
+            atualizado_em=now,
+        )
+    )
+    db.add(
+        Pessoa(
+            id_pessoa=2,
+            codigo_pessoa="00000000-0000-0000-0000-000000000002",
+            sistema_origem=None,
+            codigo_pessoa_origem=None,
+            nome_exibicao="Motorista Paulo Cruz Teste",
+            tipo_funcao="MOTORISTA",
+            tipo_transporte_entrega="TERCEIRIZADA",
+            modalidade_terceirizada="TRANSPORTADORA_INDEPENDENTE",
+            codigo_transportadora_independente="PAULO_CRUZ",
+            ativo=True,
+            vigente_desde=date(2026, 1, 1),
+            vigente_ate=None,
+            criado_por=1,
+            criado_em=now,
+            atualizado_em=now,
+        )
+    )
+    db.add(
+        Pessoa(
+            id_pessoa=3,
+            codigo_pessoa="00000000-0000-0000-0000-000000000003",
+            sistema_origem=None,
+            codigo_pessoa_origem=None,
+            nome_exibicao="Motorista Just In Time Teste",
+            tipo_funcao="MOTORISTA",
+            tipo_transporte_entrega="TERCEIRIZADA",
+            modalidade_terceirizada="TRANSPORTADORA_INDEPENDENTE",
+            codigo_transportadora_independente="JUST_IN_TIME",
             ativo=True,
             vigente_desde=date(2026, 1, 1),
             vigente_ate=None,

@@ -34,6 +34,14 @@ export type FreightAggregateDriverOption = {
   nome_motorista: string;
 };
 
+/** Motorista e transportadora independente escolhidos como uma única opção. */
+export type FreightCarrierDriverOption = {
+  id_motorista: number;
+  nome_motorista: string;
+  codigo_transportadora: FreightCarrierSource;
+  nome_transportadora: string;
+};
+
 export type FreightDeliverySummary = {
   id_motorista: number;
   data_servico: string;

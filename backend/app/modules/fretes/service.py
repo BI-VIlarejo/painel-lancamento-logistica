@@ -31,6 +31,7 @@ from .calculator import FreightCalculation, calculate_freight
 from .models import Frete, FreteEvento
 from .schemas import (
     FreightAggregateDriverOption,
+    FreightCarrierDriverOption,
     FreightDeliverySummary,
     FreightInput,
     FreightPage,
@@ -353,23 +354,29 @@ def get_carrier_drivers(
     db: Session,
     *,
     data_servico: date,
-    codigo_transportadora: str,
     access: AuthorizationContext,
-) -> list[FreightAggregateDriverOption]:
-    """Lista os motoristas da transportadora independente selecionada."""
+) -> list[FreightCarrierDriverOption]:
+    """Lista motoristas e empresas disponíveis para o lançamento."""
     try:
         _transport_access(db, access)
-        return [
-            FreightAggregateDriverOption(
-                id_motorista=driver.id_pessoa,
-                nome_motorista=driver.nome_exibicao,
+        options: list[FreightCarrierDriverOption] = []
+        for driver in repository.list_carrier_drivers(db, data_servico=data_servico):
+            code = driver.codigo_transportadora_independente
+            if code == "JUST_IN_TIME":
+                carrier_name = "JUST IN TIME"
+            elif code == "PAULO_CRUZ":
+                carrier_name = "Paulo Cruz"
+            else:
+                continue
+            options.append(
+                FreightCarrierDriverOption(
+                    id_motorista=driver.id_pessoa,
+                    nome_motorista=driver.nome_exibicao,
+                    codigo_transportadora=code,
+                    nome_transportadora=carrier_name,
+                )
             )
-            for driver in repository.list_carrier_drivers(
-                db,
-                data_servico=data_servico,
-                codigo_transportadora=codigo_transportadora,
-            )
-        ]
+        return options
     except PermissionDeniedError, NotFoundError:
         raise
     except SQLAlchemyError as exc:

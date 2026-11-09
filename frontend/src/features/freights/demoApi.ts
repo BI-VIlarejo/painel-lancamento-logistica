@@ -1,7 +1,7 @@
 import type {
   FreightHistoryFilters,
   FreightAggregateDriverOption,
-  FreightCarrierSource,
+  FreightCarrierDriverOption,
   FreightDeliverySummary,
   FreightInput,
   FreightPage,
@@ -17,21 +17,24 @@ import type { PaymentRequestWorkbookRow } from "./paymentRequestWorkbook";
 
 const FREIGHTS_KEY = "lancamento-logistica:demo-freights";
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 120));
-const carrierDriverExamples: Record<FreightCarrierSource, FreightAggregateDriverOption[]> = {
-  JUST_IN_TIME: [
-    { id_motorista: 601, nome_motorista: "Motorista Just In Time 1" },
-    { id_motorista: 602, nome_motorista: "Motorista Just In Time 2" },
-  ],
-  PAULO_CRUZ: [
-    { id_motorista: 701, nome_motorista: "Motorista Paulo Cruz 1" },
-    { id_motorista: 702, nome_motorista: "Motorista Paulo Cruz 2" },
-  ],
-};
+const carrierDriverExamples: FreightCarrierDriverOption[] = [
+  {
+    id_motorista: 601,
+    nome_motorista: "Motorista Just In Time",
+    codigo_transportadora: "JUST_IN_TIME",
+    nome_transportadora: "JUST IN TIME",
+  },
+  {
+    id_motorista: 701,
+    nome_motorista: "Motorista Paulo Cruz",
+    codigo_transportadora: "PAULO_CRUZ",
+    nome_transportadora: "Paulo Cruz",
+  },
+];
 
 function carrierDriverName(id: number | null): string | null {
   if (id === null) return null;
-  return Object.values(carrierDriverExamples)
-    .flat()
+  return carrierDriverExamples
     .find((driver) => driver.id_motorista === id)?.nome_motorista ?? null;
 }
 
@@ -523,12 +526,9 @@ export const freightsDemoApi = {
     return [{ id_motorista: 501, nome_motorista: "João da Silva" }];
   },
 
-  async carrierDrivers(
-    _dataServico: string,
-    codigoTransportadora: FreightCarrierSource,
-  ): Promise<FreightAggregateDriverOption[]> {
+  async carrierDrivers(_dataServico: string): Promise<FreightCarrierDriverOption[]> {
     await pause();
-    return carrierDriverExamples[codigoTransportadora];
+    return carrierDriverExamples;
   },
 
   async deliverySummary(

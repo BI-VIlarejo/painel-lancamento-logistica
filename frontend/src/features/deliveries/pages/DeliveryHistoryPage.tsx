@@ -33,6 +33,10 @@ function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
 }
 
+function operationName(item: DeliveryItemResponse): string {
+  return item.tipo_operacao === "COLETA" ? "Coleta" : "Entrega";
+}
+
 function otifValue(item: DeliveryItemResponse): number | null {
   const legacyCollection = item.tipo_operacao === "COLETA";
   const deliveryCompleted = legacyCollection ? 0 : item.quantidade_realizada;

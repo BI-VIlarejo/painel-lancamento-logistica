@@ -14,6 +14,7 @@ type FreightInputTransportType = Literal["AGREGADO", "TRANSPORTADORA"]
 type TransportType = Literal["PROPRIO", "AGREGADO", "TRANSPORTADORA"]
 type PaymentTransportType = Literal["AGREGADO", "TRANSPORTADORA"]
 type TariffSource = Literal["AGREGADOS_CD", "JUST_IN_TIME", "PAULO_CRUZ"]
+type CarrierSource = Literal["JUST_IN_TIME", "PAULO_CRUZ"]
 type TruckType = Literal["SAVEIRO", "KIA_BONGO", "CAMINHAO_3_4", "CAMINHAO_TOCO"] | None
 
 
@@ -241,6 +242,15 @@ class FreightAggregateDriverOption(BaseModel):
 
     id_motorista: int
     nome_motorista: str
+
+
+class FreightCarrierDriverOption(BaseModel):
+    """Motorista independente e transportadora que determinam a tarifa."""
+
+    id_motorista: int
+    nome_motorista: str
+    codigo_transportadora: CarrierSource
+    nome_transportadora: str
 
 
 class FreightDeliverySummary(BaseModel):

@@ -14,6 +14,7 @@ from . import service
 from .schemas import (
     FreightAggregateDriverOption,
     FreightCancelRequest,
+    FreightCarrierDriverOption,
     FreightDeliverySummary,
     FreightInput,
     FreightPage,
@@ -65,20 +66,18 @@ def get_aggregate_drivers(
     )
 
 
-@router.get("/carrier-drivers", response_model=list[FreightAggregateDriverOption])
+@router.get("/carrier-drivers", response_model=list[FreightCarrierDriverOption])
 def get_carrier_drivers(
     db: DatabaseSession,
     response: Response,
     data_servico: date,
-    codigo_transportadora: Literal["JUST_IN_TIME", "PAULO_CRUZ"],
     access: AuthorizationContext = Depends(_create_access),  # noqa: B008
-) -> list[FreightAggregateDriverOption]:
-    """Lista os motoristas cadastrados na transportadora e vigentes na data."""
+) -> list[FreightCarrierDriverOption]:
+    """Lista os motoristas de transportadora disponíveis na data."""
     _no_store(response)
     return service.get_carrier_drivers(
         db,
         data_servico=data_servico,
-        codigo_transportadora=codigo_transportadora,
         access=access,
     )
 

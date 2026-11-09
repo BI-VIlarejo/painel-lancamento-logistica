@@ -94,6 +94,29 @@ class FreightServiceTests(TestCase):
         self.assertEqual(result.status_calculo, "CALCULADO")
         self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 0)
 
+    def test_carrier_driver_options_include_one_named_driver_per_company(self):
+        options = service.get_carrier_drivers(
+            self.db, data_servico=date(2026, 11, 3), access=access()
+        )
+        self.assertEqual(
+            [
+                (
+                    option.codigo_transportadora,
+                    option.nome_transportadora,
+                    option.nome_motorista,
+                )
+                for option in options
+            ],
+            [
+                (
+                    "JUST_IN_TIME",
+                    "JUST IN TIME",
+                    "Motorista Just In Time Teste",
+                ),
+                ("PAULO_CRUZ", "Paulo Cruz", "Motorista Paulo Cruz Teste"),
+            ],
+        )
+
     def test_damage_above_gross_rolls_back_without_event(self):
         with self.assertRaises(ConflictError):
             self.create(valor_avaria="497")

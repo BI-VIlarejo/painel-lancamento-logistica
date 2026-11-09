@@ -65,16 +65,17 @@ def list_carrier_drivers(
     db: Session,
     *,
     data_servico: date,
-    codigo_transportadora: str,
 ) -> list[Pessoa]:
-    """Lista motoristas vigentes vinculados à transportadora escolhida."""
+    """Lista motoristas vigentes das transportadoras independentes."""
     statement = (
         select(Pessoa)
         .where(
             Pessoa.tipo_funcao == "MOTORISTA",
             Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
             Pessoa.modalidade_terceirizada == "TRANSPORTADORA_INDEPENDENTE",
-            Pessoa.codigo_transportadora_independente == codigo_transportadora,
+            Pessoa.codigo_transportadora_independente.in_(
+                ("JUST_IN_TIME", "PAULO_CRUZ")
+            ),
             Pessoa.ativo.is_(True),
             Pessoa.vigente_desde <= data_servico,
             (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
