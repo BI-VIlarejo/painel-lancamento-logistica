@@ -151,6 +151,9 @@
 .person-detail-trigger:hover .person-cell-name { color: var(--brand-navy); text-decoration: underline; text-underline-offset: 2px; }
 .person-detail-trigger:focus-visible { border-radius: 4px; outline: 3px solid var(--brand-blue-line); outline-offset: 3px; }
 .person-detail-trigger small { color: #758579; font-size: 10px; font-weight: 550; }
+.person-metric-trigger { padding: 2px 3px; border: 0; border-radius: 4px; color: inherit; background: transparent; cursor: pointer; font: inherit; font-variant-numeric: tabular-nums; }
+.person-metric-trigger:hover { color: var(--brand-navy); text-decoration: underline; text-underline-offset: 2px; }
+.person-metric-trigger:focus-visible { outline: 3px solid var(--brand-blue-line); outline-offset: 2px; }
 .insight-chart-caption { margin: 13px 17px 0; color: #748174; font-size: 11px; line-height: 1.45; }
 .insight-chart { padding: 13px 17px 17px; }
 .insight-chart-list { display: grid; max-height: 420px; gap: 14px; overflow-y: auto; margin: 0; padding: 0 5px 0 0; list-style: none; }

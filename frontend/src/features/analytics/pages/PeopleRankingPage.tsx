@@ -105,19 +105,32 @@ export function PeopleRankingPage() {
 
     {error && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert"><span>{error}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setReload((current) => current + 1)}>Tentar novamente</button></div>}
     <section className={cx(styles, commonStyles, "manager-panel")}>
-      <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Ranking</h2><p>Posição, volumes e percentuais. Clique no nome para consultar resultados por operação e os motivos das equipes.</p></div><span>{loading ? "—" : `${formatCount.format(people.length)} resultados`}</span></div>
+      <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Ranking</h2><p>Posição, volumes e percentuais. Clique no nome ou nos indicadores para abrir os resultados por operação e os motivos das equipes.</p></div><span>{loading ? "—" : `${formatCount.format(people.length)} resultados`}</span></div>
       {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando indicadores por pessoa...</div>
         : !people.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Nenhuma pessoa corresponde aos filtros selecionados.</div>
           : <PaginatedTable items={people} label="Ranking por pessoa" tableClassName={cx(styles, commonStyles, "manager-ranking-table-scroll")}>{(pagePeople, startIndex) => <table className={cx(styles, commonStyles, "data-table manager-table", "manager-compact-table", "people-ranking-table")}>
             <thead><tr><th>Posição</th><th>Pessoa</th><th>Planejadas</th><th>Realizadas</th><th>Não realizadas</th><th>Taxa</th><th>OTIF</th><th>Score</th><th>Elogios</th><th>Reclamações</th><th>Status</th></tr></thead>
-            <tbody>{pagePeople.map((person: DashboardPerson, index) => <tr key={person.id_pessoa}>
-              <td className={cx(styles, commonStyles, "ranking-position")}>{startIndex + index + 1}</td>
-              <th scope="row"><button className={cx(styles, commonStyles, "person-detail-trigger")} type="button" onClick={() => setSelectedPerson(person)} aria-label={`Abrir detalhes de ${person.nome}`}><span className={cx(styles, commonStyles, "person-cell-name")}>{person.nome}</span><small>{person.funcao === "MOTORISTA" ? "Motorista · ver detalhes" : "Ajudante · ver detalhes"}</small></button></th>
-              <td>{formatCount.format(person.itens_planejados)}</td><td className={cx(styles, commonStyles, "number-positive")}>{formatCount.format(person.realizadas)}</td><td className={cx(styles, commonStyles, "number-attention")}>{formatCount.format(person.nao_realizadas)}</td>
-              <td>{percent(person.taxa_realizacao)}</td><td>{percent(person.otif_percentual)}</td>
-              <td>{person.score_atendimento > 0 ? `+${person.score_atendimento}` : person.score_atendimento}</td><td>{person.elogios === null ? "—" : formatCount.format(person.elogios)}</td><td>{person.reclamacoes === null ? "—" : formatCount.format(person.reclamacoes)}</td>
-              <td><span className={cx(styles, commonStyles, person.ativo ? "ranking-status ranking-status-active" : "ranking-status ranking-status-inactive")}>{person.ativo ? "Ativo" : "Inativo"}</span></td>
-            </tr>)}</tbody>
+            <tbody>{pagePeople.map((person: DashboardPerson, index) => {
+              const metricButton = (label: string, value: string, tone = "") => <button
+                className={cx(styles, commonStyles, "person-metric-trigger", tone)}
+                type="button"
+                onClick={() => setSelectedPerson(person)}
+                aria-label={`Abrir detalhes de ${label} para ${person.nome}`}
+              >{value}</button>;
+              return <tr key={person.id_pessoa}>
+                <td className={cx(styles, commonStyles, "ranking-position")}>{startIndex + index + 1}</td>
+                <th scope="row"><button className={cx(styles, commonStyles, "person-detail-trigger")} type="button" onClick={() => setSelectedPerson(person)} aria-label={`Abrir detalhes de ${person.nome}`}><span className={cx(styles, commonStyles, "person-cell-name")}>{person.nome}</span><small>{person.funcao === "MOTORISTA" ? "Motorista · ver detalhes" : "Ajudante · ver detalhes"}</small></button></th>
+                <td>{metricButton("planejadas", formatCount.format(person.itens_planejados))}</td>
+                <td>{metricButton("realizadas", formatCount.format(person.realizadas), "number-positive")}</td>
+                <td>{metricButton("não realizadas", formatCount.format(person.nao_realizadas), "number-attention")}</td>
+                <td>{metricButton("taxa de realização", percent(person.taxa_realizacao))}</td>
+                <td>{metricButton("OTIF", percent(person.otif_percentual))}</td>
+                <td>{metricButton("score de atendimento", person.score_atendimento > 0 ? `+${person.score_atendimento}` : String(person.score_atendimento))}</td>
+                <td>{metricButton("elogios", person.elogios === null ? "—" : formatCount.format(person.elogios))}</td>
+                <td>{metricButton("reclamações", person.reclamacoes === null ? "—" : formatCount.format(person.reclamacoes))}</td>
+                <td><span className={cx(styles, commonStyles, person.ativo ? "ranking-status ranking-status-active" : "ranking-status ranking-status-inactive")}>{person.ativo ? "Ativo" : "Inativo"}</span></td>
+              </tr>;
+            })}</tbody>
           </table>}</PaginatedTable>}
     </section>
     <DashboardDetailDialog selection={selectedPerson ? { kind: "person", title: selectedPerson.nome, person: selectedPerson } : null} dashboard={data} localityDashboard={null} localityLoading={false} localityError="" onClose={() => setSelectedPerson(null)} />

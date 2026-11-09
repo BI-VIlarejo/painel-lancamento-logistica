@@ -35,7 +35,7 @@ Registro das solicitações da revisão com a Diretoria. A navegação, os detal
 - [x] Simplificar a linha principal do Histórico de Entregas: data, loja/localidade, equipe, tipo de transporte, números e ações; remover motivos e observações da linha.
 - [x] Fazer cada número de realizadas/não realizadas abrir seu próprio detalhe, separado por entrega/coleta e pelo estado clicado. Exemplo: em `18/9`, clicar em 18 abre somente as realizadas e em 9 somente as não realizadas daquele lançamento. As realizadas são mostradas como total coletivo, pois o Portal não guarda uma linha por entrega/coleta realizada.
 - [x] Manter disponível o detalhe geral do lançamento na ação **Detalhes**, separado dos atalhos específicos de cada número.
-- [x] Aplicar detalhamento por clique aos demais gráficos, históricos e indicadores gerenciais, incluindo o Histórico de Fretes. Os números de volume/peso, hodômetro e valores abrem a seção correspondente do frete.
+- [x] Aplicar detalhamento por clique aos demais gráficos, históricos e indicadores gerenciais, incluindo o Histórico de Fretes e o ranking de pessoas. No ranking, nome e indicadores abrem resultados por operação, OTIF e motivos das equipes. Os números de volume/peso, hodômetro e valores abrem a seção correspondente do frete.
 - [x] Nos históricos de Entregas e Fretes e no ranking, manter o seletor de linhas e remover a rolagem vertical interna; a página passa a exibir toda a página selecionada de resultados.
 - [x] Deixar os controles de paginação somente abaixo das tabelas dos históricos e do ranking.
 
