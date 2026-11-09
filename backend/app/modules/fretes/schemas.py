@@ -26,6 +26,7 @@ class FreightInput(BaseModel):
     tipo_transporte: FreightInputTransportType
     nome_transportador: str | None = Field(default=None, min_length=2, max_length=160)
     id_motorista_agregado: int | None = Field(default=None, ge=1)
+    id_motorista_transportadora: int | None = Field(default=None, ge=1)
     codigo_fonte_tarifa: TariffSource | None = None
     rota_cidade: str = Field(min_length=2, max_length=160)
     km_inicial: Decimal | None = Field(
@@ -120,9 +121,13 @@ class FreightInput(BaseModel):
                 raise ValueError("Frete de agregado deve usar a tabela Agregados CD.")
             if self.id_motorista_agregado is None:
                 raise ValueError("Selecione o motorista agregado no cadastro de equipes.")
+            if self.id_motorista_transportadora is not None:
+                raise ValueError("Motorista de transportadora só se aplica à modalidade Transportadora independente.")
         else:
             if self.id_motorista_agregado is not None:
                 raise ValueError("Motorista agregado só se aplica ao tipo Agregado.")
+            if self.id_motorista_transportadora is None:
+                raise ValueError("Selecione o motorista da transportadora independente.")
             if not self.nome_transportador:
                 raise ValueError("Informe o nome da transportadora.")
             if self.codigo_fonte_tarifa not in {"JUST_IN_TIME", "PAULO_CRUZ"}:
@@ -155,6 +160,8 @@ class FreightResponse(BaseModel):
     tipo_transporte: TransportType
     nome_transportador: str | None
     id_motorista_agregado: int | None
+    id_motorista_transportadora: int | None
+    nome_motorista_transportadora: str | None
     codigo_fonte_tarifa: TariffSource | None
     data_servico: date
     rota_cidade: str

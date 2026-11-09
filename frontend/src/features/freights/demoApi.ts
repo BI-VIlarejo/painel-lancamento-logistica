@@ -1,6 +1,7 @@
 import type {
   FreightHistoryFilters,
   FreightAggregateDriverOption,
+  FreightCarrierSource,
   FreightDeliverySummary,
   FreightInput,
   FreightPage,
@@ -16,6 +17,23 @@ import type { PaymentRequestWorkbookRow } from "./paymentRequestWorkbook";
 
 const FREIGHTS_KEY = "lancamento-logistica:demo-freights";
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 120));
+const carrierDriverExamples: Record<FreightCarrierSource, FreightAggregateDriverOption[]> = {
+  JUST_IN_TIME: [
+    { id_motorista: 601, nome_motorista: "Motorista Just In Time 1" },
+    { id_motorista: 602, nome_motorista: "Motorista Just In Time 2" },
+  ],
+  PAULO_CRUZ: [
+    { id_motorista: 701, nome_motorista: "Motorista Paulo Cruz 1" },
+    { id_motorista: 702, nome_motorista: "Motorista Paulo Cruz 2" },
+  ],
+};
+
+function carrierDriverName(id: number | null): string | null {
+  if (id === null) return null;
+  return Object.values(carrierDriverExamples)
+    .flat()
+    .find((driver) => driver.id_motorista === id)?.nome_motorista ?? null;
+}
 
 const tariffSources = [
   { codigo: "AGREGADOS_CD", nome: "Agregados CD" },
@@ -144,6 +162,8 @@ function readFreights(): FreightResponse[] {
     ...item,
     tipo_transporte: item.tipo_transporte ?? "AGREGADO",
     id_motorista_agregado: item.id_motorista_agregado ?? null,
+    id_motorista_transportadora: item.id_motorista_transportadora ?? null,
+    nome_motorista_transportadora: item.nome_motorista_transportadora ?? null,
     quantidade_avarias: item.quantidade_avarias ?? 0,
     cancelado: item.cancelado ?? false,
     cancelado_em: item.cancelado_em ?? null,
@@ -503,6 +523,14 @@ export const freightsDemoApi = {
     return [{ id_motorista: 501, nome_motorista: "João da Silva" }];
   },
 
+  async carrierDrivers(
+    _dataServico: string,
+    codigoTransportadora: FreightCarrierSource,
+  ): Promise<FreightAggregateDriverOption[]> {
+    await pause();
+    return carrierDriverExamples[codigoTransportadora];
+  },
+
   async deliverySummary(
     dataServico: string,
     idMotorista: number,
@@ -544,6 +572,8 @@ export const freightsDemoApi = {
       tipo_transporte: payload.tipo_transporte,
       nome_transportador: payload.nome_transportador,
       id_motorista_agregado: payload.id_motorista_agregado,
+      id_motorista_transportadora: payload.id_motorista_transportadora,
+      nome_motorista_transportadora: carrierDriverName(payload.id_motorista_transportadora),
       codigo_fonte_tarifa: payload.codigo_fonte_tarifa,
       data_servico: payload.data_servico,
       rota_cidade: payload.rota_cidade,
@@ -601,6 +631,8 @@ export const freightsDemoApi = {
       tipo_transporte: payload.tipo_transporte,
       nome_transportador: payload.nome_transportador,
       id_motorista_agregado: payload.id_motorista_agregado,
+      id_motorista_transportadora: payload.id_motorista_transportadora,
+      nome_motorista_transportadora: carrierDriverName(payload.id_motorista_transportadora),
       codigo_fonte_tarifa: payload.codigo_fonte_tarifa,
       data_servico: payload.data_servico,
       rota_cidade: payload.rota_cidade,

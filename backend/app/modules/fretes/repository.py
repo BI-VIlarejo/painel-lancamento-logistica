@@ -61,6 +61,50 @@ def get_aggregate_driver(
     return db.scalar(statement)
 
 
+def list_carrier_drivers(
+    db: Session,
+    *,
+    data_servico: date,
+    codigo_transportadora: str,
+) -> list[Pessoa]:
+    """Lista motoristas vigentes vinculados à transportadora escolhida."""
+    statement = (
+        select(Pessoa)
+        .where(
+            Pessoa.tipo_funcao == "MOTORISTA",
+            Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+            Pessoa.modalidade_terceirizada == "TRANSPORTADORA_INDEPENDENTE",
+            Pessoa.codigo_transportadora_independente == codigo_transportadora,
+            Pessoa.ativo.is_(True),
+            Pessoa.vigente_desde <= data_servico,
+            (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
+        )
+        .order_by(Pessoa.nome_exibicao, Pessoa.id_pessoa)
+    )
+    return list(db.scalars(statement).all())
+
+
+def get_carrier_driver(
+    db: Session,
+    *,
+    id_motorista: int,
+    data_servico: date,
+    codigo_transportadora: str,
+) -> Pessoa | None:
+    """Valida que o motorista pertence à transportadora escolhida na data."""
+    statement = select(Pessoa).where(
+        Pessoa.id_pessoa == id_motorista,
+        Pessoa.tipo_funcao == "MOTORISTA",
+        Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+        Pessoa.modalidade_terceirizada == "TRANSPORTADORA_INDEPENDENTE",
+        Pessoa.codigo_transportadora_independente == codigo_transportadora,
+        Pessoa.ativo.is_(True),
+        Pessoa.vigente_desde <= data_servico,
+        (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
+    )
+    return db.scalar(statement)
+
+
 def _confirmed_delivery_rows_statement(*, id_motorista: int, data_servico: date):
     """Monta a consulta base apenas com itens da revisão vigente e confirmada."""
     current_revision = aliased(LancamentoRevisao)

@@ -45,6 +45,7 @@ Registro das solicitações da revisão com a Diretoria. A navegação, os detal
 - [x] No cadastro de motorista **Terceirizada**, acrescentar a modalidade **Agregado** ou **Transportadora independente**.
 - [x] Para transportadora independente, exigir seleção de **Paulo Cruz** ou **Just In Time**.
 - [x] No lançamento de Fretes, listar como agregados somente motoristas classificados como **Terceirizada > Agregado**; selecionar a empresa para transportadoras independentes, sem duplicar seus motoristas como agregados.
+- [x] Ao selecionar a empresa transportadora, listar seus motoristas ativos e vigentes; salvar o motorista no frete e manter a empresa como responsável financeiro.
 - [ ] Classificar os motoristas terceirizados já cadastrados.
 
 ## Decisões em aberto para a revisão
@@ -62,7 +63,7 @@ Registro das solicitações da revisão com a Diretoria. A navegação, os detal
 - O Histórico de Fretes abre os detalhes de operação, hodômetro ou valores a partir dos números correspondentes e conserva os filtros ativos.
 - A quantidade do frete agregado soma apenas `quantidade_realizada` dos itens de Entrega da revisão confirmada mais recente.
 - O cadastro exige modalidade para motoristas terceirizados novos e permite classificar os existentes durante a edição. Valores antigos ficam nulos até confirmação manual; por isso não aparecem na lista de agregados antes da classificação.
-- A migration aditiva `f9c2a7d81e64` acrescenta modalidade/empresa e uma constraint sem classificar dados antigos automaticamente. Ainda deve ser aplicada conforme o procedimento de publicação do banco de Logística.
+- A migration aditiva `f9c2a7d81e64` acrescenta modalidade/empresa e a migration `a7c4e2f9d613` registra o motorista da transportadora no frete, sem classificar dados antigos automaticamente.
 
 ## Estado da separação visual ampla
 

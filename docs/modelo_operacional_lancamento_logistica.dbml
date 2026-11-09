@@ -517,8 +517,10 @@ Table op_logistica_frete {
   chave_idempotencia char(36) [not null, unique, note: 'Chave global para impedir lançamentos duplicados em reenvios.']
   id_setor int [not null]
   tipo_transporte varchar(24) [not null, note: 'Novos fretes: AGREGADO ou TRANSPORTADORA. PROPRIO permanece apenas para histórico legado.']
-  nome_transportador varchar(160) [note: 'Fotografia do nome do motorista agregado selecionado em op_logistica_pessoa ou nome da transportadora.']
+  nome_transportador varchar(160) [note: 'Fotografia do nome do motorista agregado ou da transportadora responsável pelo pagamento.']
   id_motorista_agregado bigint [note: 'Vínculo do agregado com o motorista cadastrado como entrega terceirizada.']
+  id_motorista_transportadora bigint [note: 'Vínculo ao motorista cadastrado para a transportadora independente.']
+  nome_motorista_transportadora varchar(160) [note: 'Fotografia do motorista escolhido para a transportadora independente.']
   codigo_fonte_tarifa varchar(32) [note: 'AGREGADOS_CD, JUST_IN_TIME ou PAULO_CRUZ.']
   data_servico date [not null]
   rota_cidade varchar(160) [not null]
@@ -547,6 +549,7 @@ Table op_logistica_frete {
     (tipo_transporte, data_servico) [name: 'ix_op_logistica_frete_tipo_data']
     (status_calculo, data_servico) [name: 'ix_op_logistica_frete_status_data']
     (id_motorista_agregado, data_servico) [name: 'ix_op_logistica_frete_motorista_data']
+    (id_motorista_transportadora, data_servico) [name: 'ix_op_logistica_frete_motorista_transportadora_data']
   }
 
   checks {
@@ -559,6 +562,7 @@ Table op_logistica_frete {
     `valor_avaria >= 0` [name: 'ck_op_logistica_frete_avaria']
     `quantidade_avarias >= 0` [name: 'ck_op_logistica_frete_quantidade_avarias']
     `tipo_transporte = 'AGREGADO' or id_motorista_agregado is null` [name: 'ck_op_logistica_frete_motorista_agregado']
+    `(id_motorista_transportadora is null and nome_motorista_transportadora is null) or (tipo_transporte = 'TRANSPORTADORA' and id_motorista_transportadora is not null and nome_motorista_transportadora is not null)` [name: 'ck_op_logistica_frete_motorista_transportadora']
     `(tipo_transporte = 'TRANSPORTADORA' and km_inicial is null and km_final is null and km_rodado is null) or (km_inicial is not null and km_final is not null and km_rodado is not null and km_final >= km_inicial and km_rodado = km_final - km_inicial)` [name: 'ck_op_logistica_frete_hodometros']
   }
 
@@ -686,6 +690,7 @@ Ref: op_logistica_feedback.(id_entrega_diaria, id_lancamento_revisao, id_localid
 
 Ref: op_logistica_frete.id_setor > op_logistica_setor.id_setor
 Ref: op_logistica_frete.id_motorista_agregado > op_logistica_pessoa.id_pessoa
+Ref: op_logistica_frete.id_motorista_transportadora > op_logistica_pessoa.id_pessoa
 Ref: op_logistica_frete.criado_por > op_logistica_usuario.id_usuario
 Ref: op_logistica_frete_evento.id_frete > op_logistica_frete.id_frete
 Ref: op_logistica_frete_evento.id_usuario_ator > op_logistica_usuario.id_usuario

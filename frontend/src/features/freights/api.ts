@@ -3,6 +3,7 @@ import { freightsDemoApi } from "./demoApi";
 import type {
   FreightHistoryFilters,
   FreightAggregateDriverOption,
+  FreightCarrierSource,
   FreightDeliverySummary,
   FreightInput,
   FreightPage,
@@ -52,6 +53,13 @@ function aggregateDriversQuery(dataServico: string): string {
   return new URLSearchParams({ data_servico: dataServico }).toString();
 }
 
+function carrierDriversQuery(dataServico: string, codigoTransportadora: FreightCarrierSource): string {
+  return new URLSearchParams({
+    data_servico: dataServico,
+    codigo_transportadora: codigoTransportadora,
+  }).toString();
+}
+
 function deliverySummaryQuery(dataServico: string, idMotorista: number): string {
   return new URLSearchParams({
     data_servico: dataServico,
@@ -72,6 +80,14 @@ export const freightsApi = {
       ? freightsDemoApi.aggregateDrivers(dataServico)
       : apiRequest<FreightAggregateDriverOption[]>(
           `/freights/aggregate-drivers?${aggregateDriversQuery(dataServico)}`,
+        );
+  },
+
+  carrierDrivers(dataServico: string, codigoTransportadora: FreightCarrierSource): Promise<FreightAggregateDriverOption[]> {
+    return isDemoMode
+      ? freightsDemoApi.carrierDrivers(dataServico, codigoTransportadora)
+      : apiRequest<FreightAggregateDriverOption[]>(
+          `/freights/carrier-drivers?${carrierDriversQuery(dataServico, codigoTransportadora)}`,
         );
   },
 

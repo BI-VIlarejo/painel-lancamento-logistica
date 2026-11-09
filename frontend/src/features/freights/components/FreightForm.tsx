@@ -9,6 +9,7 @@ import type {
   FreightInput,
   FreightAggregateDriverOption,
   FreightDeliverySummary,
+  FreightCarrierSource,
   FreightQuoteResponse,
   FreightResponse,
   FreightTariffOptions,
@@ -23,6 +24,7 @@ type FormValues = {
   tipo_transporte: FreightTransportType;
   nome_transportador: string;
   id_motorista_agregado: string;
+  id_motorista_transportadora: string;
   codigo_fonte_tarifa: FreightTariffSource | "";
   rota_cidade: string;
   km_inicial: string;
@@ -50,6 +52,7 @@ function emptyValues(options: FreightTariffOptions): FormValues {
     tipo_transporte: "AGREGADO",
     nome_transportador: "",
     id_motorista_agregado: "",
+    id_motorista_transportadora: "",
     codigo_fonte_tarifa: (options.fontes.find((source) => source.codigo === "AGREGADOS_CD")?.codigo as FreightTariffSource | undefined) ?? "AGREGADOS_CD",
     rota_cidade: "",
     km_inicial: "",
@@ -71,6 +74,7 @@ function valuesFromFreight(freight: FreightResponse): FormValues {
     tipo_transporte: freight.tipo_transporte === "TRANSPORTADORA" ? "TRANSPORTADORA" : "AGREGADO",
     nome_transportador: freight.nome_transportador ?? "",
     id_motorista_agregado: freight.id_motorista_agregado === null ? "" : String(freight.id_motorista_agregado),
+    id_motorista_transportadora: freight.id_motorista_transportadora == null ? "" : String(freight.id_motorista_transportadora),
     codigo_fonte_tarifa: freight.codigo_fonte_tarifa ?? "",
     rota_cidade: freight.rota_cidade,
     km_inicial: freight.km_inicial === null ? "" : String(freight.km_inicial),
@@ -111,6 +115,9 @@ function payloadFromValues(values: FormValues): FreightInput {
   if (values.tipo_transporte === "TRANSPORTADORA" && values.nome_transportador.trim().length < 2) {
     throw new Error("Informe o nome da transportadora.");
   }
+  if (values.tipo_transporte === "TRANSPORTADORA" && !values.id_motorista_transportadora) {
+    throw new Error("Selecione o motorista da transportadora.");
+  }
 
   const odometerIsOptional = values.tipo_transporte === "TRANSPORTADORA";
   const initial = odometerIsOptional ? null : decimalInput(values.km_inicial, "KM inicial");
@@ -148,6 +155,7 @@ function payloadFromValues(values: FormValues): FreightInput {
     tipo_transporte: values.tipo_transporte,
     nome_transportador: values.nome_transportador.trim().replace(/\s+/g, " "),
     id_motorista_agregado: values.tipo_transporte === "AGREGADO" ? Number(values.id_motorista_agregado) : null,
+    id_motorista_transportadora: values.tipo_transporte === "TRANSPORTADORA" ? Number(values.id_motorista_transportadora) : null,
     codigo_fonte_tarifa: values.codigo_fonte_tarifa as FreightTariffSource,
     rota_cidade: values.rota_cidade.trim().replace(/\s+/g, " "),
     km_inicial: initial,
@@ -169,6 +177,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const transportTypeId = useId();
   const transporterId = useId();
   const aggregateDriverId = useId();
+  const transporterDriverId = useId();
   const sourceId = useId();
   const routeId = useId();
   const kmInitialId = useId();
@@ -184,6 +193,9 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const [aggregateDrivers, setAggregateDrivers] = useState<FreightAggregateDriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [driversError, setDriversError] = useState("");
+  const [carrierDrivers, setCarrierDrivers] = useState<FreightAggregateDriverOption[]>([]);
+  const [carrierDriversLoading, setCarrierDriversLoading] = useState(false);
+  const [carrierDriversError, setCarrierDriversError] = useState("");
   const [deliverySummary, setDeliverySummary] = useState<FreightDeliverySummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
@@ -218,6 +230,38 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
       .finally(() => { if (active) setDriversLoading(false); });
     return () => { active = false; };
   }, [values.data_servico, values.tipo_transporte]);
+
+  useEffect(() => {
+    const source = values.codigo_fonte_tarifa;
+    if (values.tipo_transporte !== "TRANSPORTADORA" || (source !== "JUST_IN_TIME" && source !== "PAULO_CRUZ")) {
+      setCarrierDrivers([]);
+      setCarrierDriversLoading(false);
+      setCarrierDriversError("");
+      setValues((current) => current.id_motorista_transportadora
+        ? { ...current, id_motorista_transportadora: "" }
+        : current);
+      return;
+    }
+    let active = true;
+    setCarrierDrivers([]);
+    setCarrierDriversLoading(true);
+    setCarrierDriversError("");
+    void freightsApi.carrierDrivers(values.data_servico, source as FreightCarrierSource)
+      .then((drivers) => {
+        if (!active) return;
+        setCarrierDrivers(drivers);
+        setValues((current) => {
+          if (current.tipo_transporte !== "TRANSPORTADORA"
+            || current.codigo_fonte_tarifa !== source
+            || current.data_servico !== values.data_servico) return current;
+          const selected = drivers.find((driver) => String(driver.id_motorista) === current.id_motorista_transportadora);
+          return selected ? current : { ...current, id_motorista_transportadora: "" };
+        });
+      })
+      .catch((loadError: unknown) => { if (active) setCarrierDriversError(messageFromApiError(loadError)); })
+      .finally(() => { if (active) setCarrierDriversLoading(false); });
+    return () => { active = false; };
+  }, [values.codigo_fonte_tarifa, values.data_servico, values.tipo_transporte]);
 
   useEffect(() => {
     const idMotorista = Number(values.id_motorista_agregado);
@@ -265,8 +309,17 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
       && deliverySummary.id_motorista === Number(values.id_motorista_agregado)
       && deliverySummary.data_servico === values.data_servico
       && deliverySummary.quantidade_registros > 0);
+  const selectedCarrierDriverExists = carrierDrivers.some(
+    (driver) => String(driver.id_motorista) === values.id_motorista_transportadora,
+  );
+  const carrierDriverReady = values.tipo_transporte !== "TRANSPORTADORA"
+    || (!carrierDriversLoading && !carrierDriversError && selectedCarrierDriverExists);
 
   async function simulate(): Promise<void> {
+    if (!carrierDriverReady) {
+      setError(carrierDriversError || "Selecione um motorista cadastrado na transportadora escolhida.");
+      return;
+    }
     if (!aggregateSummaryReady || summaryLoading) {
       setError(summaryError || "Selecione um motorista com Entregas confirmadas nesta data.");
       return;
@@ -297,6 +350,10 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (!carrierDriverReady) {
+      setError(carrierDriversError || "Selecione um motorista cadastrado na transportadora escolhida.");
+      return;
+    }
     if (!aggregateSummaryReady || summaryLoading) {
       setError(summaryError || "Selecione um motorista com Entregas confirmadas nesta data.");
       return;
@@ -357,7 +414,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <select id={transportTypeId} value={values.tipo_transporte} onChange={(event) => {
               const type = event.target.value as FreightTransportType;
               const source: FreightTariffSource | "" = type === "AGREGADO" ? "AGREGADOS_CD" : "";
-              setValues((current) => ({ ...current, tipo_transporte: type, nome_transportador: "", id_motorista_agregado: "", codigo_fonte_tarifa: source, rota_cidade: "", quantidade_entregas: "0", quantidade_avarias: "0", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", km_inicial: "", km_final: "" }));
+              setValues((current) => ({ ...current, tipo_transporte: type, nome_transportador: "", id_motorista_agregado: "", id_motorista_transportadora: "", codigo_fonte_tarifa: source, rota_cidade: "", quantidade_entregas: "0", quantidade_avarias: "0", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", km_inicial: "", km_final: "" }));
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
               <option value="AGREGADO">Agregado</option>
@@ -381,12 +438,20 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <select id={transporterId} value={values.codigo_fonte_tarifa} required onChange={(event) => {
               const source = event.target.value as FreightTariffSource | "";
               const name = sourceOptions.find((option) => option.codigo === source)?.nome ?? "";
-              setValues((current) => ({ ...current, codigo_fonte_tarifa: source, nome_transportador: name, rota_cidade: "", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "" }));
+              setValues((current) => ({ ...current, codigo_fonte_tarifa: source, nome_transportador: name, id_motorista_transportadora: "", rota_cidade: "", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "" }));
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
               <option value="">Selecione a transportadora</option>
               {sourceOptions.map((source) => <option key={source.codigo} value={source.codigo}>{source.nome}</option>)}
             </select>
+          </label>}
+          {values.tipo_transporte === "TRANSPORTADORA" && <label className={cx(styles, "field")} htmlFor={transporterDriverId}>Motorista da transportadora
+            <select id={transporterDriverId} value={values.id_motorista_transportadora} onChange={(event) => update("id_motorista_transportadora", event.target.value)} required disabled={busy || carrierDriversLoading || Boolean(carrierDriversError) || !values.codigo_fonte_tarifa}>
+              <option value="">{carrierDriversLoading ? "Carregando motoristas..." : "Selecione o motorista"}</option>
+              {carrierDrivers.map((driver) => <option key={driver.id_motorista} value={driver.id_motorista}>{driver.nome_motorista}</option>)}
+            </select>
+            {carrierDriversError && <small role="alert">{carrierDriversError}</small>}
+            {!carrierDriversLoading && !carrierDriversError && values.codigo_fonte_tarifa && carrierDrivers.length === 0 && <small role="status">Nenhum motorista ativo desta transportadora nesta data. Confira o cadastro em Administração &gt; Cadastros.</small>}
           </label>}
           <label className={cx(styles, "field")} htmlFor={dateId}>Data do serviço
             <input id={dateId} type="date" value={values.data_servico} onChange={(event) => update("data_servico", event.target.value)} required disabled={busy} />

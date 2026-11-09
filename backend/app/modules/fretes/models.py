@@ -55,6 +55,13 @@ class Frete(Base):
             name="ck_op_logistica_frete_motorista_agregado",
         ),
         CheckConstraint(
+            "(id_motorista_transportadora is null and nome_motorista_transportadora is null) or "
+            "(tipo_transporte = 'TRANSPORTADORA' and "
+            "id_motorista_transportadora is not null and "
+            "nome_motorista_transportadora is not null)",
+            name="ck_op_logistica_frete_motorista_transportadora",
+        ),
+        CheckConstraint(
             "status_calculo in ('CALCULADO', 'PENDENTE_CONFERENCIA')",
             name="ck_op_logistica_frete_status_calculo",
         ),
@@ -83,6 +90,11 @@ class Frete(Base):
             "id_motorista_agregado",
             "data_servico",
         ),
+        Index(
+            "ix_op_logistica_frete_motorista_transportadora_data",
+            "id_motorista_transportadora",
+            "data_servico",
+        ),
     )
 
     id_frete: Mapped[int] = mapped_column(
@@ -106,6 +118,17 @@ class Frete(Base):
             name="fk_op_logistica_frete_motorista_agregado",
         ),
         nullable=True,
+    )
+    id_motorista_transportadora: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "op_logistica_pessoa.id_pessoa",
+            name="fk_op_logistica_frete_motorista_transportadora",
+        ),
+        nullable=True,
+    )
+    nome_motorista_transportadora: Mapped[str | None] = mapped_column(
+        String(160), nullable=True
     )
     codigo_fonte_tarifa: Mapped[str | None] = mapped_column(String(32), nullable=True)
     data_servico: Mapped[date] = mapped_column(Date, nullable=False)

@@ -27,6 +27,10 @@ periodicidade e operação ficam auditados a cada alteração. Essa migration es
 VilarejoBI, que controla a cadeia `logistica`; aplique-a em staging antes de publicar o código do
 Portal que lê e grava a meta. Ela não altera lançamentos operacionais existentes.
 
+`a7c4e2f9d613` acrescenta o vínculo e o nome histórico do motorista de uma transportadora
+independente no frete. O nome da transportadora continua sendo o responsável pelo pagamento. A
+migration mantém os fretes existentes sem motorista e não os classifica automaticamente.
+
 `d7c9a4f2b610` adiciona `quantidade_entregas_no_prazo` e
 `quantidade_entregas_completas`, ambas nullable. Essas colunas permanecem por compatibilidade com
 revisões existentes, mas o produto deixou de coletá-las e o cálculo atual do OTIF não as utiliza.

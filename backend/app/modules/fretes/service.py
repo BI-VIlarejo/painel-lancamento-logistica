@@ -164,6 +164,8 @@ def _freight_response(
         tipo_transporte=_transport_type(freight.tipo_transporte),
         nome_transportador=freight.nome_transportador,
         id_motorista_agregado=freight.id_motorista_agregado,
+        id_motorista_transportadora=freight.id_motorista_transportadora,
+        nome_motorista_transportadora=freight.nome_motorista_transportadora,
         codigo_fonte_tarifa=_tariff_source(freight.codigo_fonte_tarifa),
         data_servico=freight.data_servico,
         rota_cidade=freight.rota_cidade,
@@ -204,6 +206,27 @@ def _prepare_freight_payload(
     require_delivery_data: bool,
 ) -> tuple[FreightInput, dict[str, object] | None]:
     """Substitui os campos agregados pelos dados vigentes de equipe e Entregas."""
+    if payload.tipo_transporte == "TRANSPORTADORA":
+        driver_id = payload.id_motorista_transportadora
+        if driver_id is None or payload.codigo_fonte_tarifa is None:
+            raise ConflictError("Selecione o motorista da transportadora independente.")
+        driver = repository.get_carrier_driver(
+            db,
+            id_motorista=driver_id,
+            data_servico=payload.data_servico,
+            codigo_transportadora=payload.codigo_fonte_tarifa,
+        )
+        if driver is None:
+            raise NotFoundError(
+                "O motorista não está ativo e vinculado à transportadora na data do serviço."
+            )
+        return (
+            payload.model_copy(update={"quantidade_avarias": 0}),
+            {
+                "id_motorista_transportadora": driver.id_pessoa,
+                "nome_motorista_transportadora": driver.nome_exibicao,
+            },
+        )
     if payload.tipo_transporte != "AGREGADO":
         return payload.model_copy(update={"quantidade_avarias": 0}), None
 
@@ -263,11 +286,25 @@ def _freight_calculation(
     )
     calculation = calculate_freight(prepared)
     if source_detail is not None:
+        detail_key = (
+            "motorista_transportadora"
+            if payload.tipo_transporte == "TRANSPORTADORA"
+            else "origem_entregas"
+        )
         calculation = replace(
             calculation,
-            detalhe={**calculation.detalhe, "origem_entregas": source_detail},
+            detalhe={**calculation.detalhe, detail_key: source_detail},
         )
     return prepared, calculation
+
+
+def _carrier_driver_name(calculation: FreightCalculation) -> str | None:
+    """Obtém o nome validado para guardar como fotografia do motorista."""
+    value = calculation.detalhe.get("motorista_transportadora")
+    if not isinstance(value, dict):
+        return None
+    name = value.get("nome_motorista_transportadora")
+    return name if isinstance(name, str) else None
 
 
 def get_tariff_options(
@@ -304,6 +341,33 @@ def get_aggregate_drivers(
             for driver in repository.list_aggregate_drivers(
                 db,
                 data_servico=data_servico,
+            )
+        ]
+    except PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def get_carrier_drivers(
+    db: Session,
+    *,
+    data_servico: date,
+    codigo_transportadora: str,
+    access: AuthorizationContext,
+) -> list[FreightAggregateDriverOption]:
+    """Lista os motoristas da transportadora independente selecionada."""
+    try:
+        _transport_access(db, access)
+        return [
+            FreightAggregateDriverOption(
+                id_motorista=driver.id_pessoa,
+                nome_motorista=driver.nome_exibicao,
+            )
+            for driver in repository.list_carrier_drivers(
+                db,
+                data_servico=data_servico,
+                codigo_transportadora=codigo_transportadora,
             )
         ]
     except PermissionDeniedError, NotFoundError:
@@ -423,6 +487,8 @@ def create_freight(
             tipo_transporte=prepared_payload.tipo_transporte,
             nome_transportador=prepared_payload.nome_transportador,
             id_motorista_agregado=prepared_payload.id_motorista_agregado,
+            id_motorista_transportadora=prepared_payload.id_motorista_transportadora,
+            nome_motorista_transportadora=_carrier_driver_name(calculation),
             codigo_fonte_tarifa=prepared_payload.codigo_fonte_tarifa,
             data_servico=prepared_payload.data_servico,
             rota_cidade=prepared_payload.rota_cidade,
@@ -556,6 +622,8 @@ def update_freight(
         freight.tipo_transporte = prepared_payload.tipo_transporte
         freight.nome_transportador = prepared_payload.nome_transportador
         freight.id_motorista_agregado = prepared_payload.id_motorista_agregado
+        freight.id_motorista_transportadora = prepared_payload.id_motorista_transportadora
+        freight.nome_motorista_transportadora = _carrier_driver_name(calculation)
         freight.codigo_fonte_tarifa = prepared_payload.codigo_fonte_tarifa
         freight.data_servico = prepared_payload.data_servico
         freight.rota_cidade = prepared_payload.rota_cidade

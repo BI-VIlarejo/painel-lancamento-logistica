@@ -14,6 +14,7 @@ export type FreightPaymentTransportType = "AGREGADO" | "TRANSPORTADORA";
 
 /** Planilhas de origem disponíveis no lançamento. */
 export type FreightTariffSource = "AGREGADOS_CD" | "JUST_IN_TIME" | "PAULO_CRUZ";
+export type FreightCarrierSource = Extract<FreightTariffSource, "JUST_IN_TIME" | "PAULO_CRUZ">;
 
 /** Veículos tarifados pela tabela Paulo Cruz. */
 export type FreightTruckType =
@@ -65,6 +66,7 @@ export type FreightInput = {
   tipo_transporte: FreightTransportType;
   nome_transportador: string | null;
   id_motorista_agregado: number | null;
+  id_motorista_transportadora: number | null;
   codigo_fonte_tarifa: FreightTariffSource | null;
   rota_cidade: string;
   km_inicial: DecimalValue | null;
@@ -95,6 +97,8 @@ export type FreightResponse = {
   tipo_transporte: FreightRecordedTransportType;
   nome_transportador: string | null;
   id_motorista_agregado: number | null;
+  id_motorista_transportadora: number | null;
+  nome_motorista_transportadora: string | null;
   codigo_fonte_tarifa: FreightTariffSource | null;
   data_servico: string;
   rota_cidade: string;

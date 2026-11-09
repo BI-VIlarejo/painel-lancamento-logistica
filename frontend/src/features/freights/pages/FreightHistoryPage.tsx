@@ -20,7 +20,10 @@ function transportTypeLabel(type: FreightRecordedTransportType): string {
 function transportName(item: FreightResponse): string {
   if (item.tipo_transporte === "AGREGADO") return item.nome_transportador || "Agregado sem identificação";
   if (item.tipo_transporte === "PROPRIO") return item.nome_transportador || "Frota própria";
-  return item.nome_transportador || "Transportadora não informada";
+  const carrier = item.nome_transportador || "Transportadora não informada";
+  return item.nome_motorista_transportadora
+    ? `${carrier} · ${item.nome_motorista_transportadora}`
+    : carrier;
 }
 
 function formatDateTime(value: string | null): string {
