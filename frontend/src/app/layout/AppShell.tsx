@@ -141,27 +141,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
 
   const configuredSections: AppNavItem[] = [
     {
-      id: "indicators",
-      label: "Indicadores",
-      visible: canViewDashboard,
-      children: [
-        {
-          id: "management-dashboard",
-          path: "/painel",
-          label: "Painel Gerencial",
-          visible: canViewDashboard,
-          icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
-        },
-        {
-          id: "people-indicators",
-          path: "/indicadores/pessoas",
-          label: "Ranking de pessoas",
-          visible: canViewDashboard,
-          icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
-        },
-      ],
-    },
-    {
       id: "support",
       label: "Suporte",
       visible: supportFolderVisible,
@@ -244,6 +223,27 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
               icon: <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></svg>,
             },
           ],
+        },
+      ],
+    },
+    {
+      id: "indicators",
+      label: "Indicadores",
+      visible: canViewDashboard,
+      children: [
+        {
+          id: "management-dashboard",
+          path: "/painel",
+          label: "Painel Gerencial",
+          visible: canViewDashboard,
+          icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
+        },
+        {
+          id: "people-indicators",
+          path: "/indicadores/pessoas",
+          label: "Ranking de pessoas",
+          visible: canViewDashboard,
+          icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
         },
       ],
     },
