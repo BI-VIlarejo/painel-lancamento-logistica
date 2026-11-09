@@ -13,9 +13,40 @@ import type {
   FreightQuoteResponse,
   FreightResponse,
   FreightTariffOptions,
+  JustInTimeRegionOption,
+  JustInTimeZoneOption,
 } from "./types";
 
 const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+type TariffOptionsResponse = Omit<FreightTariffOptions, "zonas_just_in_time"> & {
+  zonas_just_in_time: Array<JustInTimeRegionOption | JustInTimeZoneOption>;
+};
+
+const jitRegionGroups: Array<[string, string, string[]]> = [
+  ["RIO_DE_JANEIRO", "Rio de Janeiro", ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"]],
+  ["REGIAO_SERRANA", "Região Serrana", ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"]],
+];
+
+/** Agrupa a resposta antiga da API enquanto o backend de staging é atualizado. */
+function normalizeTariffOptions(options: TariffOptionsResponse): FreightTariffOptions {
+  const firstZone = options.zonas_just_in_time[0];
+  if (!firstZone || "subzonas" in firstZone) {
+    return options as FreightTariffOptions;
+  }
+
+  const flatZones = options.zonas_just_in_time as JustInTimeZoneOption[];
+  return {
+    ...options,
+    zonas_just_in_time: jitRegionGroups.map(([codigo, nome, zoneCodes]) => ({
+      codigo,
+      nome,
+      subzonas: zoneCodes.flatMap((zoneCode) => {
+        const zone = flatZones.find((item) => item.codigo === zoneCode);
+        return zone ? [zone] : [];
+      }),
+    })),
+  };
+}
 
 /** Constrói a query string do histórico com os filtros aceitos pela API. */
 function historyQuery(filters: FreightHistoryFilters = {}): string {
@@ -69,7 +100,7 @@ export const freightsApi = {
   tariffOptions(): Promise<FreightTariffOptions> {
     return isDemoMode
       ? freightsDemoApi.tariffOptions()
-      : apiRequest<FreightTariffOptions>("/freights/tariff-options");
+      : apiRequest<TariffOptionsResponse>("/freights/tariff-options").then(normalizeTariffOptions);
   },
 
   aggregateDrivers(dataServico: string): Promise<FreightAggregateDriverOption[]> {
