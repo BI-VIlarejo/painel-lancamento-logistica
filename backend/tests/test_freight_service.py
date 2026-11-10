@@ -14,9 +14,33 @@ from sqlalchemy import func, select
 from app.core.exceptions import ConflictError, PermissionDeniedError
 from app.modules.fretes import service
 from app.modules.fretes.models import Frete, FreteEvento
+from app.modules.catalogs.models import Pessoa
+from app.modules.fretes.schemas import HistoricalFreightImportRequest
 
 
 class FreightServiceTests(TestCase):
+    def test_import_links_vitor_and_both_compound_driver_names(self):
+        aggregate = self.db.get(Pessoa, 1)
+        carrier_driver = self.db.get(Pessoa, 2)
+        aggregate.nome_exibicao = "Sebastião/Adão"
+        carrier_driver.nome_exibicao = "Victor Transportadora Niterói"
+        self.db.flush()
+        request = HistoricalFreightImportRequest.model_validate({
+            "nome_arquivo": "fretes.xlsx",
+            "sha256_arquivo": "a" * 64,
+            "aba_origem": "LANÇAMENTO",
+            "itens": [
+                {"linha_planilha": line, "data_servico": "2026-11-03", "nome_transportador": name, "valor_frete_bruto": "100"}
+                for line, name in enumerate(("VITOR", "SEBASTIÃO", "ADÃO"), 4)
+            ],
+        })
+        result = service.import_historical_freights(self.db, payload=request, access=access())
+        self.assertEqual(result.importados, 3)
+        rows = list(self.db.scalars(select(Frete).order_by(Frete.id_frete)))
+        self.assertEqual(rows[0].id_motorista_transportadora, 2)
+        self.assertEqual(rows[0].codigo_fonte_tarifa, "PAULO_CRUZ")
+        self.assertEqual([row.id_motorista_agregado for row in rows[1:]], [1, 1])
+
     def test_numbered_historical_routes_are_not_collapsed_to_base_city(self):
         index = {"NITEROI": {"Niterói"}, "NITEROI1": {"Niterói 1"}}
         self.assertEqual(service._route_alias_target(index, "NITEROI 1"), "Niterói 1")

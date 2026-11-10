@@ -9,6 +9,7 @@ import type {
   FreightHistoryFilterOptions,
   FreightRecordedTransportType,
   FreightResponse,
+  FreightStatus,
 } from "../types";
 import styles from "./FreightHistoryPage.module.css";
 import { FreightImportDialog } from "../components/FreightImportDialog";
@@ -289,6 +290,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [fromDate, setFromDate] = useState(firstDayOfCurrentMonth());
   const [toDate, setToDate] = useState(localDateValue());
   const [transportType, setTransportType] = useState<FreightRecordedTransportType | "TODOS">("TODOS");
+  const [statusFilter, setStatusFilter] = useState<FreightStatus | "TODOS">("TODOS");
   const [driverId, setDriverId] = useState("");
   const [routeFilter, setRouteFilter] = useState("");
   const [carrierFilter, setCarrierFilter] = useState<FreightCarrierSource | "">("");
@@ -325,6 +327,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
       data_de: fromDate || undefined,
       data_ate: toDate || undefined,
       tipo_transporte: transportType,
+      status_calculo: statusFilter,
       id_motorista: driverId === "" ? undefined : Number(driverId),
       rota_cidade: routeFilter || undefined,
       codigo_transportadora: carrierFilter || undefined,
@@ -343,7 +346,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
       .catch((loadError: unknown) => { if (active) setError(messageFromApiError(loadError)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [fromDate, toDate, transportType, driverId, routeFilter, carrierFilter, pageSize, offset, reloadVersion]);
+  }, [fromDate, toDate, transportType, statusFilter, driverId, routeFilter, carrierFilter, pageSize, offset, reloadVersion]);
 
   useEffect(() => {
     let active = true;
@@ -442,6 +445,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
         <label className={cx(styles, commonStyles, "filter-control")}>Data inicial<input type="date" value={fromDate} onChange={(event) => changeFilter(setFromDate, event.target.value)} /></label>
         <label className={cx(styles, commonStyles, "filter-control")}>Data final<input type="date" value={toDate} onChange={(event) => changeFilter(setToDate, event.target.value)} /></label>
         <label className={cx(styles, commonStyles, "filter-control")}>Tipo de transporte<select value={transportType} onChange={(event) => changeTransportType(event.target.value as FreightRecordedTransportType | "TODOS")}><option value="TODOS">Todos</option><option value="AGREGADO">Agregados</option><option value="TRANSPORTADORA">Transportadoras</option></select></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Pendências<select value={statusFilter} onChange={(event) => changeFilter(setStatusFilter, event.target.value as FreightStatus | "TODOS")}><option value="TODOS">Todos os lançamentos</option><option value="PENDENTE_CONFERENCIA">Somente pendentes</option></select></label>
         {transportType === "TRANSPORTADORA" && <label className={cx(styles, commonStyles, "filter-control")}>Transportadora<select value={carrierFilter} onChange={(event) => changeFilter(setCarrierFilter, event.target.value as FreightCarrierSource | "")}><option value="">Todas as transportadoras</option><option value="JUST_IN_TIME">JUST IN TIME</option><option value="PAULO_CRUZ">Paulo Cruz</option></select></label>}
         <label className={cx(styles, commonStyles, "filter-control")}>Motorista<select value={driverId} onChange={(event) => changeFilter(setDriverId, event.target.value)}><option value="">Todos os motoristas</option>{filterOptions.motoristas.map((driver) => <option key={driver.id_motorista} value={driver.id_motorista}>{driver.nome_motorista}</option>)}</select></label>
         <label className={cx(styles, commonStyles, "filter-control")}>Rota / cidade<select value={routeFilter} onChange={(event) => changeFilter(setRouteFilter, event.target.value)}><option value="">Todas as rotas</option>{filterOptions.rotas.map((route) => <option key={route} value={route}>{route}</option>)}</select></label>

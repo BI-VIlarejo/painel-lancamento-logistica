@@ -126,6 +126,17 @@ def _match_historical_driver(
         "PAULO CRUZ": "PAULO_CRUZ",
     }
     carrier_code = carrier_aliases.get(normalized_name)
+    if normalized_name == "VITOR":
+        victor_candidates = [
+            driver
+            for driver in drivers_by_name.get("VICTOR TRANSPORTADORA NITEROI", [])
+            if driver.modalidade_terceirizada == "TRANSPORTADORA_INDEPENDENTE"
+            and driver.codigo_transportadora_independente == "PAULO_CRUZ"
+        ]
+        victor_match = _choose_historical_driver(
+            victor_candidates, data_servico, "ALIAS_VITOR_PAULO_CRUZ"
+        )
+        return victor_match
     direct_candidates = drivers_by_name.get(normalized_name, [])
     direct_match = _choose_historical_driver(
         direct_candidates,
@@ -145,7 +156,7 @@ def _match_historical_driver(
         return direct_match
 
     component_candidates: dict[int, Pessoa] = {}
-    for component in _person_name_components(name):
+    for component in _person_name_components(name) | {normalized_name}:
         for driver in drivers_by_name_component.get(component, []):
             component_candidates[driver.id_pessoa] = driver
     component_match = _choose_historical_driver(

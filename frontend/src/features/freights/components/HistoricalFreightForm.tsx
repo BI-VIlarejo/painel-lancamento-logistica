@@ -222,10 +222,17 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
   useEffect(() => {
     if (driversLoading || selectedDriverId || driverSelectionTouched.current) return;
     if (!originalSheetName.trim()) return;
+    const isVitor = normalizePersonName(originalSheetName) === "VITOR";
     const candidatesByName = editDrivers.filter((driver) =>
-      matchesSourceName(driver.nome_motorista, originalSheetName),
+      matchesSourceName(driver.nome_motorista, originalSheetName)
+      || (isVitor
+        && normalizePersonName(driver.nome_motorista) === "VICTOR TRANSPORTADORA NITEROI"
+        && driver.codigo_transportadora === "PAULO_CRUZ"),
     );
-    const candidates = freight.codigo_fonte_tarifa === "PAULO_CRUZ"
+    const candidates = isVitor
+      ? candidatesByName.filter((driver) => driver.codigo_transportadora === "PAULO_CRUZ"
+        && normalizePersonName(driver.nome_motorista) === "VICTOR TRANSPORTADORA NITEROI")
+      : freight.codigo_fonte_tarifa === "PAULO_CRUZ"
       || freight.codigo_fonte_tarifa === "JUST_IN_TIME"
       ? candidatesByName.filter((driver) => driver.codigo_transportadora === freight.codigo_fonte_tarifa)
       : freight.codigo_fonte_tarifa === "AGREGADOS_CD"
