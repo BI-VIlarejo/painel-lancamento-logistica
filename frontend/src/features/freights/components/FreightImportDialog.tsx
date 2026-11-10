@@ -30,8 +30,8 @@ export function FreightImportDialog({ onClose, onImported }: Props) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const [preview, setPreview] = useState<FreightWorkbookPreview>();
   const [fileName, setFileName] = useState("");
-  const [dateFrom, setDateFrom] = useState("2026-11-01");
-  const [dateTo, setDateTo] = useState("2026-11-10");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [previewPage, setPreviewPage] = useState(0);
   const [previewPageSize, setPreviewPageSize] = useState(10);
   const [loadingFile, setLoadingFile] = useState(false);
@@ -152,7 +152,8 @@ export function FreightImportDialog({ onClose, onImported }: Props) {
             <label className={cx(styles, commonStyles, "filter-control")}>Data inicial<input type="date" value={dateFrom} onChange={(event) => { setDateFrom(event.target.value); setPreviewPage(0); }} disabled={saving} /></label>
             <label className={cx(styles, commonStyles, "filter-control")}>Data final<input type="date" value={dateTo} onChange={(event) => { setDateTo(event.target.value); setPreviewPage(0); }} disabled={saving} /></label>
           </section>
-          {!validDateRange && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">Informe um período válido: a data inicial deve ser anterior ou igual à data final.</div>}
+          {dateFrom && dateTo && !validDateRange && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">A data inicial deve ser anterior ou igual à data final.</div>}
+          {(!dateFrom || !dateTo) && <p className={cx(styles, "freight-import-help")}>Escolha as datas inicial e final para selecionar os lançamentos que deseja importar.</p>}
 
           {loadingFile && <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Lendo e validando a planilha...</div>}
           {preview && !loadingFile && <>

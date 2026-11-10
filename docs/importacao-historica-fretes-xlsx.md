@@ -31,7 +31,7 @@ Campos em branco são importados como não informados, sem texto fictício. Isso
 
 ## Seleção do período de importação
 
-- O importador inicia com o intervalo de 01/11/2026 a 10/11/2026. As datas podem ser alteradas antes do envio.
+- O importador inicia sem datas preenchidas. Escolha as datas inicial e final para selecionar o período antes do envio.
 - A prévia mostra quantas linhas estão dentro do intervalo, quantas estão prontas, quantas têm erro no período ou data ilegível e quantas serão deixadas de fora por estarem em outras datas.
 - Só as linhas com data dentro do período são enviadas ao portal. Linhas com data ilegível permanecem em revisão porque não é seguro concluir se pertencem ao intervalo.
 
