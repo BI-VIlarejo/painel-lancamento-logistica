@@ -24,6 +24,7 @@ type HistoryReturnState = {
   fromDate: string; toDate: string; transportType: FreightRecordedTransportType | "TODOS";
   statusFilter: FreightStatus | "TODOS"; driverId: string; routeFilter: string;
   carrierFilter: FreightCarrierSource | ""; pageSize: number; offset: number;
+  scrollX: number; scrollY: number; tableScrollLeft: number;
 };
 
 function readHistoryReturnState(): Partial<HistoryReturnState> {
@@ -322,12 +323,16 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [offset, setOffset] = useState(Number.isInteger(restored.offset) && (restored.offset ?? -1) >= 0 ? restored.offset! : 0);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [filterOptionsSettled, setFilterOptionsSettled] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<FreightResponse | null>(null);
   const [selectedSection, setSelectedSection] = useState<FreightDetailSection | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const historyTableRef = useRef<HTMLDivElement>(null);
+  const restoreScrollPending = useRef(typeof restored.scrollY === "number" && Number.isFinite(restored.scrollY));
 
   useEffect(() => {
     window.sessionStorage.removeItem(historyReturnKey);
@@ -341,6 +346,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setHistoryLoaded(false);
     setError("");
     void freightsApi.list({
       data_de: fromDate || undefined,
@@ -361,6 +367,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
           }
           setItems(page.items);
           setTotal(page.total);
+          setHistoryLoaded(true);
           setSelected((current) => current
             ? page.items.find((item) => item.codigo_frete === current.codigo_frete) ?? current
             : null);
@@ -374,6 +381,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   useEffect(() => {
     let active = true;
     setFilterOptionsError("");
+    setFilterOptionsSettled(false);
     void freightsApi.historyFilterOptions(fromDate, toDate, transportType)
       .then((options) => {
         if (!active) return;
@@ -385,10 +393,30 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
       })
       .catch((optionsError: unknown) => {
         if (active) setFilterOptionsError(messageFromApiError(optionsError));
-      });
+      })
+      .finally(() => { if (active) setFilterOptionsSettled(true); });
     if (transportType !== "TRANSPORTADORA") setCarrierFilter("");
     return () => { active = false; };
   }, [fromDate, toDate, transportType, reloadVersion]);
+
+  useEffect(() => {
+    if (!restoreScrollPending.current || loading || !historyLoaded || !filterOptionsSettled) return;
+    let secondFrame = 0;
+    const firstFrame = window.requestAnimationFrame(() => {
+      secondFrame = window.requestAnimationFrame(() => {
+        const left = typeof restored.scrollX === "number" && Number.isFinite(restored.scrollX) ? restored.scrollX : 0;
+        window.scrollTo(left, restored.scrollY ?? 0);
+        if (historyTableRef.current && typeof restored.tableScrollLeft === "number" && Number.isFinite(restored.tableScrollLeft)) {
+          historyTableRef.current.scrollLeft = restored.tableScrollLeft;
+        }
+        restoreScrollPending.current = false;
+      });
+    });
+    return () => {
+      window.cancelAnimationFrame(firstFrame);
+      window.cancelAnimationFrame(secondFrame);
+    };
+  }, [loading, historyLoaded, filterOptionsSettled, restored]);
 
   const currentPage = Math.floor(offset / pageSize) + 1;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -405,7 +433,11 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   }
 
   function startEdit(item: FreightResponse) {
-    const state: HistoryReturnState = { fromDate, toDate, transportType, statusFilter, driverId, routeFilter, carrierFilter, pageSize, offset };
+    const state: HistoryReturnState = {
+      fromDate, toDate, transportType, statusFilter, driverId, routeFilter, carrierFilter, pageSize, offset,
+      scrollX: window.scrollX, scrollY: window.scrollY,
+      tableScrollLeft: historyTableRef.current?.scrollLeft ?? 0,
+    };
     window.sessionStorage.setItem(historyReturnKey, JSON.stringify(state));
     setSelected(null);
     setSelectedSection(null);
@@ -484,7 +516,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
       <section className={cx(styles, "table-card")} aria-label="Lançamentos de frete">
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando histórico...</div>
           : items.length === 0 ? <div className={cx(styles, "empty-state")}><span className={cx(styles, commonStyles, "empty-state-icon")}>↗</span><h2>Nenhum frete neste período</h2><p>Altere as datas ou registre um novo serviço.</p>{canCreate && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/fretes")}>Lançar frete</button>}</div>
-            : <div className={cx(styles, commonStyles, "data-table-scroll history-table-scroll")} role="region" aria-label="Tabela do histórico de fretes" tabIndex={0}><table className={cx(styles, commonStyles, "data-table", "freight-table")}><thead><tr><th>Data</th><th>Transporte / responsável</th><th>Rota e volume</th><th>Hodômetro</th><th>Valores</th><th>Ações</th></tr></thead><tbody>{items.map((item) => <FreightRow
+            : <div ref={historyTableRef} className={cx(styles, commonStyles, "data-table-scroll history-table-scroll")} role="region" aria-label="Tabela do histórico de fretes" tabIndex={0}><table className={cx(styles, commonStyles, "data-table", "freight-table")}><thead><tr><th>Data</th><th>Transporte / responsável</th><th>Rota e volume</th><th>Hodômetro</th><th>Valores</th><th>Ações</th></tr></thead><tbody>{items.map((item) => <FreightRow
               item={item}
               key={item.id_frete}
               canManage={canCreate}
