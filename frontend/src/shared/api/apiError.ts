@@ -1,6 +1,10 @@
 export type ApiErrorPayload = {
   detail?: string | Array<{ msg?: string; loc?: Array<string | number> }>;
   message?: string;
+  error?: {
+    message?: string;
+    details?: Array<{ message?: string; location?: Array<string | number> }>;
+  };
 };
 
 export class ApiError extends Error {
@@ -25,6 +29,19 @@ export function errorFromResponse(status: number, payload: unknown): ApiError {
   const body = payload as ApiErrorPayload | null;
   const detail = body?.detail;
 
+  if (Array.isArray(body?.error?.details)) {
+    const fieldErrors: Record<string, string> = {};
+    for (const issue of body.error.details) {
+      const path = (issue.location ?? []).filter((part) => part !== "body").join(".");
+      if (path) fieldErrors[path] = issue.message ?? "Confira este campo.";
+    }
+    return new ApiError(
+      Object.values(fieldErrors)[0] ?? body.error.message ?? "Confira os dados informados.",
+      status,
+      fieldErrors,
+    );
+  }
+
   if (Array.isArray(detail)) {
     const fieldErrors: Record<string, string> = {};
     for (const issue of detail) {
@@ -46,6 +63,6 @@ export function errorFromResponse(status: number, payload: unknown): ApiError {
     429: "Muitas tentativas. Aguarde um pouco e tente novamente.",
     503: "O serviço está temporariamente indisponível.",
   };
-  const message = typeof detail === "string" ? detail : body?.message;
+  const message = typeof detail === "string" ? detail : body?.error?.message ?? body?.message;
   return new ApiError(message ?? safeMessages[status] ?? "Não foi possível concluir agora.", status);
 }

@@ -176,7 +176,7 @@ function makePayload(
     valor_nota: optionalNonNegativeNumber(values.valor_nota, "Valor da nota"),
     valor_frete_bruto: optionalNonNegativeNumber(values.valor_frete_bruto, "Frete bruto"),
     valor_frete_pago: optionalNumber(values.valor_frete_pago, "Total líquido"),
-    percentual_frete: percentage === null ? null : percentage / 100,
+    percentual_frete: percentage === null ? null : (percentage / 100).toFixed(6),
     valor_avaria: optionalNonNegativeNumber(values.valor_avaria, "Valor da avaria") ?? 0,
   };
 }
