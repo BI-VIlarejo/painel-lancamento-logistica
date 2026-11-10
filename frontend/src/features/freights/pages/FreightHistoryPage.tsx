@@ -18,6 +18,23 @@ import type { FreightImportCompletion } from "../components/FreightImportDialog"
 type Props = { onNavigate: (path: string) => void; canCreate: boolean; canViewPayments: boolean };
 type FreightDetailSection = "Operação" | "Hodômetro" | "Valores e conferência";
 const pageSizeOptions = [10, 25, 50, 100];
+const historyReturnKey = "lancamento-logistica:freight-history-return";
+
+type HistoryReturnState = {
+  fromDate: string; toDate: string; transportType: FreightRecordedTransportType | "TODOS";
+  statusFilter: FreightStatus | "TODOS"; driverId: string; routeFilter: string;
+  carrierFilter: FreightCarrierSource | ""; pageSize: number; offset: number;
+};
+
+function readHistoryReturnState(): Partial<HistoryReturnState> {
+  try {
+    const stored = window.sessionStorage.getItem(historyReturnKey);
+    const parsed: unknown = stored ? JSON.parse(stored) : null;
+    return parsed && typeof parsed === "object" ? parsed as Partial<HistoryReturnState> : {};
+  } catch {
+    return {};
+  }
+}
 
 function transportTypeLabel(type: FreightRecordedTransportType): string {
   if (type === "PROPRIO") return "Frota própria";
@@ -285,23 +302,24 @@ function FreightRow({
 
 /** Histórico de fretes com consulta completa e ações auditáveis. */
 export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: Props) {
+  const [restored] = useState(readHistoryReturnState);
   const [items, setItems] = useState<FreightResponse[]>([]);
   const [total, setTotal] = useState(0);
-  const [fromDate, setFromDate] = useState(firstDayOfCurrentMonth());
-  const [toDate, setToDate] = useState(localDateValue());
-  const [transportType, setTransportType] = useState<FreightRecordedTransportType | "TODOS">("TODOS");
-  const [statusFilter, setStatusFilter] = useState<FreightStatus | "TODOS">("TODOS");
-  const [driverId, setDriverId] = useState("");
-  const [routeFilter, setRouteFilter] = useState("");
-  const [carrierFilter, setCarrierFilter] = useState<FreightCarrierSource | "">("");
+  const [fromDate, setFromDate] = useState(restored.fromDate ?? firstDayOfCurrentMonth());
+  const [toDate, setToDate] = useState(restored.toDate ?? localDateValue());
+  const [transportType, setTransportType] = useState<FreightRecordedTransportType | "TODOS">(restored.transportType ?? "TODOS");
+  const [statusFilter, setStatusFilter] = useState<FreightStatus | "TODOS">(restored.statusFilter ?? "TODOS");
+  const [driverId, setDriverId] = useState(restored.driverId ?? "");
+  const [routeFilter, setRouteFilter] = useState(restored.routeFilter ?? "");
+  const [carrierFilter, setCarrierFilter] = useState<FreightCarrierSource | "">(restored.carrierFilter ?? "");
   const [filterOptions, setFilterOptions] = useState<FreightHistoryFilterOptions>({
     motoristas: [],
     rotas: [],
     possui_sem_motorista: false,
   });
   const [filterOptionsError, setFilterOptionsError] = useState("");
-  const [pageSize, setPageSize] = useState(25);
-  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(pageSizeOptions.includes(restored.pageSize ?? 0) ? restored.pageSize! : 25);
+  const [offset, setOffset] = useState(Number.isInteger(restored.offset) && (restored.offset ?? -1) >= 0 ? restored.offset! : 0);
   const [reloadVersion, setReloadVersion] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -312,6 +330,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
+    window.sessionStorage.removeItem(historyReturnKey);
     const savedMessage = window.sessionStorage.getItem("lancamento-logistica:freight-saved");
     if (savedMessage) {
       setNotice(savedMessage);
@@ -336,6 +355,10 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
     })
       .then((page) => {
         if (active) {
+          if (offset > 0 && offset >= page.total) {
+            setOffset(page.total === 0 ? 0 : Math.floor((page.total - 1) / pageSize) * pageSize);
+            return;
+          }
           setItems(page.items);
           setTotal(page.total);
           setSelected((current) => current
@@ -382,6 +405,8 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   }
 
   function startEdit(item: FreightResponse) {
+    const state: HistoryReturnState = { fromDate, toDate, transportType, statusFilter, driverId, routeFilter, carrierFilter, pageSize, offset };
+    window.sessionStorage.setItem(historyReturnKey, JSON.stringify(state));
     setSelected(null);
     setSelectedSection(null);
     onNavigate(`/fretes/${encodeURIComponent(item.codigo_frete)}`);
