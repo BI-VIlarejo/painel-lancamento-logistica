@@ -1,9 +1,9 @@
 .freight-history-page { width: 100%; min-width: 0; }
 .freight-heading { min-width: 0; }
 .heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-.filter-panel { display: grid; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: 11px; padding: 14px; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
+.filter-panel { display: grid; min-width: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 11px; padding: 14px; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
 .filter-panel label { min-width: 0; }
-.result-count { margin: 0 2px 10px; color: #748176; font-size: 11px; white-space: nowrap; }
+.result-count { grid-column: 1 / -1; justify-self: end; margin: 1px 2px 0; color: #748176; font-size: 11px; white-space: nowrap; }
 .table-card { min-width: 0; overflow: hidden; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
 .history-table-scroll.history-table-scroll { max-height: none; }
 .freight-table.freight-table { min-width: 1080px; }

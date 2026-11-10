@@ -78,6 +78,13 @@ class Frete(Base):
         CheckConstraint(
             "(tipo_transporte = 'TRANSPORTADORA' and km_inicial is null "
             "and km_final is null and km_rodado is null) or "
+            "(tipo_transporte = 'AGREGADO' and "
+            "(km_inicial is null or km_inicial >= 0) and "
+            "(km_final is null or km_final >= 0) and "
+            "(km_rodado is null or km_rodado >= 0) and "
+            "(km_inicial is null or km_final is null or "
+            "(km_rodado is not null and km_final >= km_inicial "
+            "and km_rodado = km_final - km_inicial))) or "
             "(km_inicial is not null and km_final is not null and km_rodado is not null "
             "and km_final >= km_inicial and km_rodado = km_final - km_inicial)",
             name="ck_op_logistica_frete_hodometros",
@@ -132,12 +139,12 @@ class Frete(Base):
     )
     codigo_fonte_tarifa: Mapped[str | None] = mapped_column(String(32), nullable=True)
     data_servico: Mapped[date] = mapped_column(Date, nullable=False)
-    rota_cidade: Mapped[str] = mapped_column(String(160), nullable=False)
+    rota_cidade: Mapped[str | None] = mapped_column(String(160), nullable=True)
     km_inicial: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     km_final: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     km_rodado: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
-    quantidade_entregas: Mapped[int] = mapped_column(Integer, nullable=False)
-    peso_kg: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
+    quantidade_entregas: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    peso_kg: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     valor_nota: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)
     tipo_caminhao: Mapped[str | None] = mapped_column(String(40), nullable=True)
     codigo_zona_jit: Mapped[str | None] = mapped_column(String(60), nullable=True)

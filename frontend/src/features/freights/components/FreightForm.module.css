@@ -49,6 +49,17 @@
 .distance-result span { color: #526258; font-size: 12px; font-weight: 700; }
 .distance-result strong { color: var(--primary); font-size: 18px; letter-spacing: -.3px; }
 .distance-result small { margin-left: auto; color: #819084; font-size: 11px; }
+.delivery-match-panel { min-width: 0; margin-top: 14px; padding: 15px; border: 1px solid #dce8dc; border-radius: 11px; background: #f7faf6; }
+.delivery-match-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.delivery-match-heading p { margin: 0 0 4px; color: #7c8d82; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
+.delivery-match-heading h3 { margin: 0; color: var(--brand-navy); font-size: 14px; font-weight: 750; }
+.delivery-match-heading > span { flex: 0 0 auto; padding: 5px 8px; border: 1px solid #e0e8df; border-radius: 99px; color: #637267; background: #fff; font-size: 10px; font-weight: 700; }
+.delivery-match-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; }
+.delivery-match-stats > div { display: flex; min-width: 0; min-height: 62px; flex-direction: column; justify-content: center; gap: 5px; padding: 9px 10px; border: 1px solid #e5ece4; border-radius: 8px; background: #fff; }
+.delivery-match-stats small { color: #7b887e; font-size: 10px; }
+.delivery-match-stats strong { overflow-wrap: anywhere; color: var(--brand-navy); font-size: 12px; font-weight: 700; }
+.delivery-match-message { margin: 10px 0; color: #6e7e72; font-size: 11px; line-height: 1.5; }
+.delivery-match-panel > button { margin-top: 2px; }
 .route-hint { margin: 12px 0 0; color: #738177; font-size: 11px; }
 .source-note { align-self: end; min-height: var(--freight-control-height); flex-wrap: wrap; }
 .source-note strong { margin-left: 3px; }
@@ -82,6 +93,7 @@
 
 @container workspace (max-width: 600px) {
   .jit-grid { grid-template-columns: 1fr; }
+  .delivery-match-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @container workspace (max-width: 540px) {
@@ -97,6 +109,7 @@
   .quote-route { text-align: left; }
   .distance-result { flex-wrap: wrap; }
   .distance-result small { width: 100%; margin-left: 0; }
+  .delivery-match-heading { align-items: flex-start; flex-direction: column; }
 }
 
 @container workspace (max-width: 420px) {

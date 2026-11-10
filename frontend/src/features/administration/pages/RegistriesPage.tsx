@@ -14,6 +14,9 @@ type Props = { permissions: string[]; currentUserId: number };
 type MainTab = "operation" | "users";
 type CatalogTab = "stores" | "people" | "reasons";
 type StatusFilter = "ACTIVE" | "INACTIVE" | "ALL";
+type PersonFunctionFilter = PersonAdminItem["tipo_funcao"] | "ALL";
+type PersonTransportFilter = NonNullable<PersonAdminItem["tipo_transporte_entrega"]> | "UNCLASSIFIED" | "ALL";
+type ReasonGroupFilter = NonNullable<ReasonAdminItem["grupo_motivo"]> | "UNCLASSIFIED" | "ALL";
 type Dialog = { kind: "localities" | "people" | "reasons"; item?: LocalityAdminItem | PersonAdminItem | ReasonAdminItem };
 type StatusTarget = { kind: "locality" | "person" | "reason" | "user" | "grant"; id: number; label: string; active: boolean; userId?: number };
 type ScopeOptions = { setores: SectorCatalogItem[]; localidades: LocalityCatalogItem[] };
@@ -87,6 +90,9 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   const [catalogTab, setCatalogTab] = useState<CatalogTab>("stores");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ACTIVE");
   const [query, setQuery] = useState("");
+  const [personFunctionFilter, setPersonFunctionFilter] = useState<PersonFunctionFilter>("ALL");
+  const [personTransportFilter, setPersonTransportFilter] = useState<PersonTransportFilter>("ALL");
+  const [reasonGroupFilter, setReasonGroupFilter] = useState<ReasonGroupFilter>("ALL");
   const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [catalogLoadErrors, setCatalogLoadErrors] = useState<Partial<Record<CatalogTab, string>>>({});
@@ -221,8 +227,24 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
         : reasons.map((item) => ({ id: item.id_motivo_nao_entrega, primary: item.descricao_motivo, secondary: nonDeliveryReasonGroupLabel(item.grupo_motivo), detail: "Vigente desde " + formatDate(item.vigente_desde), active: item.ativo, item }));
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return rows.filter((row) => statusFilter === "ALL" || (statusFilter === "ACTIVE" ? row.active : !row.active))
+      .filter((row) => {
+        if (catalogTab !== "people" || !isPerson(row.item)) return true;
+        const functionMatches = personFunctionFilter === "ALL" || row.item.tipo_funcao === personFunctionFilter;
+        const transportMatches = personTransportFilter === "ALL"
+          || (personTransportFilter === "UNCLASSIFIED"
+            ? row.item.tipo_transporte_entrega === null
+            : row.item.tipo_transporte_entrega === personTransportFilter);
+        return functionMatches && transportMatches;
+      })
+      .filter((row) => {
+        if (catalogTab !== "reasons" || !isReason(row.item)) return true;
+        return reasonGroupFilter === "ALL"
+          || (reasonGroupFilter === "UNCLASSIFIED"
+            ? row.item.grupo_motivo === null
+            : row.item.grupo_motivo === reasonGroupFilter);
+      })
       .filter((row) => !needle || (row.primary + " " + row.secondary + " " + row.detail + " " + (isLocality(row.item) ? row.item.codigo_localidade : "")).toLocaleLowerCase("pt-BR").includes(needle));
-  }, [catalogTab, localities, people, query, reasons, statusFilter]);
+  }, [catalogTab, localities, people, personFunctionFilter, personTransportFilter, query, reasonGroupFilter, reasons, statusFilter]);
   const visibleUsers = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return users.filter((user) => (statusFilter === "ALL" || (statusFilter === "ACTIVE" ? user.ativo : !user.ativo))
@@ -230,6 +252,11 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
   }, [query, statusFilter, users]);
 
   const setField = (field: string, value: string) => setForm((current) => ({ ...current, [field]: value }));
+  const resetCatalogSpecificFilters = () => {
+    setPersonFunctionFilter("ALL");
+    setPersonTransportFilter("ALL");
+    setReasonGroupFilter("ALL");
+  };
   const openCatalog = (kind: Dialog["kind"], item?: Dialog["item"]) => {
     setNotice(""); setDialog({ kind, item });
     if (kind === "localities") {
@@ -462,6 +489,10 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
     : !currentPanelLoaded && (loadingCatalogTabs.includes(catalogTab) || !currentPanelError);
   const catalogTitle = catalogTab === "stores" ? "Lojas e filiais" : catalogTab === "people" ? "Motoristas e ajudantes" : "Motivos de não entrega";
   const catalogWord = catalogTab === "stores" ? "localidade" : catalogTab === "people" ? "pessoa" : "motivo";
+  const catalogSourceCount = catalogTab === "stores" ? localities.length : catalogTab === "people" ? people.length : reasons.length;
+  const catalogFiltersActive = catalogSourceCount > 0 || statusFilter !== "ACTIVE" || Boolean(query.trim())
+    || (catalogTab === "people" && (personFunctionFilter !== "ALL" || personTransportFilter !== "ALL"))
+    || (catalogTab === "reasons" && reasonGroupFilter !== "ALL");
   const statusSubject = statusTarget?.kind === "user" ? "conta" : statusTarget?.kind === "locality" ? "localidade" : statusTarget?.kind === "person" ? "pessoa" : "motivo";
   const statusTitle = statusTarget?.kind === "grant"
     ? "Revogar acesso"
@@ -519,9 +550,9 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
         </> : <>
           <section className={cx(styles, commonStyles, "section-intro")}><div><p className={cx(styles, commonStyles, "section-kicker")}>BASE DA OPERAÇÃO</p><h2>Cadastros operacionais</h2><p>Cadastre e mantenha as localidades do portal, a equipe e os motivos de ocorrência.</p></div><div className={cx(styles, commonStyles, "access-note catalog-note")}><span aria-hidden="true">i</span><p>Editar pessoa ou motivo atualiza o mesmo registro. A auditoria guarda os valores anteriores e novos; a alteração de classificação também afeta a leitura dos lançamentos históricos.</p></div></section>
           <div className={cx(styles, commonStyles, "catalog-workspace")}><nav className={cx(styles, commonStyles, "catalog-nav")} aria-label="Tipo de cadastro"><p>CATÁLOGOS</p>
-            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "stores" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("stores"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>⌂</span><span>Lojas<small>{loadedCatalogTabs.includes("stores") ? `${counts.stores} ativas` : "carrega ao abrir"}</small></span><b>›</b></button>
-            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "people" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("people"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>◎</span><span>Equipe<small>{loadedCatalogTabs.includes("people") ? `${counts.people} pessoas ativas` : "carrega ao abrir"}</small></span><b>›</b></button>
-            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "reasons" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("reasons"); setQuery(""); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>≋</span><span>Motivos de ocorrência<small>{loadedCatalogTabs.includes("reasons") ? `${counts.reasons} ativos` : "carrega ao abrir"}</small></span><b>›</b></button>
+            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "stores" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("stores"); setQuery(""); resetCatalogSpecificFilters(); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>⌂</span><span>Lojas<small>{loadedCatalogTabs.includes("stores") ? `${counts.stores} ativas` : "carrega ao abrir"}</small></span><b>›</b></button>
+            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "people" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("people"); setQuery(""); resetCatalogSpecificFilters(); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>◎</span><span>Equipe<small>{loadedCatalogTabs.includes("people") ? `${counts.people} pessoas ativas` : "carrega ao abrir"}</small></span><b>›</b></button>
+            <button type="button" className={cx(styles, commonStyles, "catalog-nav-item" + (catalogTab === "reasons" ? " catalog-nav-active" : ""))} onClick={() => { setLoadError(""); setCatalogTab("reasons"); setQuery(""); resetCatalogSpecificFilters(); }}><span className={cx(styles, commonStyles, "catalog-nav-icon")}>≋</span><span>Motivos de ocorrência<small>{loadedCatalogTabs.includes("reasons") ? `${counts.reasons} ativos` : "carrega ao abrir"}</small></span><b>›</b></button>
             <div className={cx(styles, commonStyles, "catalog-nav-help")}><strong>Uma base confiável</strong><p>Os formulários usam apenas cadastros ativos e válidos na data do lançamento.</p></div>
           </nav>
           <section className={cx(styles, commonStyles, "registry-panel catalog-panel")}>
@@ -529,8 +560,16 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
               <div><span className={cx(styles, commonStyles, "panel-eyebrow")}>CATÁLOGO OPERACIONAL</span><h3>{catalogTitle}</h3><span>{currentPanelLoaded ? `${catalogRows.length} registro${catalogRows.length === 1 ? "" : "s"} na lista` : currentPanelError ? "Falha ao carregar" : "Carregando lista"}</span></div>
               <button className={cx(styles, commonStyles, "button button-primary add-button")} type="button" onClick={() => openCatalog(catalogTab === "stores" ? "localities" : catalogTab)}><span>＋</span>{catalogTab === "stores" ? "Cadastrar loja" : catalogTab === "people" ? "Cadastrar pessoa" : "Cadastrar motivo"}</button>
             </div>
-            <div className={cx(styles, commonStyles, "list-controls")}><label className={cx(styles, commonStyles, "search-box")}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogTab === "stores" ? "Buscar por loja, código ou cidade" : catalogTab === "people" ? "Buscar por nome ou função" : "Buscar pela descrição do motivo"} aria-label="Buscar cadastros" /></label><StatusFilters value={statusFilter} onChange={setStatusFilter} /></div>
-            {currentPanelLoading ? <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando {catalogWord}...</div> : currentPanelError && !currentPanelLoaded ? <EmptyState title={"Não foi possível carregar " + catalogWord} description="Tente novamente usando o aviso acima." /> : catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={query ? "Altere a busca ou o filtro de situação." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela de cadastros" tabIndex={0}><table className={cx(styles, commonStyles, "data-table registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja / filial" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Cidade / UF" : catalogTab === "people" ? "Função" : "Grupo"}</th>{catalogTab === "stores" && <th>Tipo</th>}{(catalogTab === "people" || catalogTab === "reasons") && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
+            <div className={cx(styles, commonStyles, "list-controls", "catalog-list-controls")}>
+              <label className={cx(styles, commonStyles, "search-box")}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={catalogTab === "stores" ? "Buscar por loja, código ou cidade" : catalogTab === "people" ? "Buscar por nome, função ou transportadora" : "Buscar pela descrição do motivo"} aria-label="Buscar cadastros" /></label>
+              {catalogTab === "people" && <div className={cx(styles, "catalog-filter-selects")}>
+                <label className={cx(styles, commonStyles, "filter-control", "catalog-filter-field")}>Função<select aria-label="Filtrar equipe por função" value={personFunctionFilter} onChange={(event) => setPersonFunctionFilter(event.target.value as PersonFunctionFilter)}><option value="ALL">Todas as funções</option><option value="MOTORISTA">Motoristas</option><option value="AJUDANTE">Ajudantes</option></select></label>
+                <label className={cx(styles, commonStyles, "filter-control", "catalog-filter-field")}>Tipo de entrega<select aria-label="Filtrar equipe por tipo de entrega" value={personTransportFilter} onChange={(event) => setPersonTransportFilter(event.target.value as PersonTransportFilter)}><option value="ALL">Todos os tipos</option>{deliveryTransportTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}<option value="UNCLASSIFIED">Sem classificação</option></select></label>
+              </div>}
+              {catalogTab === "reasons" && <label className={cx(styles, commonStyles, "filter-control", "catalog-filter-field", "catalog-reason-filter")}>Grupo do motivo<select aria-label="Filtrar motivos por grupo" value={reasonGroupFilter} onChange={(event) => setReasonGroupFilter(event.target.value as ReasonGroupFilter)}><option value="ALL">Todos os grupos</option>{nonDeliveryReasonGroups.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}<option value="UNCLASSIFIED">Sem grupo</option></select></label>}
+              <StatusFilters value={statusFilter} onChange={setStatusFilter} />
+            </div>
+            {currentPanelLoading ? <div className={cx(styles, commonStyles, "registry-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando {catalogWord}...</div> : currentPanelError && !currentPanelLoaded ? <EmptyState title={"Não foi possível carregar " + catalogWord} description="Tente novamente usando o aviso acima." /> : catalogRows.length === 0 ? <EmptyState title={"Nenhum " + catalogWord + " encontrado"} description={catalogFiltersActive ? "Altere a busca ou os filtros selecionados." : catalogTab === "stores" ? "Não há localidades cadastradas no portal." : "Cadastre o primeiro registro desta lista."} /> : <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela de cadastros" tabIndex={0}><table className={cx(styles, commonStyles, "data-table registry-table catalog-table")}><thead><tr><th>{catalogTab === "stores" ? "Loja / filial" : catalogTab === "people" ? "Pessoa" : "Motivo"}</th><th>{catalogTab === "stores" ? "Cidade / UF" : catalogTab === "people" ? "Função" : "Grupo"}</th>{catalogTab === "stores" && <th>Tipo</th>}{(catalogTab === "people" || catalogTab === "reasons") && <th>Vigência</th>}<th>Situação</th><th aria-label="Ações" /></tr></thead><tbody>
               {catalogRows.map((row) => <tr key={catalogTab + "-" + row.id}>
                 <td><strong>{row.primary}</strong>{catalogTab === "stores" && isLocality(row.item) && <small>{row.item.codigo_localidade}</small>}</td>
                 <td><span className={cx(styles, commonStyles, "role-cell")}>{row.secondary}</span></td>

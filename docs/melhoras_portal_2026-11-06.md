@@ -1,5 +1,7 @@
 # Melhorias do Portal — 06/11/2026
 
+**Atualização de 10/11/2026:** o responsável pelo projeto informou que os pedidos de Vyctor já foram cumpridos. Este registro mantém o histórico das solicitações; itens técnicos de publicação e validação não são considerados concluídos apenas por essa confirmação.
+
 Registro das solicitações da revisão com a Diretoria. A navegação, os detalhamentos dos gráficos, o ranking clicável, a paginação somente no rodapé e a exibição dos históricos sem rolagem vertical interna foram implementados localmente. A aba Meta e sua gravação também foram implementadas; sua persistência no ambiente depende da migration do banco. A separação visual ampla entre Entregas e Coletas foi experimentada e revertida após a revisão; os painéis gerais voltaram ao formato agregado.
 
 ## Navegação hierárquica

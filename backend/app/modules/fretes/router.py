@@ -16,12 +16,17 @@ from .schemas import (
     FreightCancelRequest,
     FreightCarrierDriverOption,
     FreightDeliverySummary,
+    FreightHistoryFilterOptions,
     FreightInput,
     FreightPage,
+    HistoricalFreightEditDriverOption,
     FreightPaymentOptions,
     FreightPaymentReport,
     FreightQuoteResponse,
     FreightResponse,
+    HistoricalFreightEditInput,
+    HistoricalFreightImportRequest,
+    HistoricalFreightImportResponse,
     TransportType,
 )
 
@@ -82,6 +87,25 @@ def get_carrier_drivers(
     )
 
 
+@router.get(
+    "/historical-edit-drivers",
+    response_model=list[HistoricalFreightEditDriverOption],
+)
+def get_historical_freight_edit_drivers(
+    db: DatabaseSession,
+    response: Response,
+    data_servico: date,
+    access: AuthorizationContext = Depends(_create_access),  # noqa: B008
+) -> list[HistoricalFreightEditDriverOption]:
+    """Lista motoristas cadastrados e vigentes na data de um frete importado."""
+    _no_store(response)
+    return service.get_historical_freight_edit_drivers(
+        db,
+        data_servico=data_servico,
+        access=access,
+    )
+
+
 @router.get("/delivery-summary", response_model=FreightDeliverySummary)
 def get_delivery_summary(
     db: DatabaseSession,
@@ -131,6 +155,19 @@ def create_freight(
     )
 
 
+@router.post("/import", response_model=HistoricalFreightImportResponse)
+def import_historical_freights(
+    payload: HistoricalFreightImportRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_create_access),  # noqa: B008
+) -> HistoricalFreightImportResponse:
+    """Importa lançamentos históricos em lote sem recalcular tarifas atuais."""
+    _no_store(response)
+    return service.import_historical_freights(db, payload=payload, access=access)
+
+
 @router.get("", response_model=FreightPage)
 def get_freights(
     db: DatabaseSession,
@@ -140,10 +177,13 @@ def get_freights(
     data_ate: date | None = None,
     tipo_transporte: TransportType | None = None,
     status_calculo: Literal["CALCULADO", "PENDENTE_CONFERENCIA"] | None = None,
+    id_motorista: int | None = Query(default=None, ge=0),
+    rota_cidade: str | None = Query(default=None, max_length=160),
+    codigo_transportadora: Literal["JUST_IN_TIME", "PAULO_CRUZ"] | None = None,
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> FreightPage:
-    """Consulta lançamentos por período/status, com limite e deslocamento."""
+    """Consulta lançamentos com os filtros do histórico e paginação."""
     _no_store(response)
     return service.list_freights(
         db,
@@ -152,8 +192,31 @@ def get_freights(
         data_ate=data_ate,
         tipo_transporte=tipo_transporte,
         status_calculo=status_calculo,
+        id_motorista=id_motorista,
+        rota_cidade=rota_cidade,
+        codigo_transportadora=codigo_transportadora,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get("/history-filter-options", response_model=FreightHistoryFilterOptions)
+def get_freight_history_filter_options(
+    db: DatabaseSession,
+    response: Response,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: TransportType | None = None,
+    access: AuthorizationContext = Depends(_read_access),  # noqa: B008
+) -> FreightHistoryFilterOptions:
+    """Retorna motoristas e rotas presentes em todo o intervalo selecionado."""
+    _no_store(response)
+    return service.get_freight_history_filter_options(
+        db,
+        access=access,
+        data_de=data_de,
+        data_ate=data_ate,
+        tipo_transporte=tipo_transporte,
     )
 
 
@@ -257,6 +320,27 @@ def update_freight(
     """Recalcula os valores e salva as alterações auditadas do frete."""
     _no_store(response)
     return service.update_freight(
+        db,
+        codigo_frete=codigo_frete,
+        payload=payload,
+        idempotency_key=idempotency_key,
+        access=access,
+    )
+
+
+@router.put("/{codigo_frete}/historical-edit", response_model=FreightResponse)
+def update_historical_freight(
+    codigo_frete: UUID,
+    payload: HistoricalFreightEditInput,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    idempotency_key: UUID = Header(alias="Idempotency-Key"),  # noqa: B008
+    access: AuthorizationContext = Depends(_create_access),  # noqa: B008
+) -> FreightResponse:
+    """Edita valores de um frete histórico sem aplicar a tabela atual de tarifas."""
+    _no_store(response)
+    return service.update_historical_freight(
         db,
         codigo_frete=codigo_frete,
         payload=payload,

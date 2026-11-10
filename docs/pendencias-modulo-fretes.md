@@ -1,5 +1,14 @@
 # Módulo de Fretes — plano atualizado em 06/11/2026
 
+## Situação para a importação — 10/11/2026
+
+O responsável informou que os pedidos de Vyctor foram cumpridos. Os checklists antigos abaixo são históricos e não comprovam o estado atual do ambiente.
+
+- O frontend local compilou após corrigir um erro de tipo na edição histórica; 24 testes locais de serviço e cálculo de fretes passaram, incluindo a preservação de rotas numeradas. A suíte de rotas HTTP não terminou e a validação do fluxo completo no ambiente de destino ainda está pendente.
+- A migration `f6b1c9a3d7e2` é necessária para campos parciais e está sem rastreamento em `VilarejoBI`; confirmar a revisão do banco de destino e publicar a migration junto com a API antes de importar.
+- A regra local foi corrigida para preservar números em rotas como Niterói 1/2 e Maricá 1. Rotas numeradas sem correspondência exata permanecem com o texto da planilha e pendentes de vínculo; conferir os cadastros antes de importar.
+- Confirmar CI, publicação do frontend e da API, permissões e correspondência dos motoristas no ambiente de destino. Conferir a prévia do intervalo de 01/11/2026 a 10/11/2026 e o histórico após a importação.
+
 **Atualizado em:** 06/11/2026
 **Objetivo:** registrar o estado da implementação, as regras que ainda dependem de decisão e os pré-requisitos para publicar em staging.
 

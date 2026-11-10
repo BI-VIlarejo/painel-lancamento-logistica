@@ -4,8 +4,15 @@ import { formatDate, formatMoney, formatNumber, firstDayOfCurrentMonth, localDat
 import { messageFromApiError } from "../../../shared/api/apiError";
 import { cx } from "../../../shared/styles/classNames";
 import commonStyles from "../../../shared/styles/common.module.css";
-import type { FreightRecordedTransportType, FreightResponse } from "../types";
+import type {
+  FreightCarrierSource,
+  FreightHistoryFilterOptions,
+  FreightRecordedTransportType,
+  FreightResponse,
+} from "../types";
 import styles from "./FreightHistoryPage.module.css";
+import { FreightImportDialog } from "../components/FreightImportDialog";
+import type { FreightImportCompletion } from "../components/FreightImportDialog";
 
 type Props = { onNavigate: (path: string) => void; canCreate: boolean; canViewPayments: boolean };
 type FreightDetailSection = "Operação" | "Hodômetro" | "Valores e conferência";
@@ -17,13 +24,42 @@ function transportTypeLabel(type: FreightRecordedTransportType): string {
   return "Transportadora independente";
 }
 
+function transportTypeLabelForItem(item: FreightResponse): string {
+  const source = importSource(item);
+  return source?.tipo_transporte_identificado === false
+    ? "Tipo pendente de identificação"
+    : transportTypeLabel(item.tipo_transporte);
+}
+
 function transportName(item: FreightResponse): string {
+  const source = importSource(item);
+  if (source?.tipo_transporte_identificado === false) {
+    return item.nome_transportador || "Responsável não identificado";
+  }
   if (item.tipo_transporte === "AGREGADO") return item.nome_transportador || "Agregado sem identificação";
   if (item.tipo_transporte === "PROPRIO") return item.nome_transportador || "Frota própria";
   const carrier = item.nome_transportador || "Transportadora não informada";
   return item.nome_motorista_transportadora
     ? `${carrier} · ${item.nome_motorista_transportadora}`
     : carrier;
+}
+
+function importSource(item: FreightResponse): Record<string, unknown> | null {
+  const value = item.detalhe_calculo.importacao_planilha;
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : null;
+}
+
+function isHistoricalImport(item: FreightResponse): boolean {
+  return importSource(item) !== null;
+}
+
+function calculationStatusLabel(item: FreightResponse): string {
+  if (isHistoricalImport(item)) {
+    return item.status_calculo === "CALCULADO"
+      ? "Valor histórico importado"
+      : "Valor histórico importado · pendente de conferência";
+  }
+  return item.status_calculo === "CALCULADO" ? "Calculado" : "Pendente de conferência";
 }
 
 function formatDateTime(value: string | null): string {
@@ -37,6 +73,15 @@ function formatDateTime(value: string | null): string {
 function formatPercentage(value: string | number | null): string {
   const parsed = numericValue(value);
   return parsed === null ? "—" : `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 3 }).format(parsed * 100)}%`;
+}
+
+function formatSourcePercentage(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) return "—";
+  if (value.includes("%")) return value;
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? `${new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 8 }).format(parsed * 100)}%`
+    : value;
 }
 
 function truckLabel(type: FreightResponse["tipo_caminhao"]): string {
@@ -78,21 +123,22 @@ function FreightDetailsDialog({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
+  const source = importSource(item);
   const sections: Array<{ title: string; fields: Array<[string, string]> }> = [
     {
       title: "Dados do serviço",
       fields: [
-        ["Tipo de transporte", transportTypeLabel(item.tipo_transporte)],
+        ["Tipo de transporte", transportTypeLabelForItem(item)],
         ["Responsável", transportName(item)],
-        ["Rota / cidade", item.rota_cidade],
+        ["Rota / cidade", item.rota_cidade || "Não informada na planilha"],
         ["Fonte tarifária", item.codigo_fonte_tarifa ? tariffSourceLabel(item.codigo_fonte_tarifa) : "Não informada"],
       ],
     },
     {
       title: "Operação",
       fields: [
-        ["Quantidade de entregas", item.quantidade_entregas.toLocaleString("pt-BR")],
-        ["Peso", `${formatNumber(item.peso_kg)} kg`],
+        ["Quantidade de entregas", item.quantidade_entregas === null ? "Não informada na planilha" : item.quantidade_entregas.toLocaleString("pt-BR")],
+        ["Peso", item.peso_kg === null ? "Não informado na planilha" : `${formatNumber(item.peso_kg)} kg`],
         ["Tipo de caminhão", truckLabel(item.tipo_caminhao)],
         ["Zona JUST IN TIME", item.codigo_zona_jit ?? "Não se aplica"],
         ["Adicionais", item.adicionais_jit.length ? item.adicionais_jit.join(", ") : "Nenhum"],
@@ -110,15 +156,55 @@ function FreightDetailsDialog({
       title: "Valores e conferência",
       fields: [
         ["Valor da nota", formatMoney(item.valor_nota)],
-        ["Quantidade de avarias", item.quantidade_avarias.toLocaleString("pt-BR")],
+        ["Quantidade de avarias", source?.quantidade_avarias_informada === false ? "Não informada na planilha" : item.quantidade_avarias.toLocaleString("pt-BR")],
         ["Valor da avaria", formatMoney(item.valor_avaria)],
         ["Frete bruto", formatMoney(item.valor_frete_bruto)],
-        ["Percentual calculado", formatPercentage(item.percentual_frete)],
+        [source?.percentual_frete_planilha !== null && source?.percentual_frete_planilha !== undefined
+          ? "Percentual na planilha" : "Percentual calculado", source?.percentual_frete_planilha !== null && source?.percentual_frete_planilha !== undefined
+            ? formatSourcePercentage(source.percentual_frete_planilha)
+            : formatPercentage(item.percentual_frete)],
         ["Total líquido", formatMoney(item.valor_frete_pago)],
-        ["Status do cálculo", item.status_calculo === "CALCULADO" ? "Calculado" : "Pendente de conferência"],
+        ["Status do cálculo", calculationStatusLabel(item)],
         ["Motivo da pendência", item.motivo_pendencia ?? "Nenhum"],
       ],
     },
+    ...(source ? [{
+      title: "Origem do lançamento",
+      fields: [
+        ["Tipo", "Importação de valores históricos; tarifa atual não aplicada."],
+        ["Arquivo", String(source.arquivo ?? "Não informado")],
+        ["Aba", String(source.aba ?? "Não informada")],
+        ["Linha da planilha", String(source.linha ?? "Não informada")],
+        ...(source.data_servico_planilha ? [["Data original na planilha", String(source.data_servico_planilha)] as [string, string]] : []),
+        ...(source.data_servico_ano_inferido === true ? [["Data", "Ano interpretado pelas datas vizinhas; original preservado acima."] as [string, string]] : []),
+        ["Nome informado na planilha", String(source.transportador_planilha ?? item.nome_transportador ?? "Não informado")],
+        ...(source.vinculo_responsavel_nome_cadastrado ? [["Nome no cadastro", String(source.vinculo_responsavel_nome_cadastrado)] as [string, string]] : []),
+        ...(source.vinculo_responsavel_correspondencia === "NOME_COMPOSTO"
+          ? [["Correspondência do motorista", "O nome da planilha corresponde a uma parte do nome composto cadastrado."] as [string, string]] : []),
+        ...(source.vinculo_responsavel_transportadora ? [["Transportadora independente", source.vinculo_responsavel_transportadora === "JUST_IN_TIME" ? "JUST IN TIME" : "Paulo Cruz"] as [string, string]] : []),
+        ["Vínculo do responsável", source.vinculo_responsavel_status === "VINCULADO"
+          ? source.vinculo_responsavel_criterio === "DATA_SERVICO"
+            ? "Vinculado à versão vigente na data do frete."
+            : "Vinculado ao cadastro atual pelo nome."
+          : source.vinculo_responsavel_status === "AMBIGUO"
+            ? source.vinculo_responsavel_transportadora
+              ? "Transportadora identificada; há mais de um motorista possível. Requer conferência."
+              : "Há mais de um cadastro com esse nome; requer conferência."
+            : source.vinculo_responsavel_transportadora
+              ? "Transportadora identificada, sem motorista associado; requer conferência."
+              : "Nome preservado, sem vínculo no cadastro; requer conferência."],
+        ...(source.rota_cidade_status === "VINCULADA" && source.rota_cidade_planilha !== item.rota_cidade
+          ? [["Rota cadastrada", String(item.rota_cidade ?? "Não informada")] as [string, string], ["Rota na planilha", String(source.rota_cidade_planilha ?? "Não informada")] as [string, string]] : []),
+        ...(source.rota_cidade_status === "NAO_ENCONTRADA" || source.rota_cidade_status === "AMBIGUA"
+          ? [["Correspondência da rota", "Não foi possível vincular a rota de forma única ao catálogo."] as [string, string]] : []),
+        ...(item.tipo_transporte === "TRANSPORTADORA" && source.km_inicial_planilha !== null && source.km_inicial_planilha !== undefined
+          ? [["KM inicial na planilha", String(source.km_inicial_planilha)] as [string, string]] : []),
+        ...(item.tipo_transporte === "TRANSPORTADORA" && source.km_final_planilha !== null && source.km_final_planilha !== undefined
+          ? [["KM final na planilha", String(source.km_final_planilha)] as [string, string]] : []),
+        ...(item.tipo_transporte === "TRANSPORTADORA" && source.km_rodado_planilha !== null && source.km_rodado_planilha !== undefined
+          ? [["KM rodado na planilha", String(source.km_rodado_planilha)] as [string, string]] : []),
+      ] as Array<[string, string]>,
+    }] : []),
     {
       title: "Registro",
       fields: [
@@ -136,7 +222,7 @@ function FreightDetailsDialog({
           <button ref={closeButton} className={cx(styles, commonStyles, "icon-button", "dialog-close")} type="button" aria-label="Fechar detalhes" onClick={onClose}>×</button>
         </div>
         <div className={cx(styles, commonStyles, "dialog-meta", "freight-dialog-meta")}>
-          <span className={cx(styles, "freight-status", item.cancelado ? "freight-status-cancelled" : "freight-status-active")}>{item.cancelado ? "Cancelado" : item.status_calculo === "CALCULADO" ? "Calculado" : "Pendente de conferência"}</span>
+          <span className={cx(styles, "freight-status", item.cancelado ? "freight-status-cancelled" : "freight-status-active")}>{item.cancelado ? "Cancelado" : calculationStatusLabel(item)}</span>
         </div>
         {item.cancelado && <div className={cx(styles, "cancellation-summary")}><strong>Cancelado em {formatDateTime(item.cancelado_em)}</strong><span>Usuário #{item.cancelado_por ?? "não informado"}</span><p>{item.justificativa_cancelamento || "Justificativa não informada."}</p></div>}
         {error && <div className={cx(styles, commonStyles, "notice notice-error", "freight-dialog-error")} role="alert">{error}</div>}
@@ -182,8 +268,8 @@ function FreightRow({
   const canCancel = canManage && !item.cancelado;
   return <tr>
     <td><strong>{formatDate(item.data_servico)}</strong>{item.cancelado && <small className={cx(styles, "cancelled-row-label")}>Cancelado</small>}</td>
-    <td><strong>{transportTypeLabel(item.tipo_transporte)}</strong><small>{transportName(item)}</small></td>
-    <td><strong>{item.rota_cidade}</strong><div className={cx(styles, "freight-row-metrics")}><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar quantidade de entregas">{item.quantidade_entregas.toLocaleString("pt-BR")} entregas</button><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar peso">{formatNumber(item.peso_kg)} kg</button></div></td>
+    <td><strong>{transportTypeLabelForItem(item)}</strong><small>{transportName(item)}</small></td>
+    <td><strong>{item.rota_cidade || "Rota não informada"}</strong><div className={cx(styles, "freight-row-metrics")}><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar quantidade de entregas">{item.quantidade_entregas === null ? "Entregas não informadas" : `${item.quantidade_entregas.toLocaleString("pt-BR")} entregas`}</button><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar peso">{item.peso_kg === null ? "Peso não informado" : `${formatNumber(item.peso_kg)} kg`}</button></div></td>
     <td>{item.tipo_transporte === "TRANSPORTADORA" ? <span>Não se aplica</span> : <><button className={cx(styles, "freight-row-primary-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar hodômetro rodado">{formatNumber(item.km_rodado)} km</button><small>Inicial <button className={cx(styles, "freight-row-inline-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar KM inicial">{formatNumber(item.km_inicial)}</button> · Final <button className={cx(styles, "freight-row-inline-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar KM final">{formatNumber(item.km_final)}</button></small></>}</td>
     <td>{item.valor_frete_bruto === null ? <strong>{formatMoney(item.valor_frete_bruto)}</strong> : <button className={cx(styles, "freight-row-primary-metric")} type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar valor bruto do frete">{formatMoney(item.valor_frete_bruto)}</button>}<div className={cx(styles, "freight-row-metrics freight-row-value-metrics")}><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar quantidade de avarias">{item.quantidade_avarias} avarias</button><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar valor da avaria">Avaria {formatMoney(item.valor_avaria)}</button><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar total líquido">Líquido {formatMoney(item.valor_frete_pago)}</button></div></td>
     <td><div className={cx(styles, commonStyles, "history-row-actions")}>
@@ -203,6 +289,15 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [fromDate, setFromDate] = useState(firstDayOfCurrentMonth());
   const [toDate, setToDate] = useState(localDateValue());
   const [transportType, setTransportType] = useState<FreightRecordedTransportType | "TODOS">("TODOS");
+  const [driverId, setDriverId] = useState("");
+  const [routeFilter, setRouteFilter] = useState("");
+  const [carrierFilter, setCarrierFilter] = useState<FreightCarrierSource | "">("");
+  const [filterOptions, setFilterOptions] = useState<FreightHistoryFilterOptions>({
+    motoristas: [],
+    rotas: [],
+    possui_sem_motorista: false,
+  });
+  const [filterOptionsError, setFilterOptionsError] = useState("");
   const [pageSize, setPageSize] = useState(25);
   const [offset, setOffset] = useState(0);
   const [reloadVersion, setReloadVersion] = useState(0);
@@ -212,6 +307,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [selected, setSelected] = useState<FreightResponse | null>(null);
   const [selectedSection, setSelectedSection] = useState<FreightDetailSection | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   useEffect(() => {
     const savedMessage = window.sessionStorage.getItem("lancamento-logistica:freight-saved");
@@ -225,7 +321,16 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
     let active = true;
     setLoading(true);
     setError("");
-    void freightsApi.list({ data_de: fromDate || undefined, data_ate: toDate || undefined, tipo_transporte: transportType, limit: pageSize, offset })
+    void freightsApi.list({
+      data_de: fromDate || undefined,
+      data_ate: toDate || undefined,
+      tipo_transporte: transportType,
+      id_motorista: driverId === "" ? undefined : Number(driverId),
+      rota_cidade: routeFilter || undefined,
+      codigo_transportadora: carrierFilter || undefined,
+      limit: pageSize,
+      offset,
+    })
       .then((page) => {
         if (active) {
           setItems(page.items);
@@ -238,13 +343,38 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
       .catch((loadError: unknown) => { if (active) setError(messageFromApiError(loadError)); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [fromDate, toDate, transportType, pageSize, offset, reloadVersion]);
+  }, [fromDate, toDate, transportType, driverId, routeFilter, carrierFilter, pageSize, offset, reloadVersion]);
+
+  useEffect(() => {
+    let active = true;
+    setFilterOptionsError("");
+    void freightsApi.historyFilterOptions(fromDate, toDate, transportType)
+      .then((options) => {
+        if (!active) return;
+        setFilterOptions(options);
+        setDriverId((current) => current && !options.motoristas.some((driver) => String(driver.id_motorista) === current)
+          ? ""
+          : current);
+        setRouteFilter((current) => current && !options.rotas.includes(current) ? "" : current);
+      })
+      .catch((optionsError: unknown) => {
+        if (active) setFilterOptionsError(messageFromApiError(optionsError));
+      });
+    if (transportType !== "TRANSPORTADORA") setCarrierFilter("");
+    return () => { active = false; };
+  }, [fromDate, toDate, transportType, reloadVersion]);
 
   const currentPage = Math.floor(offset / pageSize) + 1;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
 
   function changeFilter<T>(setter: (value: T) => void, value: T) {
     setter(value);
+    setOffset(0);
+  }
+
+  function changeTransportType(value: FreightRecordedTransportType | "TODOS") {
+    setTransportType(value);
+    setCarrierFilter("");
     setOffset(0);
   }
 
@@ -283,6 +413,17 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
     }
   }
 
+  function handleImported(result: FreightImportCompletion) {
+    const message = `${result.importados.toLocaleString("pt-BR")} fretes importados; ${result.vinculados_agregados.toLocaleString("pt-BR")} agregados vinculados; ${result.vinculados_transportadoras.toLocaleString("pt-BR")} motoristas de transportadoras vinculados; ${result.sem_vinculo.toLocaleString("pt-BR")} sem vínculo e pendentes; ${result.atualizados.toLocaleString("pt-BR")} pendências atualizadas; ${result.ja_existentes.toLocaleString("pt-BR")} já registrados.`;
+    setNotice(result.linhasComErro
+      ? `${message} ${result.linhasComErro.toLocaleString("pt-BR")} linhas precisam de correção e podem ser reenviadas.`
+      : message);
+    if (result.dataDe) setFromDate(result.dataDe);
+    if (result.dataAte) setToDate(result.dataAte);
+    setOffset(0);
+    setReloadVersion((version) => version + 1);
+  }
+
   return (
     <div className={cx(styles, commonStyles, "portal-page", "page-stack", "freight-history-page")}>
       <div className={cx(styles, commonStyles, "breadcrumb")}><span>Fretes</span><span aria-hidden="true">/</span><strong>Histórico</strong></div>
@@ -290,6 +431,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
         <div><p className={cx(styles, commonStyles, "eyebrow")}>OPERAÇÃO DE TRANSPORTE</p><h1>Histórico de fretes</h1><p className={cx(styles, commonStyles, "page-lead")}>Consulte, edite, cancele ou abra os dados completos dos serviços registrados.</p></div>
         <div className={cx(styles, "heading-actions")}>
           {canViewPayments && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/fretes/pagamentos")}>Pagamentos</button>}
+          {canCreate && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setImportOpen(true)}>Importar planilha XLSX</button>}
           {canCreate && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => onNavigate("/fretes")}>+ Lançar frete</button>}
         </div>
       </header>
@@ -299,9 +441,14 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
       <section className={cx(styles, "filter-panel")} aria-label="Filtros do histórico">
         <label className={cx(styles, commonStyles, "filter-control")}>Data inicial<input type="date" value={fromDate} onChange={(event) => changeFilter(setFromDate, event.target.value)} /></label>
         <label className={cx(styles, commonStyles, "filter-control")}>Data final<input type="date" value={toDate} onChange={(event) => changeFilter(setToDate, event.target.value)} /></label>
-        <label className={cx(styles, commonStyles, "filter-control")}>Tipo de transporte<select value={transportType} onChange={(event) => changeFilter(setTransportType, event.target.value as FreightRecordedTransportType | "TODOS")}><option value="TODOS">Todos</option><option value="AGREGADO">Agregados</option><option value="TRANSPORTADORA">Transportadoras</option></select></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Tipo de transporte<select value={transportType} onChange={(event) => changeTransportType(event.target.value as FreightRecordedTransportType | "TODOS")}><option value="TODOS">Todos</option><option value="AGREGADO">Agregados</option><option value="TRANSPORTADORA">Transportadoras</option></select></label>
+        {transportType === "TRANSPORTADORA" && <label className={cx(styles, commonStyles, "filter-control")}>Transportadora<select value={carrierFilter} onChange={(event) => changeFilter(setCarrierFilter, event.target.value as FreightCarrierSource | "")}><option value="">Todas as transportadoras</option><option value="JUST_IN_TIME">JUST IN TIME</option><option value="PAULO_CRUZ">Paulo Cruz</option></select></label>}
+        <label className={cx(styles, commonStyles, "filter-control")}>Motorista<select value={driverId} onChange={(event) => changeFilter(setDriverId, event.target.value)}><option value="">Todos os motoristas</option>{filterOptions.motoristas.map((driver) => <option key={driver.id_motorista} value={driver.id_motorista}>{driver.nome_motorista}</option>)}</select></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Rota / cidade<select value={routeFilter} onChange={(event) => changeFilter(setRouteFilter, event.target.value)}><option value="">Todas as rotas</option>{filterOptions.rotas.map((route) => <option key={route} value={route}>{route}</option>)}</select></label>
         <span className={cx(styles, "result-count")}>{total.toLocaleString("pt-BR")} {total === 1 ? "lançamento" : "lançamentos"}</span>
       </section>
+
+      {filterOptionsError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">Não foi possível carregar as opções dos filtros: {filterOptionsError}</div>}
 
       {error && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert"><span>{error}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setReloadVersion((version) => version + 1)}>Tentar novamente</button></div>}
 
@@ -334,6 +481,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
         onEdit={canCreate && !selected.cancelado && selected.tipo_transporte !== "PROPRIO" ? () => startEdit(selected) : undefined}
         onCancel={canCreate && !selected.cancelado ? () => void cancelFreight(selected) : undefined}
       />}
+      {importOpen && <FreightImportDialog onClose={() => setImportOpen(false)} onImported={handleImported} />}
     </div>
   );
 }

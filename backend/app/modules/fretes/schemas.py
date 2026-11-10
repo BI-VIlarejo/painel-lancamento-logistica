@@ -143,6 +143,215 @@ class FreightInput(BaseModel):
         return self.km_final - self.km_inicial
 
 
+class HistoricalFreightImportItem(BaseModel):
+    """Linha validada de uma planilha com fretes já realizados."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    linha_planilha: int = Field(ge=1)
+    data_servico: date
+    data_servico_planilha: str | None = Field(default=None, max_length=40)
+    data_servico_ano_inferido: bool = False
+    nome_transportador: str | None = Field(default=None, max_length=160)
+    rota_cidade: str | None = Field(default=None, max_length=160)
+    km_inicial: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=12,
+        decimal_places=3,
+        allow_inf_nan=False,
+    )
+    km_final: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=12,
+        decimal_places=3,
+        allow_inf_nan=False,
+    )
+    km_rodado: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=12,
+        decimal_places=3,
+        allow_inf_nan=False,
+    )
+    quantidade_entregas: int | None = Field(default=None, ge=0, le=2_147_483_647)
+    peso_kg: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=12,
+        decimal_places=3,
+        allow_inf_nan=False,
+    )
+    valor_nota: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=14,
+        decimal_places=2,
+        allow_inf_nan=False,
+    )
+    valor_frete_bruto: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=14,
+        decimal_places=2,
+        allow_inf_nan=False,
+    )
+    valor_frete_pago: Decimal | None = Field(
+        default=None,
+        max_digits=14,
+        decimal_places=2,
+        allow_inf_nan=False,
+    )
+    percentual_frete: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=10,
+        decimal_places=6,
+        allow_inf_nan=False,
+    )
+    percentual_frete_planilha: str | None = Field(default=None, max_length=60)
+    valores_originais_planilha: dict[str, str | None] = Field(
+        default_factory=dict,
+        max_length=20,
+    )
+    valor_avaria: Decimal = Field(
+        default=Decimal("0"),
+        ge=Decimal("0"),
+        max_digits=14,
+        decimal_places=2,
+        allow_inf_nan=False,
+    )
+
+    @field_validator("nome_transportador", "rota_cidade")
+    @classmethod
+    def normalize_import_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
+    @field_validator("valores_originais_planilha")
+    @classmethod
+    def bound_original_values(
+        cls,
+        values: dict[str, str | None],
+    ) -> dict[str, str | None]:
+        if any(not key or len(key) > 40 for key in values):
+            raise ValueError("A planilha contém um nome de campo de origem inválido.")
+        if any(value is not None and len(value) > 255 for value in values.values()):
+            raise ValueError("Um valor original da planilha ultrapassa 255 caracteres.")
+        return values
+
+    @model_validator(mode="after")
+    def validate_import_values(self) -> HistoricalFreightImportItem:
+        if self.km_inicial is not None and self.km_final is not None:
+            if self.km_final < self.km_inicial:
+                raise ValueError("KM final deve ser igual ou maior que KM inicial.")
+            derived = self.km_final - self.km_inicial
+            if self.km_rodado is not None and self.km_rodado != derived:
+                raise ValueError("KM rodado diverge da diferença entre KM final e inicial.")
+            self.km_rodado = derived
+        return self
+
+
+class HistoricalFreightEditInput(BaseModel):
+    """Campos editáveis do frete histórico sem recalcular a tarifa vigente."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    data_servico: date
+    id_motorista_selecionado: int | None = Field(default=None, ge=1)
+    complementar_com_entregas: bool = False
+    nome_transportador: str | None = Field(max_length=160)
+    rota_cidade: str | None = Field(max_length=160)
+    km_inicial: Decimal | None = Field(
+        ge=Decimal("0"), max_digits=12, decimal_places=3, allow_inf_nan=False
+    )
+    km_final: Decimal | None = Field(
+        ge=Decimal("0"), max_digits=12, decimal_places=3, allow_inf_nan=False
+    )
+    km_rodado: Decimal | None = Field(
+        ge=Decimal("0"), max_digits=12, decimal_places=3, allow_inf_nan=False
+    )
+    quantidade_entregas: int | None = Field(ge=0, le=2_147_483_647)
+    peso_kg: Decimal | None = Field(
+        ge=Decimal("0"), max_digits=12, decimal_places=3, allow_inf_nan=False
+    )
+    valor_nota: Decimal | None = Field(
+        ge=Decimal("0"), max_digits=14, decimal_places=2, allow_inf_nan=False
+    )
+    valor_frete_bruto: Decimal | None = Field(
+        ge=Decimal("0"), max_digits=14, decimal_places=2, allow_inf_nan=False
+    )
+    valor_frete_pago: Decimal | None = Field(
+        max_digits=14, decimal_places=2, allow_inf_nan=False
+    )
+    percentual_frete: Decimal | None = Field(
+        ge=Decimal("0"), max_digits=10, decimal_places=6, allow_inf_nan=False
+    )
+    valor_avaria: Decimal = Field(
+        ge=Decimal("0"), max_digits=14, decimal_places=2, allow_inf_nan=False
+    )
+
+    @field_validator("nome_transportador", "rota_cidade")
+    @classmethod
+    def normalize_edit_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
+    @model_validator(mode="after")
+    def validate_edit_odometer(self) -> HistoricalFreightEditInput:
+        if self.km_inicial is None or self.km_final is None:
+            return self
+        if self.km_final < self.km_inicial:
+            raise ValueError("KM final deve ser igual ou maior que KM inicial.")
+        derived = self.km_final - self.km_inicial
+        if self.km_rodado is not None and self.km_rodado != derived:
+            raise ValueError("KM rodado diverge da diferença entre KM final e inicial.")
+        self.km_rodado = derived
+        return self
+
+
+class HistoricalFreightImportRequest(BaseModel):
+    """Lote de linhas extraídas de uma planilha de histórico de fretes."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nome_arquivo: str = Field(min_length=1, max_length=255)
+    sha256_arquivo: str = Field(pattern=r"^[0-9a-f]{64}$")
+    aba_origem: str = Field(min_length=1, max_length=100)
+    itens: list[HistoricalFreightImportItem] = Field(min_length=1, max_length=2500)
+
+    @field_validator("nome_arquivo")
+    @classmethod
+    def strip_path_from_filename(cls, value: str) -> str:
+        filename = value.replace("\\", "/").rsplit("/", 1)[-1].strip()
+        if not filename:
+            raise ValueError("Informe o nome do arquivo.")
+        return filename
+
+    @model_validator(mode="after")
+    def require_unique_rows(self) -> HistoricalFreightImportRequest:
+        lines = [item.linha_planilha for item in self.itens]
+        if len(lines) != len(set(lines)):
+            raise ValueError("A planilha contém números de linha repetidos.")
+        return self
+
+
+class HistoricalFreightImportResponse(BaseModel):
+    """Resumo da importação em lote, incluindo reenvios idempotentes."""
+
+    importados: int
+    atualizados: int = 0
+    ja_existentes: int
+    vinculados_agregados: int = 0
+    vinculados_transportadoras: int = 0
+    sem_vinculo: int = 0
+
+
 class FreightQuoteResponse(BaseModel):
     """Resultado da simulação, incluindo motivo quando exigir conferência."""
 
@@ -165,12 +374,12 @@ class FreightResponse(BaseModel):
     nome_motorista_transportadora: str | None
     codigo_fonte_tarifa: TariffSource | None
     data_servico: date
-    rota_cidade: str
+    rota_cidade: str | None
     km_inicial: Decimal | None
     km_final: Decimal | None
     km_rodado: Decimal | None
-    quantidade_entregas: int
-    peso_kg: Decimal
+    quantidade_entregas: int | None
+    peso_kg: Decimal | None
     valor_nota: Decimal | None
     tipo_caminhao: TruckType
     codigo_zona_jit: str | None
@@ -214,6 +423,21 @@ class FreightPage(BaseModel):
     offset: int
 
 
+class FreightHistoryDriverOption(BaseModel):
+    """Motorista relacionado a pelo menos um frete no período filtrado."""
+
+    id_motorista: int
+    nome_motorista: str
+
+
+class FreightHistoryFilterOptions(BaseModel):
+    """Opções dinâmicas para os filtros de motorista e rota do histórico."""
+
+    motoristas: list[FreightHistoryDriverOption]
+    rotas: list[str]
+    possui_sem_motorista: bool
+
+
 class FreightPaymentReport(BaseModel):
     """Resumo de pagamento filtrado por modalidade e responsável."""
 
@@ -251,6 +475,16 @@ class FreightCarrierDriverOption(BaseModel):
     nome_motorista: str
     codigo_transportadora: CarrierSource
     nome_transportadora: str
+
+
+class HistoricalFreightEditDriverOption(BaseModel):
+    """Motorista cadastrado e válido na data de um frete importado."""
+
+    id_motorista: int
+    nome_motorista: str
+    tipo_transporte: FreightInputTransportType
+    codigo_transportadora: CarrierSource | None
+    nome_transportadora: str | None
 
 
 class FreightDeliverySummary(BaseModel):

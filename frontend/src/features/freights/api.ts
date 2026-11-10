@@ -2,9 +2,11 @@ import { apiBlob, apiRequest, isDemoMode } from "../../shared/api/apiClient";
 import { freightsDemoApi } from "./demoApi";
 import type {
   FreightHistoryFilters,
+  FreightHistoryFilterOptions,
   FreightAggregateDriverOption,
   FreightCarrierDriverOption,
   FreightDeliverySummary,
+  HistoricalFreightEditDriverOption,
   FreightInput,
   FreightPage,
   FreightPaymentFilters,
@@ -13,6 +15,9 @@ import type {
   FreightQuoteResponse,
   FreightResponse,
   FreightTariffOptions,
+  HistoricalFreightImportRequest,
+  HistoricalFreightImportResponse,
+  HistoricalFreightEditInput,
   JustInTimeRegionOption,
   JustInTimeZoneOption,
 } from "./types";
@@ -59,6 +64,13 @@ function historyQuery(filters: FreightHistoryFilters = {}): string {
   if (filters.status_calculo && filters.status_calculo !== "TODOS") {
     params.set("status_calculo", filters.status_calculo);
   }
+  if (filters.id_motorista !== undefined) {
+    params.set("id_motorista", String(filters.id_motorista));
+  }
+  if (filters.rota_cidade) params.set("rota_cidade", filters.rota_cidade);
+  if (filters.codigo_transportadora) {
+    params.set("codigo_transportadora", filters.codigo_transportadora);
+  }
   params.set("limit", String(filters.limit ?? 50));
   params.set("offset", String(filters.offset ?? 0));
   return params.toString();
@@ -73,6 +85,16 @@ function paymentQuery(filters: FreightPaymentFilters): string {
   });
   if (filters.nome_transportador) params.set("nome_transportador", filters.nome_transportador);
   if (filters.sem_identificacao) params.set("sem_identificacao", "true");
+  return params.toString();
+}
+
+function historyOptionsQuery(dataDe: string, dataAte: string, tipoTransporte: string): string {
+  const params = new URLSearchParams();
+  if (dataDe) params.set("data_de", dataDe);
+  if (dataAte) params.set("data_ate", dataAte);
+  if (tipoTransporte && tipoTransporte !== "TODOS") {
+    params.set("tipo_transporte", tipoTransporte);
+  }
   return params.toString();
 }
 
@@ -93,6 +115,10 @@ function deliverySummaryQuery(dataServico: string, idMotorista: number): string 
     data_servico: dataServico,
     id_motorista: String(idMotorista),
   }).toString();
+}
+
+function historicalEditDriversQuery(dataServico: string): string {
+  return new URLSearchParams({ data_servico: dataServico }).toString();
 }
 
 /** Operações do módulo Fretes sobre a API real ou os dados de demonstração. */
@@ -127,6 +153,14 @@ export const freightsApi = {
         );
   },
 
+  historicalEditDrivers(dataServico: string): Promise<HistoricalFreightEditDriverOption[]> {
+    return isDemoMode
+      ? freightsDemoApi.historicalEditDrivers(dataServico)
+      : apiRequest<HistoricalFreightEditDriverOption[]>(
+          `/freights/historical-edit-drivers?${historicalEditDriversQuery(dataServico)}`,
+        );
+  },
+
   quote(payload: FreightInput): Promise<FreightQuoteResponse> {
     return isDemoMode
       ? freightsDemoApi.quote(payload)
@@ -146,6 +180,15 @@ export const freightsApi = {
         });
   },
 
+  importHistorical(payload: HistoricalFreightImportRequest): Promise<HistoricalFreightImportResponse> {
+    return isDemoMode
+      ? freightsDemoApi.importHistorical(payload)
+      : apiRequest<HistoricalFreightImportResponse>("/freights/import", {
+          method: "POST",
+          body: payload,
+        });
+  },
+
   get(codigoFrete: string): Promise<FreightResponse> {
     return isDemoMode
       ? freightsDemoApi.get(codigoFrete)
@@ -162,6 +205,19 @@ export const freightsApi = {
         });
   },
 
+  updateHistorical(
+    codigoFrete: string,
+    payload: HistoricalFreightEditInput,
+    idempotencyKey: string,
+  ): Promise<FreightResponse> {
+    return isDemoMode
+      ? freightsDemoApi.updateHistorical(codigoFrete, payload)
+      : apiRequest<FreightResponse>(
+          `/freights/${encodeURIComponent(codigoFrete)}/historical-edit`,
+          { method: "PUT", body: payload, idempotencyKey },
+        );
+  },
+
   cancel(codigoFrete: string, justificativa: string, idempotencyKey: string): Promise<void> {
     return isDemoMode
       ? freightsDemoApi.cancel(codigoFrete, justificativa)
@@ -176,6 +232,18 @@ export const freightsApi = {
     return isDemoMode
       ? freightsDemoApi.list(filters)
       : apiRequest<FreightPage>(`/freights?${historyQuery(filters)}`);
+  },
+
+  historyFilterOptions(
+    dataDe: string,
+    dataAte: string,
+    tipoTransporte: string,
+  ): Promise<FreightHistoryFilterOptions> {
+    return isDemoMode
+      ? freightsDemoApi.historyFilterOptions(dataDe, dataAte, tipoTransporte)
+      : apiRequest<FreightHistoryFilterOptions>(
+          `/freights/history-filter-options?${historyOptionsQuery(dataDe, dataAte, tipoTransporte)}`,
+        );
   },
 
   paymentReport(filters: FreightPaymentFilters): Promise<FreightPaymentReport> {

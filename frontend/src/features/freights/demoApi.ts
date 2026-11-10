@@ -1,8 +1,10 @@
 import type {
   FreightHistoryFilters,
+  FreightHistoryFilterOptions,
   FreightAggregateDriverOption,
   FreightCarrierDriverOption,
   FreightDeliverySummary,
+  HistoricalFreightEditDriverOption,
   FreightInput,
   FreightPage,
   FreightPaymentFilters,
@@ -11,6 +13,9 @@ import type {
   FreightQuoteResponse,
   FreightResponse,
   FreightTariffOptions,
+  HistoricalFreightImportRequest,
+  HistoricalFreightImportResponse,
+  HistoricalFreightEditInput,
   JustInTimeRegionOption,
   JustInTimeZoneOption,
 } from "./types";
@@ -182,6 +187,9 @@ function readFreights(): FreightResponse[] {
     id_motorista_agregado: item.id_motorista_agregado ?? null,
     id_motorista_transportadora: item.id_motorista_transportadora ?? null,
     nome_motorista_transportadora: item.nome_motorista_transportadora ?? null,
+    rota_cidade: item.rota_cidade ?? null,
+    quantidade_entregas: item.quantidade_entregas ?? null,
+    peso_kg: item.peso_kg ?? null,
     quantidade_avarias: item.quantidade_avarias ?? 0,
     cancelado: item.cancelado ?? false,
     cancelado_em: item.cancelado_em ?? null,
@@ -549,12 +557,30 @@ export const freightsDemoApi = {
     return carrierDriverExamples;
   },
 
+  async historicalEditDrivers(_dataServico: string): Promise<HistoricalFreightEditDriverOption[]> {
+    await pause();
+    return [
+      {
+        id_motorista: 501,
+        nome_motorista: "João da Silva",
+        tipo_transporte: "AGREGADO",
+        codigo_transportadora: null,
+        nome_transportadora: null,
+      },
+      ...carrierDriverExamples.map((driver) => ({
+        ...driver,
+        tipo_transporte: "TRANSPORTADORA" as const,
+      })),
+    ];
+  },
+
   async deliverySummary(
     dataServico: string,
     idMotorista: number,
   ): Promise<FreightDeliverySummary> {
     await pause();
-    if (idMotorista !== 501) throw new Error("Motorista não encontrado no cadastro de equipes.");
+    const registered = idMotorista === 501 || carrierDriverExamples.some((driver) => driver.id_motorista === idMotorista);
+    if (!registered) throw new Error("Motorista não encontrado no cadastro.");
     return {
       id_motorista: idMotorista,
       data_servico: dataServico,
@@ -624,6 +650,148 @@ export const freightsDemoApi = {
     return record;
   },
 
+  async importHistorical(payload: HistoricalFreightImportRequest): Promise<HistoricalFreightImportResponse> {
+    await pause();
+    const current = readFreights();
+    const additions: FreightResponse[] = [];
+    let alreadyExists = 0;
+    let updatedCount = 0;
+    let matchedAggregates = 0;
+    let matchedCarriers = 0;
+    let unmatched = 0;
+    for (const imported of payload.itens) {
+      const fingerprint = JSON.stringify(imported);
+      const previousIndex = current.findIndex((item) => {
+        const source = item.detalhe_calculo.importacao_planilha;
+        return typeof source === "object" && source !== null &&
+          "arquivo" in source && source.arquivo === payload.nome_arquivo &&
+          "aba" in source && source.aba === payload.aba_origem &&
+          "linha" in source && source.linha === imported.linha_planilha;
+      });
+      const previous = previousIndex >= 0 ? current[previousIndex] : undefined;
+      const previousSource = previous?.detalhe_calculo.importacao_planilha;
+      if (previous && typeof previousSource === "object" && previousSource !== null &&
+        "fingerprint" in previousSource && previousSource.fingerprint === fingerprint) {
+        alreadyExists += 1;
+        continue;
+      }
+
+      const gross = numeric(imported.valor_frete_bruto);
+      const normalizedName = imported.nome_transportador ? normalizeLabel(imported.nome_transportador) : "";
+      const aggregateDriver = normalizedName === normalizeLabel("João da Silva")
+        ? { id: 501, name: "João da Silva" }
+        : null;
+      const directCarrierDriver = carrierDriverExamples.find((driver) => normalizeLabel(driver.nome_motorista) === normalizedName);
+      const carrierAlias = ({
+        [normalizeLabel("JUST IN TIME")]: "JUST_IN_TIME",
+        [normalizeLabel("JUST IN TIME 1")]: "JUST_IN_TIME",
+        [normalizeLabel("JUSTI IN TIME")]: "JUST_IN_TIME",
+        [normalizeLabel("PAULO CRUZ")]: "PAULO_CRUZ",
+      } as Record<string, string>)[normalizedName];
+      const carrierMatches = carrierAlias
+        ? carrierDriverExamples.filter((driver) => driver.codigo_transportadora === carrierAlias)
+        : [];
+      const carrierDriver = directCarrierDriver ?? (carrierMatches.length === 1 ? carrierMatches[0] : undefined);
+      const isLinked = Boolean(aggregateDriver || carrierDriver);
+      if (aggregateDriver) matchedAggregates += 1;
+      else if (carrierDriver) matchedCarriers += 1;
+      else unmatched += 1;
+      const resolutionImproved = Boolean(isLinked && previous?.detalhe_calculo.importacao_planilha &&
+        typeof previous.detalhe_calculo.importacao_planilha === "object" &&
+        "responsavel_vinculado_ao_cadastro" in previous.detalhe_calculo.importacao_planilha &&
+        previous.detalhe_calculo.importacao_planilha.responsavel_vinculado_ao_cadastro === false);
+      if (previous && (previous.cancelado || previous.status_calculo !== "PENDENTE_CONFERENCIA" ||
+        (previous.valor_frete_bruto !== null && !resolutionImproved) || (gross === null && !resolutionImproved))) {
+        throw new Error("A linha já foi importada com outros dados.");
+      }
+      const damage = numeric(imported.valor_avaria) ?? 0;
+      const invoice = numeric(imported.valor_nota);
+      const ratio = imported.percentual_frete ?? (gross !== null && invoice !== null && invoice > 0
+        ? String(gross / invoice)
+        : null);
+      const paid = numeric(imported.valor_frete_pago) ?? (gross !== null ? gross - damage : null);
+      const pendingReasons = [
+        ...(gross === null ? ["Valor do frete bruto ausente na planilha importada."] : []),
+        ...(gross !== null && damage > gross ? ["R$ AVARIA maior que R$ FRETE; confira o valor líquido histórico."] : []),
+        ...(!isLinked ? ["Responsável não encontrado no cadastro de demonstração."] : []),
+      ];
+      const source: Record<string, unknown> = {
+        arquivo: payload.nome_arquivo,
+        sha256_arquivo: payload.sha256_arquivo,
+        aba: payload.aba_origem,
+        linha: imported.linha_planilha,
+        fingerprint,
+        transportador_planilha: imported.nome_transportador,
+        vinculo_responsavel_status: isLinked ? "VINCULADO" : "NAO_ENCONTRADO",
+        responsavel_vinculado_ao_cadastro: isLinked,
+        tipo_transporte_identificado: isLinked,
+        quantidade_avarias_informada: false,
+        valor_frete_pago_planilha: imported.valor_frete_pago,
+        percentual_frete_planilha: imported.percentual_frete_planilha,
+        percentual_frete_importado: ratio,
+        km_inicial_planilha: imported.km_inicial,
+        km_final_planilha: imported.km_final,
+        km_rodado_planilha: imported.km_rodado,
+      };
+      const transportType = carrierDriver ? "TRANSPORTADORA" : "AGREGADO";
+      const transportName = carrierDriver?.nome_transportadora ?? aggregateDriver?.name ?? imported.nome_transportador;
+      const operationalKm = carrierDriver ? [null, null, null] : [imported.km_inicial, imported.km_final, imported.km_rodado];
+      const freight: FreightResponse = {
+        id_frete: previous?.id_frete ?? Math.max(0, ...current.map((item) => item.id_frete), ...additions.map((item) => item.id_frete)) + 1,
+        codigo_frete: previous?.codigo_frete ?? crypto.randomUUID(),
+        tipo_transporte: transportType,
+        nome_transportador: transportName,
+        id_motorista_agregado: aggregateDriver?.id ?? null,
+        id_motorista_transportadora: carrierDriver?.id_motorista ?? null,
+        nome_motorista_transportadora: carrierDriver?.nome_motorista ?? null,
+        codigo_fonte_tarifa: carrierDriver?.codigo_transportadora ?? "AGREGADOS_CD",
+        data_servico: imported.data_servico,
+        rota_cidade: imported.rota_cidade,
+        km_inicial: operationalKm[0],
+        km_final: operationalKm[1],
+        km_rodado: operationalKm[2],
+        quantidade_entregas: imported.quantidade_entregas,
+        peso_kg: imported.peso_kg === null ? null : String(imported.peso_kg),
+        valor_nota: imported.valor_nota,
+        tipo_caminhao: null,
+        codigo_zona_jit: null,
+        adicionais_jit: [],
+        valor_frete_bruto: gross === null ? null : moneyText(gross),
+        valor_avaria: moneyText(damage),
+        quantidade_avarias: 0,
+        valor_frete_pago: paid === null ? null : moneyText(paid),
+        percentual_frete: ratio,
+        status_calculo: pendingReasons.length ? "PENDENTE_CONFERENCIA" : "CALCULADO",
+        motivo_pendencia: pendingReasons.length ? pendingReasons.join(" ") : null,
+        detalhe_calculo: {
+          metodo_calculo: "VALOR_HISTORICO_IMPORTADO",
+          importacao_planilha: source,
+        },
+        criado_por: previous?.criado_por ?? 7,
+        criado_em: previous?.criado_em ?? new Date().toISOString(),
+        cancelado: previous?.cancelado ?? false,
+        cancelado_em: previous?.cancelado_em ?? null,
+        cancelado_por: previous?.cancelado_por ?? null,
+        justificativa_cancelamento: previous?.justificativa_cancelamento ?? null,
+      };
+      if (previousIndex >= 0) {
+        current[previousIndex] = freight;
+        updatedCount += 1;
+      } else {
+        additions.push(freight);
+      }
+    }
+    if (additions.length || updatedCount) saveFreights([...additions, ...current]);
+    return {
+      importados: additions.length,
+      atualizados: updatedCount,
+      ja_existentes: alreadyExists,
+      vinculados_agregados: matchedAggregates,
+      vinculados_transportadoras: matchedCarriers,
+      sem_vinculo: unmatched,
+    };
+  },
+
   async get(codigoFrete: string): Promise<FreightResponse> {
     await pause();
     const freight = readFreights().find((item) => item.codigo_frete === codigoFrete);
@@ -681,6 +849,141 @@ export const freightsDemoApi = {
     return updated;
   },
 
+  async updateHistorical(
+    codigoFrete: string,
+    payload: HistoricalFreightEditInput,
+  ): Promise<FreightResponse> {
+    await pause();
+    const current = readFreights();
+    const existing = current.find((item) => item.codigo_frete === codigoFrete);
+    if (!existing) throw new Error("Lançamento de frete não encontrado.");
+    if (existing.cancelado) throw new Error("Um frete cancelado não pode ser editado.");
+    const source = existing.detalhe_calculo.importacao_planilha;
+    if (!source || typeof source !== "object") {
+      throw new Error("A edição histórica só está disponível para fretes importados.");
+    }
+    const importSource = source as Record<string, unknown>;
+    const originals = importSource.valores_originais_planilha;
+    const sourceHasValue = (field: string) => {
+      if (typeof originals !== "object" || originals === null) return false;
+      const value = (originals as Record<string, unknown>)[field];
+      return value !== null && value !== undefined && String(value).trim() !== "";
+    };
+    const lockedValues: Partial<HistoricalFreightEditInput> = {};
+    const fieldsFromSheet: Array<keyof FreightResponse> = [
+      "data_servico", "rota_cidade", "km_inicial", "km_final", "km_rodado",
+      "quantidade_entregas", "peso_kg", "valor_nota", "valor_frete_bruto",
+      "valor_frete_pago", "percentual_frete", "valor_avaria",
+    ];
+    for (const field of fieldsFromSheet) {
+      if (sourceHasValue(field)) {
+        (lockedValues as Record<string, unknown>)[field] = existing[field];
+      }
+    }
+    const savedPayload = { ...payload, ...lockedValues };
+
+    const name = normalizeLabel(savedPayload.nome_transportador ?? "");
+    const aggregateDriver = savedPayload.id_motorista_selecionado === 501
+      || name === normalizeLabel("João da Silva")
+      ? { id: 501, name: "João da Silva" }
+      : null;
+    const directCarrier = carrierDriverExamples.find((driver) =>
+      driver.id_motorista === savedPayload.id_motorista_selecionado
+      || normalizeLabel(driver.nome_motorista) === name,
+    );
+    const carrierCode = ({
+      [normalizeLabel("JUST IN TIME")]: "JUST_IN_TIME",
+      [normalizeLabel("JUST IN TIME 1")]: "JUST_IN_TIME",
+      [normalizeLabel("JUSTI IN TIME")]: "JUST_IN_TIME",
+      [normalizeLabel("PAULO CRUZ")]: "PAULO_CRUZ",
+    } as Record<string, "JUST_IN_TIME" | "PAULO_CRUZ">)[name];
+    const carrierMatches = carrierCode
+      ? carrierDriverExamples.filter((driver) => driver.codigo_transportadora === carrierCode)
+      : [];
+    const carrierDriver = directCarrier ?? (carrierMatches.length === 1 ? carrierMatches[0] : null);
+    const linked = Boolean(aggregateDriver || carrierDriver);
+    const isCarrier = Boolean(carrierDriver || carrierCode);
+    const type = isCarrier ? "TRANSPORTADORA" : "AGREGADO";
+    const transporterName = carrierDriver?.nome_transportadora
+      ?? (carrierCode === "JUST_IN_TIME" ? "JUST IN TIME" : carrierCode === "PAULO_CRUZ" ? "Paulo Cruz" : null)
+      ?? aggregateDriver?.name
+      ?? savedPayload.nome_transportador;
+    const gross = numeric(savedPayload.valor_frete_bruto);
+    const damage = numeric(savedPayload.valor_avaria) ?? 0;
+    const invoice = numeric(savedPayload.valor_nota);
+    const paid = numeric(savedPayload.valor_frete_pago)
+      ?? (gross === null ? null : gross - damage);
+    const ratio = numeric(savedPayload.percentual_frete)
+      ?? (gross !== null && invoice !== null && invoice > 0 ? gross / invoice : null);
+    const deliveryMatch = savedPayload.complementar_com_entregas
+      && savedPayload.id_motorista_selecionado !== null
+      ? await freightsDemoApi.deliverySummary(
+        savedPayload.data_servico,
+        savedPayload.id_motorista_selecionado,
+      )
+      : null;
+    const reasons = [
+      ...(gross === null ? ["Valor do frete bruto ausente."] : []),
+      ...(gross !== null && damage > gross ? ["R$ AVARIA maior que R$ FRETE."] : []),
+      ...(!linked ? ["Motorista sem vínculo único no cadastro de demonstração."] : []),
+    ];
+    const nextSource = {
+      ...source,
+      nome_transportador_editado: savedPayload.nome_transportador,
+      vinculo_responsavel_status: linked ? "VINCULADO" : "NAO_ENCONTRADO",
+      responsavel_vinculado_ao_cadastro: linked,
+      tipo_transporte_identificado: linked || carrierCode !== undefined,
+      vinculo_responsavel_id_pessoa: aggregateDriver?.id ?? carrierDriver?.id_motorista ?? null,
+      vinculo_responsavel_nome_cadastrado: aggregateDriver?.name ?? carrierDriver?.nome_motorista ?? null,
+      vinculo_responsavel_transportadora: carrierDriver?.codigo_transportadora ?? carrierCode ?? null,
+      rota_cidade_editada: savedPayload.rota_cidade,
+      km_inicial_editado: savedPayload.km_inicial,
+      km_final_editado: savedPayload.km_final,
+      km_rodado_editado: savedPayload.km_rodado,
+      motorista_selecionado_id: savedPayload.id_motorista_selecionado,
+      complemento_entregas: deliveryMatch,
+      ultima_edicao_manual: { em: new Date().toISOString() },
+    };
+    const updated: FreightResponse = {
+      ...existing,
+      tipo_transporte: type,
+      nome_transportador: transporterName,
+      id_motorista_agregado: aggregateDriver?.id ?? null,
+      id_motorista_transportadora: carrierDriver?.id_motorista ?? null,
+      nome_motorista_transportadora: carrierDriver?.nome_motorista ?? null,
+      codigo_fonte_tarifa: carrierDriver?.codigo_transportadora
+        ?? (carrierCode as FreightResponse["codigo_fonte_tarifa"] | undefined)
+        ?? "AGREGADOS_CD",
+      data_servico: savedPayload.data_servico,
+      rota_cidade: savedPayload.rota_cidade,
+      km_inicial: isCarrier ? null : savedPayload.km_inicial,
+      km_final: isCarrier ? null : savedPayload.km_final,
+      km_rodado: isCarrier ? null : savedPayload.km_rodado,
+      quantidade_entregas: savedPayload.quantidade_entregas,
+      peso_kg: savedPayload.peso_kg,
+      valor_nota: savedPayload.valor_nota,
+      valor_frete_bruto: gross === null ? null : moneyText(gross),
+      valor_avaria: moneyText(damage),
+      quantidade_avarias: deliveryMatch && deliveryMatch.quantidade_registros > 0 && existing.quantidade_avarias === 0
+        ? deliveryMatch.quantidade_avarias
+        : existing.quantidade_avarias,
+      valor_frete_pago: paid === null ? null : moneyText(paid),
+      percentual_frete: ratio === null ? null : String(ratio),
+      status_calculo: reasons.length ? "PENDENTE_CONFERENCIA" : "CALCULADO",
+      motivo_pendencia: reasons.length ? reasons.join(" ") : null,
+      detalhe_calculo: {
+        ...existing.detalhe_calculo,
+        status: reasons.length ? "PENDENTE_CONFERENCIA" : "CALCULADO",
+        motivo: reasons.length ? reasons.join(" ") : null,
+        fonte_tarifa: carrierDriver?.codigo_transportadora ?? carrierCode ?? "AGREGADOS_CD",
+        percentual_frete: ratio === null ? null : String(ratio),
+        importacao_planilha: nextSource,
+      },
+    };
+    saveFreights(current.map((item) => item.codigo_frete === codigoFrete ? updated : item));
+    return updated;
+  },
+
   async cancel(codigoFrete: string, justificativa: string): Promise<void> {
     await pause();
     const current = readFreights();
@@ -705,6 +1008,11 @@ export const freightsDemoApi = {
       .filter((item) => dateInRange(item.data_servico, filters.data_de, filters.data_ate))
       .filter((item) => !filters.tipo_transporte || filters.tipo_transporte === "TODOS" || item.tipo_transporte === filters.tipo_transporte)
       .filter((item) => !filters.status_calculo || filters.status_calculo === "TODOS" || item.status_calculo === filters.status_calculo)
+      .filter((item) => filters.id_motorista === undefined || (filters.id_motorista === 0
+        ? item.id_motorista_agregado === null && item.id_motorista_transportadora === null
+        : item.id_motorista_agregado === filters.id_motorista || item.id_motorista_transportadora === filters.id_motorista))
+      .filter((item) => !filters.rota_cidade || item.rota_cidade === filters.rota_cidade)
+      .filter((item) => !filters.codigo_transportadora || item.codigo_fonte_tarifa === filters.codigo_transportadora)
       .sort((a, b) => b.data_servico.localeCompare(a.data_servico) || b.id_frete - a.id_frete);
     const limit = filters.limit ?? 50;
     const offset = filters.offset ?? 0;
@@ -713,6 +1021,39 @@ export const freightsDemoApi = {
       total: filtered.length,
       limit,
       offset,
+    };
+  },
+
+  async historyFilterOptions(
+    dataDe: string,
+    dataAte: string,
+    tipoTransporte: string,
+  ): Promise<FreightHistoryFilterOptions> {
+    await pause();
+    const rows = readFreights()
+      .filter((item) => dateInRange(item.data_servico, dataDe, dataAte))
+      .filter((item) => !tipoTransporte || tipoTransporte === "TODOS" || item.tipo_transporte === tipoTransporte);
+    const names = new Map<number, string>();
+    const routes = new Set<string>();
+    let hasUnlinked = false;
+    for (const item of rows) {
+      if (item.tipo_transporte === "PROPRIO") continue;
+      const id = item.id_motorista_agregado ?? item.id_motorista_transportadora;
+      const name = item.id_motorista_agregado !== null
+        ? item.nome_transportador
+        : item.nome_motorista_transportadora;
+      if (id === null) hasUnlinked = true;
+      else names.set(id, names.get(id) ?? name ?? `Motorista #${id}`);
+      if (item.rota_cidade) routes.add(item.rota_cidade);
+    }
+    const motoristas = [...names.entries()]
+      .map(([id_motorista, nome_motorista]) => ({ id_motorista, nome_motorista }))
+      .sort((left, right) => left.nome_motorista.localeCompare(right.nome_motorista, "pt-BR"));
+    if (hasUnlinked) motoristas.push({ id_motorista: 0, nome_motorista: "Sem motorista cadastrado" });
+    return {
+      motoristas,
+      rotas: [...routes].sort((left, right) => left.localeCompare(right, "pt-BR")),
+      possui_sem_motorista: hasUnlinked,
     };
   },
 

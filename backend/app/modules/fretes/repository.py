@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.modules.access_control.catalog import DELIVERY_SECTOR_CODE
@@ -82,6 +82,85 @@ def list_carrier_drivers(
             (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
         )
         .order_by(Pessoa.nome_exibicao, Pessoa.id_pessoa)
+    )
+    return list(db.scalars(statement).all())
+
+
+def list_historical_freight_driver_versions(
+    db: Session,
+    *,
+    data_de: date,
+    data_ate: date,
+) -> list[Pessoa]:
+    """Carrega motoristas agregados e independentes vigentes no período ou hoje."""
+    statement = (
+        select(Pessoa)
+        .where(
+            Pessoa.tipo_funcao == "MOTORISTA",
+            Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+            Pessoa.modalidade_terceirizada.in_(
+                ("AGREGADO", "TRANSPORTADORA_INDEPENDENTE")
+            ),
+            or_(
+                Pessoa.ativo.is_(True),
+                and_(
+                    Pessoa.vigente_desde <= data_ate,
+                    or_(Pessoa.vigente_ate.is_(None), Pessoa.vigente_ate > data_de),
+                ),
+            ),
+        )
+        .order_by(Pessoa.nome_exibicao, Pessoa.vigente_desde, Pessoa.id_pessoa)
+    )
+    return list(db.scalars(statement).all())
+
+
+def list_historical_freight_drivers_at_date(
+    db: Session,
+    *,
+    data_servico: date,
+) -> list[Pessoa]:
+    """Lista motoristas cadastrados que estavam vigentes na data do frete."""
+    statement = (
+        select(Pessoa)
+        .where(
+            Pessoa.tipo_funcao == "MOTORISTA",
+            Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+            Pessoa.modalidade_terceirizada.in_(
+                ("AGREGADO", "TRANSPORTADORA_INDEPENDENTE")
+            ),
+            Pessoa.vigente_desde <= data_servico,
+            (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
+        )
+        .order_by(Pessoa.nome_exibicao, Pessoa.id_pessoa)
+    )
+    return list(db.scalars(statement).all())
+
+
+def get_historical_freight_driver_at_date(
+    db: Session,
+    *,
+    id_motorista: int,
+    data_servico: date,
+) -> Pessoa | None:
+    """Valida que o motorista escolhido estava cadastrado e vigente na data."""
+    statement = select(Pessoa).where(
+        Pessoa.id_pessoa == id_motorista,
+        Pessoa.tipo_funcao == "MOTORISTA",
+        Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+        Pessoa.modalidade_terceirizada.in_(
+            ("AGREGADO", "TRANSPORTADORA_INDEPENDENTE")
+        ),
+        Pessoa.vigente_desde <= data_servico,
+        (Pessoa.vigente_ate.is_(None) | (Pessoa.vigente_ate > data_servico)),
+    )
+    return db.scalar(statement)
+
+
+def list_localities_for_freight_import(db: Session) -> list[Localidade]:
+    """Carrega o catálogo de localidades, inclusive versões inativas usadas no histórico."""
+    statement = (
+        select(Localidade)
+        .order_by(Localidade.nome_localidade, Localidade.id_localidade)
     )
     return list(db.scalars(statement).all())
 
@@ -240,6 +319,49 @@ def get_freight_by_idempotency_key(
     )
 
 
+def get_freights_by_idempotency_keys(
+    db: Session,
+    *,
+    idempotency_keys: list[UUID],
+) -> dict[str, Frete]:
+    """Busca em lote fretes já gravados por suas chaves idempotentes."""
+    if not idempotency_keys:
+        return {}
+    rows: list[Frete] = []
+    batch_size = 500
+    for offset in range(0, len(idempotency_keys), batch_size):
+        batch = idempotency_keys[offset : offset + batch_size]
+        rows.extend(
+            db.scalars(
+                select(Frete)
+                .where(Frete.chave_idempotencia.in_([str(key) for key in batch]))
+                .with_for_update()
+            ).all()
+        )
+    return {row.chave_idempotencia: row for row in rows}
+
+
+def list_freights_for_historical_duplicate_check(
+    db: Session,
+    *,
+    id_setor: int,
+    data_de: date,
+    data_ate: date,
+) -> list[Frete]:
+    """Busca fretes do intervalo para detectar importações ou lançamentos repetidos."""
+    statement = (
+        select(Frete)
+        .where(
+            Frete.id_setor == id_setor,
+            Frete.tipo_transporte.in_(("AGREGADO", "TRANSPORTADORA")),
+            Frete.data_servico >= data_de,
+            Frete.data_servico <= data_ate,
+        )
+        .order_by(Frete.data_servico, Frete.id_frete)
+    )
+    return list(db.scalars(statement).all())
+
+
 def get_freight_by_code(
     db: Session,
     *,
@@ -297,24 +419,47 @@ def list_freights(
     data_ate: date | None,
     tipo_transporte: str | None,
     status_calculo: str | None,
+    id_motorista: int | None,
+    rota_cidade: str | None,
+    codigo_transportadora: str | None,
     limit: int,
     offset: int,
 ) -> tuple[list[Frete], int]:
     """Retorna lançamentos filtrados e total geral para a paginação da API."""
-    statement = select(Frete).where(Frete.id_setor == id_setor)
-    count_statement = select(func.count()).select_from(Frete).where(Frete.id_setor == id_setor)
+    filters = [Frete.id_setor == id_setor]
     if data_de is not None:
-        statement = statement.where(Frete.data_servico >= data_de)
-        count_statement = count_statement.where(Frete.data_servico >= data_de)
+        filters.append(Frete.data_servico >= data_de)
     if data_ate is not None:
-        statement = statement.where(Frete.data_servico <= data_ate)
-        count_statement = count_statement.where(Frete.data_servico <= data_ate)
+        filters.append(Frete.data_servico <= data_ate)
     if tipo_transporte is not None:
-        statement = statement.where(Frete.tipo_transporte == tipo_transporte)
-        count_statement = count_statement.where(Frete.tipo_transporte == tipo_transporte)
+        filters.append(Frete.tipo_transporte == tipo_transporte)
     if status_calculo is not None:
-        statement = statement.where(Frete.status_calculo == status_calculo)
-        count_statement = count_statement.where(Frete.status_calculo == status_calculo)
+        filters.append(Frete.status_calculo == status_calculo)
+    if id_motorista == 0:
+        filters.extend(
+            (
+                Frete.id_motorista_agregado.is_(None),
+                Frete.id_motorista_transportadora.is_(None),
+            )
+        )
+    elif id_motorista is not None:
+        filters.append(
+            or_(
+                Frete.id_motorista_agregado == id_motorista,
+                Frete.id_motorista_transportadora == id_motorista,
+            )
+        )
+    if rota_cidade is not None:
+        filters.append(Frete.rota_cidade == rota_cidade)
+    if codigo_transportadora is not None:
+        filters.extend(
+            (
+                Frete.tipo_transporte == "TRANSPORTADORA",
+                Frete.codigo_fonte_tarifa == codigo_transportadora,
+            )
+        )
+    statement = select(Frete).where(*filters)
+    count_statement = select(func.count()).select_from(Frete).where(*filters)
     total = db.scalar(count_statement) or 0
     statement = (
         statement.order_by(Frete.data_servico.desc(), Frete.id_frete.desc())
@@ -323,6 +468,41 @@ def list_freights(
     )
     records = list(db.scalars(statement).all())
     return records, total
+
+
+def list_freight_history_filter_values(
+    db: Session,
+    *,
+    id_setor: int,
+    data_de: date | None,
+    data_ate: date | None,
+    tipo_transporte: str | None,
+) -> list[
+    tuple[str, int | None, int | None, str | None, str | None, str | None, str | None]
+]:
+    """Carrega identidades e rotas para os filtros sem depender da página atual."""
+    statement = select(
+        Frete.tipo_transporte,
+        Frete.id_motorista_agregado,
+        Frete.id_motorista_transportadora,
+        Frete.nome_transportador,
+        Frete.nome_motorista_transportadora,
+        Frete.rota_cidade,
+        Pessoa.nome_exibicao,
+    ).outerjoin(
+        Pessoa,
+        or_(
+            Frete.id_motorista_agregado == Pessoa.id_pessoa,
+            Frete.id_motorista_transportadora == Pessoa.id_pessoa,
+        ),
+    ).where(Frete.id_setor == id_setor)
+    if data_de is not None:
+        statement = statement.where(Frete.data_servico >= data_de)
+    if data_ate is not None:
+        statement = statement.where(Frete.data_servico <= data_ate)
+    if tipo_transporte is not None:
+        statement = statement.where(Frete.tipo_transporte == tipo_transporte)
+    return list(db.execute(statement.distinct()).all())
 
 
 def list_payment_freights(
@@ -385,3 +565,35 @@ def save_freight(
     db.add(event)
     db.flush()
     return freight
+
+
+def save_freights(
+    db: Session,
+    freights: list[Frete],
+    *,
+    actor_id: int,
+    occurred_at: datetime,
+) -> None:
+    """Grava um lote de fretes e eventos na mesma transação."""
+    db.add_all(freights)
+    db.flush()
+    events = [
+        FreteEvento(
+            id_frete=freight.id_frete,
+            id_usuario_ator=actor_id,
+            tipo_evento="FRETE_CRIADO",
+            ocorrido_em=occurred_at,
+            detalhes={
+                "codigo_frete": freight.codigo_frete,
+                "status_calculo": freight.status_calculo,
+                "tipo_transporte": freight.tipo_transporte,
+                "codigo_fonte_tarifa": freight.codigo_fonte_tarifa,
+                "origem": "IMPORTACAO_XLSX",
+                "linha_planilha": freight.detalhe_calculo["importacao_planilha"]["linha"],
+                "arquivo": freight.detalhe_calculo["importacao_planilha"]["arquivo"],
+            },
+        )
+        for freight in freights
+    ]
+    db.add_all(events)
+    db.flush()

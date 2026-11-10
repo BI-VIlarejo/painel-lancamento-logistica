@@ -1,0 +1,37 @@
+# Importação histórica de fretes por XLSX
+
+As telas **Lançar frete** e **Histórico de fretes** permitem importar em lote a planilha de controle de agregados. A importação exige a permissão `FRETES:CRIAR` e usa os valores históricos informados no arquivo; ela não refaz o cálculo com a tarifa atual nem depende dos lançamentos de Entregas.
+
+## Colunas reconhecidas
+
+O cabeçalho pode estar nas primeiras 30 linhas da aba. `DATA` identifica as linhas de frete; as demais colunas reconhecidas são `TRANSPORTADOR`, `ROTA/CIDADE`, `KM INICIAL`, `KM FINAL`, `KM RODADO`, `ENTREGA`, `PESO`, `VALOR`, `R$ FRETE`, `R$ FRETE PAG.`, `% FRETE` e `R$ AVARIA`. Essas colunas podem estar ausentes ou vazias.
+
+Campos em branco são importados como não informados, sem texto fictício. Isso inclui responsável, rota, entregas, peso, nota e hodômetro. Quando somente parte do hodômetro existe, cada valor disponível é preservado. Uma data com ano truncado pode usar o ano comum das datas válidas mais próximas; a data original fica registrada na origem do lançamento. O schema do banco precisa estar atualizado pela migration `f6b1c9a3d7e2`.
+
+## Conferência e gravação
+
+- A prévia mostra cada lançamento pronto do período em uma linha individual, e lista à parte as linhas com erro que precisam de correção. Campos vazios não são erro; se alguma linha dentro do período tiver um valor ilegível, o lote fica bloqueado até a correção, para evitar que uma linha selecionada fique de fora.
+- A prévia tem paginação de 10 ou 20 lançamentos por página; a paginação só controla a visualização e não limita as linhas enviadas no lote.
+- Linhas de rodapé que contêm somente resultados de fórmulas de total, sem data nem campos originais de um serviço, não são tratadas como fretes.
+- Cada linha usa o hash do conteúdo do arquivo, a aba e o número da linha como chave. Renomear o mesmo arquivo não cria novos fretes. Pendências podem ser concluídas depois que os dados da planilha ou o vínculo de cadastro forem corrigidos.
+- A gravação do lote é atômica e gera eventos de auditoria. Os valores históricos e os dados de origem, nome do arquivo, aba e linha ficam registrados no frete.
+- Quando preenchidos, `R$ FRETE PAG.` e `% FRETE` são importados da planilha. Se estiverem vazios, o valor pago é derivado de `R$ FRETE − R$ AVARIA` e o percentual de `R$ FRETE ÷ VALOR` quando a nota tem valor maior que zero.
+- Avaria vazia é interpretada como zero, conforme a fórmula da planilha. Frete bruto vazio é importado como **Pendente de conferência**; ao preencher esse valor, reenvie o mesmo arquivo para concluir a pendência. A conclusão fica registrada na auditoria.
+- Valores históricos fora da precisão normal do portal são arredondados apenas no campo numérico operacional; a célula original fica preservada nos detalhes do XLSX. Quando a avaria ultrapassa o frete bruto, o valor líquido (inclusive negativo) é preservado e o lançamento fica pendente para conferência.
+- O importador procura o motorista no cadastro por nome normalizado e também compara as partes de nomes compostos. Por exemplo, `SEBASTIÃO` pode ser vinculado à pessoa cadastrada como `Sebastião/Adão`. Quando identifica um motorista, o frete recebe o ID da pessoa cadastrada e a modalidade correta (agregado ou motorista de transportadora independente), além do nome para exibição. Quando a planilha informa Paulo Cruz ou JUST IN TIME, a transportadora fica identificada pelo código cadastrado; um ID de motorista só é gravado se houver uma correspondência única. Se houver mais de um motorista possível, não escolhe um ao acaso.
+- A rota/cidade é comparada aos nomes, códigos de localidade e opções de tarifa cadastrados. Uma diferença ortográfica simples só é aceita quando aponta para uma única rota. O mesmo rótulo de cidade/rota é gravado para que histórico e agrupamentos operacionais mantenham consistência. Rotas sem correspondência única ficam com o texto original e o lançamento pendente; as linhas continuam sendo importadas.
+- Se não houver vínculo único de motorista, a linha mesmo assim é gravada e fica pendente de conferência, sem atribuir um ID incorreto. O resumo informa quantos fretes foram vinculados a agregados, a transportadoras independentes ou ficaram sem vínculo. Avaria é preservada, mas a contagem aparece como “Não informada”.
+- Fretes importados mantêm a memória histórica e não podem ser alterados pelo formulário normal, que recalcula tarifas. O histórico continua permitindo cancelá-los com justificativa.
+- Dia, motorista e rota, sozinhos, não bastam para declarar duplicidade. Ao importar, o sistema também procura um lançamento ativo com a mesma identidade cadastrada e os mesmos dados operacionais e valores. Uma correspondência completa é contabilizada como existente; linhas diferentes da planilha continuam podendo representar viagens distintas.
+- O histórico permite selecionar o motorista cadastrado vigente na data do frete. A data original da planilha fica preservada e é usada para listar motoristas e consultar as Entregas confirmadas daquele dia.
+- Na edição, os valores preenchidos na planilha (quantidade, peso, hodômetros e valores financeiros) ficam bloqueados tanto na tela quanto na gravação. Campos ausentes podem ser completados. O botão **Preencher somente os campos vazios** oferece rota, quantidade de entregas e peso encontrados nas Entregas; também registra a quantidade de ocorrências de avaria separadamente, sem transformar essa contagem em valor monetário.
+- Entregas não fornecem KM, valor da nota, valor do frete nem valor em reais da avaria, então esses dados não são inferidos. Ao salvar, o responsável selecionado e a rota são comparados novamente com os cadastros, e uma auditoria guarda o antes/depois e o resumo das Entregas consultadas. A tarifa histórica não é recalculada.
+- O histórico pode ser filtrado por período, tipo de transporte, motorista e rota/cidade. Ao selecionar transportadoras independentes, também é possível escolher JUST IN TIME ou Paulo Cruz. As opções de motorista e rota cobrem todo o período filtrado, mesmo quando há várias páginas de resultados.
+
+## Seleção do período de importação
+
+- O importador inicia com o intervalo de 01/11/2026 a 10/11/2026. As datas podem ser alteradas antes do envio.
+- A prévia mostra quantas linhas estão dentro do intervalo, quantas estão prontas, quantas têm erro no período ou data ilegível e quantas serão deixadas de fora por estarem em outras datas.
+- Só as linhas com data dentro do período são enviadas ao portal. Linhas com data ilegível permanecem em revisão porque não é seguro concluir se pertencem ao intervalo.
+
+O lote aceita até 2.500 linhas. Arquivos maiores devem ser divididos em partes mantendo cabeçalho e nomes de arquivo distintos para cada parte.

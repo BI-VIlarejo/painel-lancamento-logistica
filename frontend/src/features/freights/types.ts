@@ -42,6 +42,14 @@ export type FreightCarrierDriverOption = {
   nome_transportadora: string;
 };
 
+export type HistoricalFreightEditDriverOption = {
+  id_motorista: number;
+  nome_motorista: string;
+  tipo_transporte: FreightTransportType;
+  codigo_transportadora: FreightCarrierSource | null;
+  nome_transportadora: string | null;
+};
+
 export type FreightDeliverySummary = {
   id_motorista: number;
   data_servico: string;
@@ -95,6 +103,63 @@ export type FreightInput = {
   tipo_caminhao?: FreightTruckType | null;
 };
 
+/** Campos editáveis de um frete histórico, sem recálculo de tarifa. */
+export type HistoricalFreightEditInput = {
+  data_servico: string;
+  id_motorista_selecionado: number | null;
+  complementar_com_entregas: boolean;
+  nome_transportador: string | null;
+  rota_cidade: string | null;
+  km_inicial: DecimalValue | null;
+  km_final: DecimalValue | null;
+  km_rodado: DecimalValue | null;
+  quantidade_entregas: number | null;
+  peso_kg: DecimalValue | null;
+  valor_nota: DecimalValue | null;
+  valor_frete_bruto: DecimalValue | null;
+  valor_frete_pago: DecimalValue | null;
+  percentual_frete: DecimalValue | null;
+  valor_avaria: DecimalValue;
+};
+
+/** Linha histórica validada antes de ser enviada para importação em lote. */
+export type HistoricalFreightImportItem = {
+  linha_planilha: number;
+  data_servico: string;
+  data_servico_planilha: string | null;
+  data_servico_ano_inferido: boolean;
+  nome_transportador: string | null;
+  rota_cidade: string | null;
+  km_inicial: DecimalValue | null;
+  km_final: DecimalValue | null;
+  km_rodado: DecimalValue | null;
+  quantidade_entregas: number | null;
+  peso_kg: DecimalValue | null;
+  valor_nota: DecimalValue | null;
+  valor_frete_bruto: DecimalValue | null;
+  valor_frete_pago: DecimalValue | null;
+  percentual_frete: DecimalValue | null;
+  percentual_frete_planilha: string | null;
+  valores_originais_planilha: Record<string, string | null>;
+  valor_avaria: DecimalValue;
+};
+
+export type HistoricalFreightImportRequest = {
+  nome_arquivo: string;
+  sha256_arquivo: string;
+  aba_origem: string;
+  itens: HistoricalFreightImportItem[];
+};
+
+export type HistoricalFreightImportResponse = {
+  importados: number;
+  atualizados: number;
+  ja_existentes: number;
+  vinculados_agregados: number;
+  vinculados_transportadoras: number;
+  sem_vinculo: number;
+};
+
 /** Resultado da cotação sem persistência do lançamento. */
 export type FreightQuoteResponse = {
   status_calculo: FreightStatus;
@@ -115,12 +180,12 @@ export type FreightResponse = {
   nome_motorista_transportadora: string | null;
   codigo_fonte_tarifa: FreightTariffSource | null;
   data_servico: string;
-  rota_cidade: string;
+  rota_cidade: string | null;
   km_inicial: DecimalValue | null;
   km_final: DecimalValue | null;
   km_rodado: DecimalValue | null;
-  quantidade_entregas: number;
-  peso_kg: DecimalValue;
+  quantidade_entregas: number | null;
+  peso_kg: DecimalValue | null;
   valor_nota: DecimalValue | null;
   tipo_caminhao: FreightTruckType | null;
   codigo_zona_jit: string | null;
@@ -155,8 +220,18 @@ export type FreightHistoryFilters = {
   data_ate?: string;
   tipo_transporte?: FreightRecordedTransportType | "TODOS";
   status_calculo?: FreightStatus | "TODOS";
+  id_motorista?: number;
+  rota_cidade?: string;
+  codigo_transportadora?: FreightCarrierSource;
   limit?: number;
   offset?: number;
+};
+
+/** Listas disponíveis nos filtros de motorista e rota do histórico. */
+export type FreightHistoryFilterOptions = {
+  motoristas: Array<{ id_motorista: number; nome_motorista: string }>;
+  rotas: string[];
+  possui_sem_motorista: boolean;
 };
 
 /** Resposta de GET /freights/payments/report. */

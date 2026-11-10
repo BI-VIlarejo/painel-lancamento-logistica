@@ -1,0 +1,107 @@
+.freight-import-dialog.freight-import-dialog { width: min(100%, 1180px); max-height: min(98vh, 1100px); }
+.freight-import-heading { align-items: center; padding: 14px 20px 12px; }
+.freight-import-title-group { display: flex; align-items: center; gap: 14px; }
+.freight-import-mark { display: grid; width: 46px; height: 46px; flex: 0 0 auto; place-items: center; border: 1px solid #dce9df; border-radius: 14px; color: #32704a; background: linear-gradient(145deg, #f1f8f2, #e7f1e9); }
+.freight-import-mark svg { width: 25px; height: 25px; }
+.freight-import-heading .eyebrow { margin: 0 0 4px; font-size: 10px; letter-spacing: .1em; }
+.freight-import-heading h2 { margin: 0; color: #18324c; font-size: 20px; letter-spacing: -.025em; }
+.freight-import-heading p:last-child { margin: 5px 0 0; color: #718092; font-size: 12px; }
+.freight-import-content { display: flex; min-height: 0; flex-direction: column; gap: 8px; overflow: auto; padding: 12px 20px 14px; }
+.freight-import-file { position: relative; display: flex; min-height: 62px; align-items: center; gap: 12px; margin: 0; padding: 9px 14px; overflow: hidden; border: 1px dashed #b6c9b9; border-radius: 13px; color: #43564a; background: #f8fbf8; cursor: pointer; transition: border-color .16s ease, background .16s ease, box-shadow .16s ease; }
+.freight-import-file:hover, .freight-import-file-selected { border-color: #46845a; background: #f2f8f3; }
+.freight-import-file:focus-within { outline: 3px solid rgba(60, 126, 77, .18); outline-offset: 2px; }
+.freight-import-file input { position: absolute; z-index: 1; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.freight-import-file input:disabled { cursor: progress; }
+.freight-import-file-icon { display: grid; width: 44px; height: 44px; flex: 0 0 auto; place-items: center; border: 1px solid #dce8df; border-radius: 12px; color: #3c8052; background: #fff; }
+.freight-import-file-icon svg { width: 23px; height: 23px; }
+.freight-import-file-copy { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 4px; }
+.freight-import-file-copy strong { overflow: hidden; color: #30465a; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.freight-import-file-copy span { color: #7b8994; font-size: 11px; font-weight: 450; }
+.freight-import-file-action { flex: 0 0 auto; padding: 8px 12px; border: 1px solid #d7e4da; border-radius: 8px; color: #356847; background: #fff; font-size: 11px; font-weight: 700; }
+.freight-import-range { display: grid; grid-template-columns: minmax(0, 1fr) repeat(2, minmax(180px, .6fr)); align-items: end; gap: 8px; padding: 8px 12px; border: 1px solid #e0e9e2; border-radius: 11px; background: #fbfdfb; }
+.freight-import-range-heading { display: flex; min-width: 0; flex-direction: column; gap: 4px; padding-bottom: 2px; }
+.freight-import-range-heading strong { color: #30465a; font-size: 12px; }
+.freight-import-range-heading span { color: #75857a; font-size: 10px; line-height: 1.45; }
+.freight-import-range label { min-width: 0; margin: 0; }
+.freight-import-range label input { height: 34px; }
+.freight-import-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+.freight-import-summary article { display: grid; min-height: 62px; grid-template-columns: 1fr auto; align-content: center; gap: 3px 8px; padding: 8px 10px; border: 1px solid #e4e9e5; border-radius: 11px; background: #fff; }
+.freight-import-summary article > span { align-self: end; color: #687a89; font-size: 11px; font-weight: 650; }
+.freight-import-summary article > strong { grid-column: 2; grid-row: 1 / span 2; align-self: center; color: #243d55; font-size: 21px; font-variant-numeric: tabular-nums; line-height: 1; }
+.freight-import-summary article > small { color: #89959d; font-size: 10px; }
+.freight-import-summary-ready { border-color: #d7e8da !important; background: #f6faf6 !important; }
+.freight-import-summary-ready > strong, .freight-import-summary-clear > strong { color: #34704a !important; }
+.freight-import-summary-range { border-color: #dce7ef !important; background: #f7fafc !important; }
+.freight-import-summary-range > strong { color: #3c617b !important; }
+.freight-import-summary-errors { border-color: #f0dbd4 !important; background: #fff8f5 !important; }
+.freight-import-summary-errors > strong { color: #a44c40 !important; }
+.freight-import-help { display: flex; align-items: flex-start; gap: 9px; margin: -2px 0 0; padding: 7px 10px; border: 1px solid #e2e9ee; border-radius: 9px; color: #607487; background: #f6f9fb; font-size: 10px; line-height: 1.4; }
+.freight-import-no-matches { margin: -3px 0 0; padding: 12px 14px; border: 1px solid #dce7ef; border-radius: 9px; color: #4e6b80; background: #f7fafc; font-size: 12px; line-height: 1.5; }
+.freight-import-section-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 1px 0 -7px; }
+.freight-import-section-heading h3 { margin: 0; color: #31475c; font-size: 13px; }
+.freight-import-section-heading p { margin: 0; color: #82909a; font-size: 10px; }
+.freight-import-error-scroll { max-height: min(34vh, 300px); border: 1px solid #e4eae6; border-radius: 10px; }
+.freight-import-preview-wrap { width: 100%; min-width: 0; overflow-x: auto; border: 1px solid #e4eae6; border-radius: 10px; background: #f7f9f7; }
+.freight-import-table { min-width: 900px; margin: 0; }
+.freight-import-error-scroll .freight-import-table { min-width: 950px; }
+.freight-import-table thead th { padding-top: 10px; padding-bottom: 9px; }
+.freight-import-table tbody td { padding-top: 10px; padding-bottom: 10px; }
+.freight-import-table td { vertical-align: top; }
+.freight-import-table td:last-child { min-width: 145px; white-space: normal; }
+.freight-import-table td small { display: block; margin-top: 3px; color: #7f8c94; font-size: 9px; }
+.freight-import-preview-table { min-width: 900px; table-layout: fixed; border-spacing: 0 2px; }
+.freight-import-preview-table col:nth-child(1) { width: 11%; }
+.freight-import-preview-table col:nth-child(2) { width: 14%; }
+.freight-import-preview-table col:nth-child(3) { width: 15%; }
+.freight-import-preview-table col:nth-child(4) { width: 13%; }
+.freight-import-preview-table col:nth-child(5) { width: 17%; }
+.freight-import-preview-table col:nth-child(6) { width: 30%; }
+.freight-import-preview-table thead th { padding: 9px 9px 8px; }
+.freight-import-preview-table tbody td { padding: 4px 7px; font-size: 10px; line-height: 1.2; }
+.freight-import-preview-table tbody td:first-child { white-space: nowrap; }
+.freight-import-preview-table tbody td:nth-child(2), .freight-import-preview-table tbody td:nth-child(3) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.freight-import-preview-table tbody td:nth-child(4), .freight-import-preview-table tbody td:nth-child(5) { min-width: 0; }
+.freight-import-preview-table tbody td:last-child { min-width: 0; }
+.freight-import-preview-truncate { max-width: 0; }
+.freight-import-preview-table tbody td > strong { color: #43564a; font-size: 10px; font-weight: 700; }
+.freight-import-preview-table tbody td > small { margin-top: 1px; color: #7f8c94; font-size: 9px; line-height: 1.15; }
+.freight-import-preview-pagination { display: flex; min-height: 44px; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 2px 0; color: #63748a; font-size: 11px; }
+.freight-import-preview-pagination > label { display: inline-flex; align-items: center; gap: 7px; color: #63748a; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.freight-import-preview-pagination select { height: 32px; min-width: 58px; padding: 0 8px; border: 1px solid var(--ui-border-strong); border-radius: var(--ui-control-radius); color: #344b66; background: #fff; font: inherit; }
+.freight-import-preview-pagination > div { display: flex; align-items: center; gap: 8px; }
+.freight-import-preview-pagination > div > span { min-width: 84px; text-align: center; white-space: nowrap; }
+.freight-import-preview-pagination button { min-height: 32px; padding: 0 10px; font-size: 11px; }
+.freight-import-error-scroll small { display: block; padding: 8px 11px; color: #718078; font-size: 10px; }
+.freight-import-footer { min-height: 48px; padding: 7px 18px; }
+.freight-import-footer > span { max-width: 480px; font-size: 10px; line-height: 1.35; }
+.freight-import-footer button { min-height: 34px; padding-top: 0; padding-bottom: 0; }
+.freight-import-submit { min-width: 190px; justify-content: center; }
+
+@container workspace (max-width: 700px) {
+  .freight-import-heading { padding: 16px; }
+  .freight-import-content { gap: 12px; padding: 15px 14px 18px; }
+  .freight-import-mark { width: 40px; height: 40px; border-radius: 11px; }
+  .freight-import-heading h2 { font-size: 17px; }
+  .freight-import-file { min-height: 75px; gap: 10px; padding: 12px; }
+  .freight-import-file-icon { width: 38px; height: 38px; }
+  .freight-import-file-action { padding: 7px 8px; font-size: 10px; }
+  .freight-import-range { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding: 11px; }
+  .freight-import-range-heading { grid-column: 1 / -1; }
+  .freight-import-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .freight-import-summary article { min-height: 70px; grid-template-columns: 1fr auto; }
+  .freight-import-preview-pagination { flex-wrap: wrap; }
+  .freight-import-preview-pagination > div { margin-left: auto; }
+  .freight-import-section-heading { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .freight-import-footer { align-items: stretch; flex-direction: column; padding: 8px 14px; }
+  .freight-import-footer > span { max-width: none; }
+  .freight-import-footer .dialog-actions { justify-content: flex-end; }
+  .freight-import-submit { min-width: 0; }
+}
+
+@container workspace (max-width: 420px) {
+  .freight-import-range { grid-template-columns: minmax(0, 1fr); }
+  .freight-import-range-heading { grid-column: auto; }
+  .freight-import-summary { grid-template-columns: minmax(0, 1fr); }
+  .freight-import-preview-pagination > div { width: 100%; justify-content: space-between; margin-left: 0; }
+  .freight-import-preview-pagination > div > span { flex: 1; }
+}

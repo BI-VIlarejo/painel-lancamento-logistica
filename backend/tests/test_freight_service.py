@@ -17,6 +17,12 @@ from app.modules.fretes.models import Frete, FreteEvento
 
 
 class FreightServiceTests(TestCase):
+    def test_numbered_historical_routes_are_not_collapsed_to_base_city(self):
+        index = {"NITEROI": {"Niterói"}, "NITEROI1": {"Niterói 1"}}
+        self.assertEqual(service._route_alias_target(index, "NITEROI 1"), "Niterói 1")
+        self.assertIsNone(service._route_alias_target(index, "NITEROI 2"))
+        self.assertIsNone(service._route_alias_target({"MARICA": {"Maricá"}}, "MARICA 1"))
+
     def setUp(self):
         self.engine, self.db = database()
         self.period = dict(data_de=date(2026, 11, 1), data_ate=date(2026, 11, 30))
