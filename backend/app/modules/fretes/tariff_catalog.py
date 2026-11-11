@@ -71,7 +71,7 @@ def tariff_options() -> dict[str, object]:
             {"codigo": "MACAE", "nome": "Macaé"},
             {"codigo": "MACAE SERRA", "nome": "Macaé Serra"},
             {"codigo": "CABO FRIO", "nome": "Cabo Frio"},
-            {"codigo": "BUZIOS", "nome": "Búzios"},
+            {"codigo": "ARMACAO DOS BUZIOS", "nome": "Armação dos Búzios"},
             {"codigo": "SAO PEDRO DA ALDEIA", "nome": "São Pedro da Aldeia"},
             {"codigo": "ARRAIAL DO CABO", "nome": "Arraial do Cabo"},
             {"codigo": "ARARUAMA", "nome": "Araruama"},

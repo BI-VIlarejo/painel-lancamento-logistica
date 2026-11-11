@@ -1,3 +1,5 @@
+import { useAuth } from "../../../app/providers";
+import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "../../../shared/drafts/sessionDraft";
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { messageFromApiError } from "../../../shared/api/apiError";
@@ -183,7 +185,10 @@ function makePayload(
 
 /** Edição de dados importados que conserva os valores históricos e audita as alterações. */
 export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
-  const [values, setValues] = useState(() => valuesFromFreight(freight));
+  const { user } = useAuth();
+  const draftKey = `lancamento-logistica:draft:historical-freight:${user?.id_usuario}:${freight.codigo_frete}`;
+  const [restored] = useState(() => readSessionDraft<{ values: Values; selectedDriverId: string; deliveryApplied: boolean; appliedDeliveryValues: Partial<Record<keyof Values, string>>; idempotency: { signature: string; key: string } | null }>(draftKey));
+  const [values, setValues] = useState(() => restored?.values ?? valuesFromFreight(freight));
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [editDrivers, setEditDrivers] = useState<HistoricalFreightEditDriverOption[]>([]);
@@ -193,14 +198,18 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
   const originalSheetName = typeof source.transportador_planilha === "string"
     ? source.transportador_planilha
     : "";
-  const [selectedDriverId, setSelectedDriverId] = useState(() => registeredDriverId(freight, source));
+  const [selectedDriverId, setSelectedDriverId] = useState(() => restored?.selectedDriverId ?? registeredDriverId(freight, source));
   const [deliverySummary, setDeliverySummary] = useState<FreightDeliverySummary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState("");
-  const [deliveryApplied, setDeliveryApplied] = useState(false);
-  const [appliedDeliveryValues, setAppliedDeliveryValues] = useState<Partial<Record<keyof Values, string>>>({});
-  const driverSelectionTouched = useRef(false);
-  const idempotency = useRef<{ signature: string; key: string } | null>(null);
+  const [deliveryApplied, setDeliveryApplied] = useState(restored?.deliveryApplied ?? false);
+  const [appliedDeliveryValues, setAppliedDeliveryValues] = useState<Partial<Record<keyof Values, string>>>(restored?.appliedDeliveryValues ?? {});
+  const driverSelectionTouched = useRef(Boolean(restored));
+  const idempotency = useRef<{ signature: string; key: string } | null>(restored?.idempotency ?? null);
+
+  useEffect(() => {
+    writeSessionDraft(draftKey, { values, selectedDriverId, deliveryApplied, appliedDeliveryValues, idempotency: idempotency.current });
+  }, [draftKey, values, selectedDriverId, deliveryApplied, appliedDeliveryValues]);
 
   useEffect(() => {
     let active = true;
@@ -356,12 +365,14 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
         ? idempotency.current.key
         : crypto.randomUUID();
       idempotency.current = { signature, key: requestKey };
+      writeSessionDraft(draftKey, { values, selectedDriverId, deliveryApplied, appliedDeliveryValues, idempotency: idempotency.current });
       const updated = await freightsApi.updateHistorical(
         String(freight.codigo_frete),
         payload,
         requestKey,
       );
       idempotency.current = null;
+      clearSessionDraft(draftKey);
       onUpdated(updated);
     } catch (saveError: unknown) {
       setError(messageFromApiError(saveError));

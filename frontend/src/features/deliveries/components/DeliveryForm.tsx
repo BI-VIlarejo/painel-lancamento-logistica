@@ -1,7 +1,9 @@
+import { useAuth } from "../../../app/providers";
+import { clearSessionDraft, readSessionDraft, writeSessionDraft } from "../../../shared/drafts/sessionDraft";
 import styles from "./DeliveryForm.module.css";
 import commonStyles from "../../../shared/styles/common.module.css";
 import { cx } from "../../../shared/styles/classNames";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { messageFromApiError } from "../../../shared/api/apiError";
 import { deliveriesApi } from "../api";
@@ -237,13 +239,20 @@ function toPayloadLine(line: DeliveryDraftLine): DeliveryItemInput {
 }
 
 export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch, initialLaunch, onSaved }: DeliveryFormProps) {
-  const [lines, setLines] = useState<DeliveryDraftLine[]>(() => initialLaunch ? linesFromLaunch(initialLaunch) : [newLine()]);
+  const { user } = useAuth();
+  const draftKey = `lancamento-logistica:draft:delivery:${user?.id_usuario}:${initialLaunch?.codigo_lancamento ?? "new"}`;
+  const [restored] = useState(() => readSessionDraft<{ lines: DeliveryDraftLine[]; savedDraft?: DeliveryLaunchDetail; saveKey: string; confirmKey: string }>(draftKey));
+  const [lines, setLines] = useState<DeliveryDraftLine[]>(() => restored?.lines ?? (initialLaunch ? linesFromLaunch(initialLaunch) : [newLine()]));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [requestError, setRequestError] = useState("");
   const [saving, setSaving] = useState(false);
-  const [savedDraft, setSavedDraft] = useState(initialLaunch);
-  const saveIdempotencyKey = useRef(crypto.randomUUID());
-  const confirmIdempotencyKey = useRef(crypto.randomUUID());
+  const [savedDraft, setSavedDraft] = useState(restored?.savedDraft ?? initialLaunch);
+  const saveIdempotencyKey = useRef(restored?.saveKey ?? crypto.randomUUID());
+  const confirmIdempotencyKey = useRef(restored?.confirmKey ?? crypto.randomUUID());
+
+  useEffect(() => {
+    writeSessionDraft(draftKey, { lines, savedDraft, saveKey: saveIdempotencyKey.current, confirmKey: confirmIdempotencyKey.current });
+  }, [draftKey, lines, savedDraft]);
 
   const totals = useMemo(() => lines.reduce((sum, line) => {
     sum.entregas.realizadas += numberValue(line.entregas.completed);
@@ -320,6 +329,7 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch,
     const saved = draft
       ? await deliveriesApi.updateDraft(draft.codigo_lancamento, { itens: items }, saveIdempotencyKey.current)
       : await deliveriesApi.createDraft({ itens: items } satisfies DeliveryDraftRequest, saveIdempotencyKey.current);
+    writeSessionDraft(draftKey, { lines, savedDraft: saved, saveKey: saveIdempotencyKey.current, confirmKey: confirmIdempotencyKey.current });
     setSavedDraft(saved);
     return saved;
   }
@@ -334,11 +344,14 @@ export function DeliveryForm({ localities, drivers, helpers, reasons, canLaunch,
     if (!validateForm()) return;
     setSaving(true);
     try {
+      writeSessionDraft(draftKey, { lines, savedDraft, saveKey: saveIdempotencyKey.current, confirmKey: confirmIdempotencyKey.current });
       const draft = await persistDraft(lines.map(toPayloadLine));
       if (draft.estado !== "RASCUNHO") {
         throw new Error("Este lançamento não está mais em rascunho. Atualize o histórico para conferir o estado atual.");
       }
-      onSaved(await deliveriesApi.confirmDraft(draft.codigo_lancamento, confirmIdempotencyKey.current));
+      const confirmed = await deliveriesApi.confirmDraft(draft.codigo_lancamento, confirmIdempotencyKey.current);
+      clearSessionDraft(draftKey);
+      onSaved(confirmed);
     } catch (error) {
       setRequestError(messageFromApiError(error));
     } finally {

@@ -30,7 +30,7 @@
 
 ### Frete sem lançamento de Entregas — 11/11/2026
 
-- [x] O commit `2a6c614` permite informar manualmente rota, quantidade de entregas, avarias e peso para agregado sem Entregas confirmadas na data. Havendo Entregas, seus dados continuam sendo usados; a API consulta novamente na simulação, criação e edição.
+- [x] O commit `2a6c614` permite informar manualmente rota, quantidade de entregas, avarias e peso para agregado sem Entregas confirmadas na data. Havendo Entregas, seus dados são sugeridos e o gestor pode alterá-los; a API preserva os valores informados.
 - [x] CI e publicação da prévia Vercel concluídas. Não há migration para esta mudança.
 - [ ] Executar **Deploy Portal API to Staging** na branch `staging`, confirmar o sucesso e validar o lançamento no portal. O deploy da API não foi confirmado neste registro.
 

@@ -739,7 +739,7 @@ def _prepare_freight_payload(
         data_servico=payload.data_servico,
     )
     delivery_weight_available = weight is not None and weight > 0
-    effective_weight = weight if delivery_weight_available else payload.peso_kg
+    effective_weight = payload.peso_kg
     if require_delivery_data and effective_weight <= 0:
         raise ConflictError(
             "O peso total não foi informado nas Entregas; informe um peso maior que zero no lançamento do frete."
@@ -747,9 +747,9 @@ def _prepare_freight_payload(
     prepared = payload.model_copy(
         update={
             "nome_transportador": driver.nome_exibicao,
-            "rota_cidade": route or payload.rota_cidade,
-            "quantidade_entregas": deliveries if delivery_rows else payload.quantidade_entregas,
-            "quantidade_avarias": damages if delivery_rows else payload.quantidade_avarias,
+            "rota_cidade": payload.rota_cidade,
+            "quantidade_entregas": payload.quantidade_entregas,
+            "quantidade_avarias": payload.quantidade_avarias,
             "peso_kg": effective_weight,
         }
     )
@@ -763,7 +763,13 @@ def _prepare_freight_payload(
         "quantidade_registros_entrega": delivery_rows,
         "peso_total_kg_origem": str(weight) if weight is not None else None,
         "peso_total_kg_usado": str(effective_weight),
-        "peso_informado_manualmente": not delivery_weight_available,
+        "peso_informado_manualmente": not delivery_weight_available or effective_weight != weight,
+        "rota_cidade_origem": route,
+        "dados_alterados_no_frete": bool(delivery_rows) and (
+            payload.rota_cidade != route or payload.quantidade_entregas != deliveries
+            or payload.quantidade_avarias != damages
+            or (delivery_weight_available and payload.peso_kg != weight)
+        ),
         "dados_informados_manualmente": delivery_rows == 0,
     }
     return prepared, source_detail

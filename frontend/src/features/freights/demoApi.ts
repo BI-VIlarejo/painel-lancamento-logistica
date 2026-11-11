@@ -55,7 +55,7 @@ const aggregateRoutes = [
   { codigo: "MACAE", nome: "Macaé" },
   { codigo: "MACAE SERRA", nome: "Macaé Serra" },
   { codigo: "CABO FRIO", nome: "Cabo Frio" },
-  { codigo: "BUZIOS", nome: "Búzios" },
+  { codigo: "ARMACAO DOS BUZIOS", nome: "Armação dos Búzios" },
   { codigo: "SAO PEDRO DA ALDEIA", nome: "São Pedro da Aldeia" },
   { codigo: "ARRAIAL DO CABO", nome: "Arraial do Cabo" },
   { codigo: "ARARUAMA", nome: "Araruama" },
@@ -354,6 +354,8 @@ function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
     "MACAE SERRA": "MC S",
     "CABO FRIO": "CF",
     BUZIOS: "CF",
+    "ARMACAO DOS BUZIOS": "CF",
+    "ARMACAO DE BUZIOS": "CF",
     "SAO PEDRO DA ALDEIA": "CF",
     "ARRAIAL DO CABO": "CF",
     ARARUAMA: "AR",
@@ -382,7 +384,7 @@ function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
     });
   }
 
-  // RO e MC usam 1,2% conforme a validação do usuário para estas tabelas.
+  // RO e MC seguem os 1,17% usados pelas fórmulas do simulador.
   const rates: Record<string, { percent: number; perKm: number; perKg: number }> = {
     RO: { percent: 0.0117, perKm: 6.32, perKg: 0.06 },
     MC: { percent: 0.0117, perKm: 3.56, perKg: 0.06 },

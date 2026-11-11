@@ -94,6 +94,8 @@ def _calculate_aggregados_cd(
         "MACAE SERRA": "MC S",
         "CABO FRIO": "CF",
         "BUZIOS": "CF",
+        "ARMACAO DOS BUZIOS": "CF",
+        "ARMACAO DE BUZIOS": "CF",
         "SAO PEDRO DA ALDEIA": "CF",
         "ARRAIAL DO CABO": "CF",
         "ARARUAMA": "AR",

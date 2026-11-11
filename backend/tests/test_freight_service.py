@@ -116,10 +116,10 @@ class FreightServiceTests(TestCase):
     def test_create_is_audited_and_retry_does_not_duplicate_freight(self):
         key = uuid4()
         first = service.create_freight(
-            self.db, payload=payload(), idempotency_key=key, access=access()
+            self.db, payload=payload(quantidade_avarias=2), idempotency_key=key, access=access()
         )
         second = service.create_freight(
-            self.db, payload=payload(), idempotency_key=key, access=access()
+            self.db, payload=payload(quantidade_avarias=2), idempotency_key=key, access=access()
         )
         self.assertEqual(first.id_frete, second.id_frete)
         self.assertEqual(first.km_rodado, Decimal("50.000"))
@@ -192,7 +192,7 @@ class FreightServiceTests(TestCase):
                     access=access(scope="SETOR", sector_id=10),
                 )
 
-    def test_aggregate_freight_prefers_delivery_weight_when_available(self):
+    def test_aggregate_freight_allows_editing_delivery_weight(self):
         with patch(
             "app.modules.fretes.repository.get_driver_delivery_summary",
             return_value=("Rio das Ostras", ["Rio das Ostras"], 10, 2, 1, Decimal("1000")),
@@ -203,8 +203,19 @@ class FreightServiceTests(TestCase):
                 access=access(scope="SETOR", sector_id=10),
             )
         origin = quote.detalhe_calculo["origem_entregas"]
-        self.assertEqual(origin["peso_total_kg_usado"], "1000")
-        self.assertFalse(origin["peso_informado_manualmente"])
+        self.assertEqual(origin["peso_total_kg_usado"], "1500")
+        self.assertTrue(origin["peso_informado_manualmente"])
+        self.assertTrue(origin["dados_alterados_no_frete"])
+
+    def test_aggregate_saves_manager_changes_to_delivery_fields(self):
+        request = payload(rota_cidade="Cabo Frio", quantidade_entregas=7,
+                          quantidade_avarias=3, peso_kg="1500")
+        quote = service.quote_freight(self.db, payload=request, access=access())
+        self.assertEqual(quote.detalhe_calculo["aba_tarifa"], "CF")
+        self.assertTrue(quote.detalhe_calculo["origem_entregas"]["dados_alterados_no_frete"])
+        saved = service.create_freight(self.db, payload=request, idempotency_key=uuid4(), access=access())
+        self.assertEqual((saved.rota_cidade, saved.quantidade_entregas, saved.quantidade_avarias, saved.peso_kg),
+                         ("Cabo Frio", 7, 3, Decimal("1500")))
 
     def test_carrier_driver_options_include_one_named_driver_per_company(self):
         options = service.get_carrier_drivers(

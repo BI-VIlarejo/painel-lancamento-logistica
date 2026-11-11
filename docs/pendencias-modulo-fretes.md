@@ -30,8 +30,10 @@ Faça nesta ordem:
 
 ## Preenchimento de frete sem Entregas — 11/11/2026
 
+A tabela de Cabo Frio também atende Armação dos Búzios e São Pedro da Aldeia.
+
 - [x] Para agregado sem lançamentos de Entregas confirmados na data, o formulário permite informar manualmente a rota cadastrada, a quantidade de entregas, a quantidade de avarias e o peso. O motorista deve estar cadastrado e ativo como agregado; o peso deve ser maior que zero. Os demais campos e regras de cálculo continuam obrigatórios conforme a modalidade.
-- [x] Quando existem Entregas confirmadas, a rota, as quantidades e o peso disponível continuam vindo dessas Entregas; se não houver peso informado nelas, ele pode ser preenchido manualmente. A API consulta novamente as Entregas ao simular, criar ou editar o frete. Assim, se uma Entrega for confirmada posteriormente, uma nova edição pode substituir os dados manuais pelos dados das Entregas.
+- [x] Quando existem Entregas confirmadas, rota, quantidades e peso são sugeridos no formulário e podem ser alterados pelo gestor. A API usa os valores informados no frete e registra os dados de origem das Entregas para conferência; não substitui as alterações na simulação, criação ou edição.
 - [x] A memória de cálculo registra `dados_informados_manualmente` quando não há registros de Entregas. A quantidade de avarias continua separada do desconto em reais.
 - [x] Implementação enviada à branch `staging` no commit `2a6c614`. Testes de backend, compilação do frontend e CI passaram; a Vercel confirmou a publicação da prévia.
 - [ ] Executar e confirmar o workflow manual **Deploy Portal API to Staging** na branch `staging` e validar o lançamento no portal. A mudança não exige migration. A publicação da API ainda não foi confirmada neste registro.
@@ -40,14 +42,14 @@ Faça nesta ordem:
 
 - Novos lançamentos não oferecem a modalidade **Frota própria**. O tipo pode continuar no banco e no histórico apenas para compatibilidade com registros antigos.
 - Agregados são motoristas cadastrados em **Equipes** como `MOTORISTA`, `TERCEIRIZADA` e modalidade **Agregado**. A modalidade terceirizada também precisa distinguir **Transportadora independente** e, nesse caso, indicar **Paulo Cruz** ou **Just In Time**.
-- Ao escolher data e motorista, o formulário busca a última revisão confirmada das Entregas desse dia e preenche cidade/rota, quantidade de entregas **realizadas** e quantidade de avarias (`AVARIA`). Entregas não realizadas e coletas não entram na quantidade de entregas usada no frete.
+- Ao escolher data e motorista, o formulário busca a última revisão confirmada das Entregas desse dia e sugere cidade/rota, quantidade de entregas **realizadas** e quantidade de avarias (`AVARIA`), permitindo correções pelo gestor. Entregas não realizadas e coletas não entram na quantidade de entregas usada no frete.
 - [x] Correção solicitada em 06/11/2026: o resumo usa somente `quantidade_realizada` da revisão confirmada do motorista/data e não soma entregas não realizadas nem coletas.
 - [x] Alteração solicitada em 06/11/2026: o cadastro de motorista `TERCEIRIZADA` salva modalidade **Agregado** ou **Transportadora independente**; a segunda exige empresa **Paulo Cruz** ou **Just In Time**. O seletor de agregado aceita somente motoristas classificados como agregado.
 - [x] Na transportadora independente, o lançamento usa um único seletor com o nome do motorista e a empresa. A seleção define a tarifa e mantém a empresa como responsável financeiro.
 - [ ] Revisar e classificar os registros terceirizados já existentes; definir com a operação quem confirma essa classificação antes de habilitar o novo filtro.
 - [x] No Histórico de Fretes, tornar os números de volume/peso, hodômetro e valores pontos de entrada para as seções correspondentes, preservando período/filtros e o detalhe geral. A memória tarifária completa continua fora do diálogo.
 - A quantidade de ocorrências `AVARIA` vinda das Entregas é informativa e separada do campo financeiro. O controle `CONTROLE DE LANÇAMENTOS.xlsx`, coluna K (`R$ AVARIA`), registra o valor em reais descontado do frete; por isso o Portal mantém esse valor no lançamento.
-- Quando houver Entregas confirmadas, a API recalcula os dados derivados delas antes de cotar e gravar o frete; sem registros, usa os dados manuais informados no formulário.
+- O formulário sugere os dados das Entregas, e a API calcula e grava os valores conferidos pelo gestor; a origem consultada permanece na memória de cálculo.
 - O código do Portal e as migrations de Fretes estão enviados às respectivas branches de staging (`LancamentoLogistica/staging` e `VilarejoBI/logistica`). O CI após `23582fc`, a aplicação das migrations, o deploy da API e a conferência visual ainda precisam ser confirmados; seguir o checklist acima.
 
 ## Solicitações novas da diretoria e da operação — 04/11/2026

@@ -30,6 +30,13 @@ class FreightCalculatorTests(TestCase):
         self.assertEqual(result.valor_frete_bruto, Decimal("785.85"))
         self.assertEqual(result.detalhe["parametros"]["percentual_nota"], "0.0117")
 
+    def test_cabo_frio_table_covers_three_cities(self):
+        for city in ("Cabo Frio", "Armação dos Búzios", "Armação de Búzios", "Búzios", "São Pedro da Aldeia"):
+            with self.subTest(city=city):
+                result = calculate_freight(payload(rota_cidade=city))
+                self.assertEqual(result.detalhe["aba_tarifa"], "CF")
+                self.assertEqual(result.valor_frete_bruto, Decimal("377.50"))
+
     def test_rounds_sum_to_cents_without_inventing_minimum(self):
         result = calculate_freight(payload(km_final="100", peso_kg="0.25", valor_nota="0"))
         self.assertEqual(result.valor_frete_bruto, Decimal("0.02"))
