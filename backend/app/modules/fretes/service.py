@@ -31,6 +31,7 @@ from app.modules.catalogs.models import Localidade, Pessoa
 from . import repository
 from .calculator import FreightCalculation, calculate_freight
 from .models import Frete, FreteEvento
+from .status import effective_status
 from .tariff_catalog import normalize_label, tariff_options
 from .schemas import (
     FreightAggregateDriverOption,
@@ -644,6 +645,9 @@ def _freight_response(
     calculation_detail = {
         key: value for key, value in freight.detalhe_calculo.items() if key != "request_fingerprint"
     }
+    status, reason = effective_status(freight)
+    if status != freight.status_calculo or reason != freight.motivo_pendencia:
+        calculation_detail.update(status=status, motivo=reason)
     return FreightResponse(
         id_frete=freight.id_frete,
         codigo_frete=UUID(freight.codigo_frete),
@@ -669,8 +673,8 @@ def _freight_response(
         quantidade_avarias=freight.quantidade_avarias,
         valor_frete_pago=freight.valor_frete_pago,
         percentual_frete=freight.percentual_frete,
-        status_calculo=_freight_status(freight.status_calculo),
-        motivo_pendencia=freight.motivo_pendencia,
+        status_calculo=_freight_status(status),
+        motivo_pendencia=reason,
         detalhe_calculo=calculation_detail,
         criado_por=freight.criado_por,
         criado_em=freight.criado_em,
@@ -1228,10 +1232,6 @@ def import_historical_freights(
                     pending_reasons.append(
                         "Responsável não encontrado no cadastro de agregados ou transportadoras independentes."
                     )
-            if route_match.status in {"NAO_ENCONTRADA", "AMBIGUA"}:
-                pending_reasons.append(
-                    "Rota/cidade não vinculada de forma única ao catálogo do portal."
-                )
             pending_reason = " ".join(pending_reasons) or None
             status_calculation = (
                 "CALCULADO"
@@ -1239,7 +1239,6 @@ def import_historical_freights(
                     gross is not None
                     and damage <= gross
                     and match.status == "VINCULADO"
-                    and route_match.status in {"VINCULADA", "NAO_INFORMADA"}
                 )
                 else "PENDENTE_CONFERENCIA"
             )
@@ -1884,10 +1883,6 @@ def update_historical_freight(
                 pending_reasons.append(
                     "Responsável não encontrado no cadastro de agregados ou transportadoras independentes."
                 )
-        if route_match.status in {"NAO_ENCONTRADA", "AMBIGUA"}:
-            pending_reasons.append(
-                "Rota/cidade não vinculada de forma única ao catálogo do portal."
-            )
         pending_reason = " ".join(pending_reasons) or None
         status_calculation = (
             "CALCULADO"
@@ -1895,7 +1890,6 @@ def update_historical_freight(
                 payload.valor_frete_bruto is not None
                 and payload.valor_avaria <= payload.valor_frete_bruto
                 and match.status == "VINCULADO"
-                and route_match.status in {"VINCULADA", "NAO_INFORMADA"}
             )
             else "PENDENTE_CONFERENCIA"
         )
@@ -2334,7 +2328,7 @@ def _payment_report_from_records(
     net_total = Decimal("0")
 
     for freight in records:
-        if freight.status_calculo != "CALCULADO" or freight.valor_frete_pago is None:
+        if effective_status(freight)[0] != "CALCULADO" or freight.valor_frete_pago is None:
             pending_freights += 1
             continue
 
@@ -2408,7 +2402,7 @@ def export_payment_report(
     grouped: dict[str, dict[str, object]] = {}
     for freight in records:
         # Pendências são bloqueadas acima; mantenha a proteção caso a regra mude.
-        if freight.status_calculo != "CALCULADO" or freight.valor_frete_pago is None:
+        if effective_status(freight)[0] != "CALCULADO" or freight.valor_frete_pago is None:
             continue
         responsible = freight.nome_transportador or "Sem identificação"
         row = grouped.setdefault(

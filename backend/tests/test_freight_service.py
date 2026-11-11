@@ -41,6 +41,35 @@ class FreightServiceTests(TestCase):
         self.assertEqual(rows[0].codigo_fonte_tarifa, "PAULO_CRUZ")
         self.assertEqual([row.id_motorista_agregado for row in rows[1:]], [1, 1])
 
+    def test_unmatched_historical_route_does_not_create_pending_status(self):
+        request = HistoricalFreightImportRequest.model_validate({
+            "nome_arquivo": "fretes.xlsx", "sha256_arquivo": "a" * 64, "aba_origem": "LANÇAMENTO",
+            "itens": [{"linha_planilha": 4, "data_servico": "2026-11-03",
+                       "nome_transportador": "Motorista Agregado Teste", "rota_cidade": "Rota desconhecida",
+                       "valor_frete_bruto": "100"}],
+        })
+        service.import_historical_freights(self.db, payload=request, access=access())
+        freight = self.db.scalar(select(Frete))
+        self.assertEqual(freight.status_calculo, "CALCULADO")
+        self.assertEqual(freight.rota_cidade, "Rota desconhecida")
+
+        freight.status_calculo = "PENDENTE_CONFERENCIA"
+        freight.motivo_pendencia = "Rota/cidade não vinculada de forma única ao catálogo do portal."
+        self.db.flush()
+        self.assertEqual(service._freight_response(freight).status_calculo, "CALCULADO")
+        page = service.list_freights(self.db, access=access(), data_de=None, data_ate=None,
+                                     tipo_transporte=None, status_calculo="PENDENTE_CONFERENCIA",
+                                     limit=50, offset=0)
+        self.assertEqual(page.total, 0)
+        report = service._payment_report_from_records([freight], data_de=date(2026, 11, 1),
+                 data_ate=date(2026, 11, 30), tipo_transporte="AGREGADO",
+                 nome_transportador=freight.nome_transportador, sem_identificacao=False)
+        self.assertEqual(report.quantidade_pendentes, 0)
+        self.assertEqual(report.valor_a_pagar, Decimal("100"))
+        freight.motivo_pendencia = "Responsável não encontrado. " + freight.motivo_pendencia
+        self.assertEqual(service._freight_response(freight).motivo_pendencia, "Responsável não encontrado.")
+        self.assertEqual(service._freight_response(freight).status_calculo, "PENDENTE_CONFERENCIA")
+
     def test_numbered_historical_routes_are_not_collapsed_to_base_city(self):
         index = {"NITEROI": {"Niterói"}, "NITEROI1": {"Niterói 1"}}
         self.assertEqual(service._route_alias_target(index, "NITEROI 1"), "Niterói 1")
@@ -99,7 +128,7 @@ class FreightServiceTests(TestCase):
         self.assertEqual(first.quantidade_entregas, 10)
         self.assertEqual(first.quantidade_avarias, 2)
         self.assertEqual(first.peso_kg, Decimal("1000.000"))
-        self.assertEqual(first.valor_frete_pago, Decimal("480.00"))
+        self.assertEqual(first.valor_frete_pago, Decimal("477.00"))
         self.assertNotIn("request_fingerprint", first.detalhe_calculo)
         self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 1)
         events = self.db.scalars(select(FreteEvento)).all()
@@ -218,9 +247,9 @@ class FreightServiceTests(TestCase):
         }
         report = service.build_payment_report(self.db, access=access(), **filters)
         self.assertEqual(report.quantidade_fretes, 1)
-        self.assertEqual(report.valor_frete_bruto, Decimal("496.00"))
+        self.assertEqual(report.valor_frete_bruto, Decimal("493.00"))
         self.assertEqual(report.valor_avarias, Decimal("16.00"))
-        self.assertEqual(report.valor_a_pagar, Decimal("480.00"))
+        self.assertEqual(report.valor_a_pagar, Decimal("477.00"))
         workbook = load_workbook(
             BytesIO(service.export_payment_report(self.db, access=access(), **filters)),
             data_only=False,
@@ -233,7 +262,7 @@ class FreightServiceTests(TestCase):
         self.assertIsNone(worksheet["B4"].value)
         self.assertEqual(worksheet["C4"].value, "AGREGADO TOTAL DE 1 DIA")
         self.assertEqual(worksheet["D4"].value, "TRANSPORTE")
-        self.assertEqual(worksheet["E4"].value, Decimal("480.00"))
+        self.assertEqual(worksheet["E4"].value, Decimal("477.00"))
         self.assertEqual(worksheet["D24"].value, "TOTAL GERAL")
         self.assertEqual(worksheet["E24"].value, "=SUM(E4:E23)")
 

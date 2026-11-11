@@ -71,7 +71,7 @@ class FreightRouterTests(TestCase):
         body = payload().model_dump(mode="json")
         quote = self.client.post("/freights/quote", json=body)
         self.assertEqual(quote.status_code, 200)
-        self.assertEqual(quote.json()["valor_frete_bruto"], "496.00")
+        self.assertEqual(quote.json()["valor_frete_bruto"], "493.00")
         created = self.client.post("/freights", json=body, headers=self.headers)
         self.assertEqual(created.status_code, 201, created.text)
         self.assertEqual(created.headers["cache-control"], "no-store")

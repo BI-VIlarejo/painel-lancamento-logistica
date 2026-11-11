@@ -39,7 +39,7 @@ As planilhas disponíveis não definem uma tarifa nem um método de apuração d
 
 O resultado do exemplo é a soma de `valor da nota × percentual`, `peso × valor por kg` e `km × valor por km`. O rótulo “Frete mínimo” aparece sem um valor preenchido; por isso, nenhum mínimo será aplicado até haver um valor aprovado.
 
-Para o Portal, o usuário confirmou como corretos os valores do `initial_tariffs.json`, inclusive 1,2% para RO e MC. Os 1,17% acima registram a fórmula de exemplo observada na planilha; não substituem o percentual confirmado para o módulo. O frete mínimo continua sem valor aprovado.
+Em 11/11/2026, a comparação com um lançamento real confirmou que o simulador usa 1,17% para RO e MC; o Portal foi corrigido para essa taxa, substituindo a confirmação anterior de 1,2%. Para Macaé, 134 km, 2.275 kg e nota de R$ 14.727,57 resultam em R$ 785,85. O frete mínimo continua sem valor aprovado.
 
 As abas representam rotas/regiões, e não o catálogo de localidades do Portal. O mapeamento entre as cidades previstas e as abas registrado no JSON do módulo foi confirmado pelo usuário. Trajetos compostos e cidades que não constam no mapeamento ainda precisam de regra.
 

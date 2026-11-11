@@ -384,8 +384,8 @@ function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
 
   // RO e MC usam 1,2% conforme a validação do usuário para estas tabelas.
   const rates: Record<string, { percent: number; perKm: number; perKg: number }> = {
-    RO: { percent: 0.012, perKm: 6.32, perKg: 0.06 },
-    MC: { percent: 0.012, perKm: 3.56, perKg: 0.06 },
+    RO: { percent: 0.0117, perKm: 6.32, perKg: 0.06 },
+    MC: { percent: 0.0117, perKm: 3.56, perKg: 0.06 },
     "MC S": { percent: 0.012, perKm: 3.75, perKg: 0.07 },
     CF: { percent: 0.012, perKm: 3.75, perKg: 0.07 },
     AR: { percent: 0.012, perKm: 3.85, perKg: 0.08 },

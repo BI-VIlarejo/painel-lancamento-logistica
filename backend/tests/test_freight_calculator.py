@@ -14,13 +14,21 @@ from app.modules.fretes.tariff_catalog import tariff_data, tariff_options
 
 class FreightCalculatorTests(TestCase):
     def test_approved_aggregate_rates_and_odometer_distance(self):
-        for city, expected in (("Rio das Ostras", "496.00"), ("  Macaé  ", "358.00")):
+        for city, expected in (("Rio das Ostras", "493.00"), ("  Macaé  ", "355.00")):
             with self.subTest(city=city):
                 result = calculate_freight(payload(rota_cidade=city))
                 self.assertEqual(result.status, "CALCULADO")
                 self.assertEqual(result.valor_frete_bruto, Decimal(expected))
-                self.assertEqual(result.detalhe["parametros"]["percentual_nota"], "0.012")
+                self.assertEqual(result.detalhe["parametros"]["percentual_nota"], "0.0117")
                 self.assertEqual(len(result.detalhe["hash_retrato_tarifas"]), 64)
+
+    def test_macae_matches_simulator_for_reported_freight(self):
+        result = calculate_freight(payload(
+            rota_cidade="Macaé", peso_kg="2275", valor_nota="14727.57",
+            km_inicial="0", km_final="134",
+        ))
+        self.assertEqual(result.valor_frete_bruto, Decimal("785.85"))
+        self.assertEqual(result.detalhe["parametros"]["percentual_nota"], "0.0117")
 
     def test_rounds_sum_to_cents_without_inventing_minimum(self):
         result = calculate_freight(payload(km_final="100", peso_kg="0.25", valor_nota="0"))

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "snapshot_date": "2026-10-29",
+  "snapshot_date": "2026-11-11",
   "sources": [
     "TABELA DE FRETE AGREGADOS CD.xlsx",
     "TABELA DE FRETE JUST IN TIME.xlsx",
@@ -8,7 +8,7 @@
   ],
   "aggregados_cd": {
     "RO": {
-      "percent_invoice": 0.012,
+      "percent_invoice": 0.0117,
       "per_km": 6.32,
       "per_kg": 0.06,
       "formula_cells": {
@@ -21,7 +21,7 @@
       "freight_min_value": null
     },
     "MC": {
-      "percent_invoice": 0.012,
+      "percent_invoice": 0.0117,
       "per_km": 3.56,
       "per_kg": 0.06,
       "formula_cells": {

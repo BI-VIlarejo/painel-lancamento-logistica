@@ -28,6 +28,14 @@ Faça nesta ordem:
 
 **Ainda fora desta publicação:** a tela administrativa para reajustar tarifas não foi implementada; regras financeiras que seguem pendentes estão listadas abaixo. Não liberar produção até o aceite do staging.
 
+## Preenchimento de frete sem Entregas — 11/11/2026
+
+- [x] Para agregado sem lançamentos de Entregas confirmados na data, o formulário permite informar manualmente a rota cadastrada, a quantidade de entregas, a quantidade de avarias e o peso. O motorista deve estar cadastrado e ativo como agregado; o peso deve ser maior que zero. Os demais campos e regras de cálculo continuam obrigatórios conforme a modalidade.
+- [x] Quando existem Entregas confirmadas, a rota, as quantidades e o peso disponível continuam vindo dessas Entregas; se não houver peso informado nelas, ele pode ser preenchido manualmente. A API consulta novamente as Entregas ao simular, criar ou editar o frete. Assim, se uma Entrega for confirmada posteriormente, uma nova edição pode substituir os dados manuais pelos dados das Entregas.
+- [x] A memória de cálculo registra `dados_informados_manualmente` quando não há registros de Entregas. A quantidade de avarias continua separada do desconto em reais.
+- [x] Implementação enviada à branch `staging` no commit `2a6c614`. Testes de backend, compilação do frontend e CI passaram; a Vercel confirmou a publicação da prévia.
+- [ ] Executar e confirmar o workflow manual **Deploy Portal API to Staging** na branch `staging` e validar o lançamento no portal. A mudança não exige migration. A publicação da API ainda não foi confirmada neste registro.
+
 ## Escopo operacional confirmado — 04/11/2026, com revisões de 06/11/2026
 
 - Novos lançamentos não oferecem a modalidade **Frota própria**. O tipo pode continuar no banco e no histórico apenas para compatibilidade com registros antigos.
@@ -39,7 +47,7 @@ Faça nesta ordem:
 - [ ] Revisar e classificar os registros terceirizados já existentes; definir com a operação quem confirma essa classificação antes de habilitar o novo filtro.
 - [x] No Histórico de Fretes, tornar os números de volume/peso, hodômetro e valores pontos de entrada para as seções correspondentes, preservando período/filtros e o detalhe geral. A memória tarifária completa continua fora do diálogo.
 - A quantidade de ocorrências `AVARIA` vinda das Entregas é informativa e separada do campo financeiro. O controle `CONTROLE DE LANÇAMENTOS.xlsx`, coluna K (`R$ AVARIA`), registra o valor em reais descontado do frete; por isso o Portal mantém esse valor no lançamento.
-- A API recalcula os dados derivados das Entregas antes de cotar e gravar o frete.
+- Quando houver Entregas confirmadas, a API recalcula os dados derivados delas antes de cotar e gravar o frete; sem registros, usa os dados manuais informados no formulário.
 - O código do Portal e as migrations de Fretes estão enviados às respectivas branches de staging (`LancamentoLogistica/staging` e `VilarejoBI/logistica`). O CI após `23582fc`, a aplicação das migrations, o deploy da API e a conferência visual ainda precisam ser confirmados; seguir o checklist acima.
 
 ## Solicitações novas da diretoria e da operação — 04/11/2026
@@ -74,13 +82,13 @@ Esta atualização substitui o roteiro operacional abaixo, datado de 30/10. As r
 - [x] No frontend, `types.ts`, `api.ts` e `demoApi.ts` cobrem os contratos do módulo Fretes.
 - [x] A primeira versão selecionava como agregado qualquer motorista cadastrado como entrega terceirizada. Essa regra foi revisada em 06/11/2026: passa a ser necessário filtrar pela modalidade **Agregado**; ver pendência acima. Registros anteriores sem nome seguem válidos como “Sem identificação”.
 - [x] A migration Alembic existe em `VilarejoBI/alembic/versions/logistica/f8a2d6c1e407_create_freight_tables.py`. É uma revisão da cadeia compartilhada `logistica`, encadeada após `d4e7c9b2a610`; não criar uma segunda cadeia no Portal.
-- [x] O usuário confirmou as cidades e os valores de tarifa registrados no `initial_tariffs.json`, incluindo RO e MC em 1,2%.
+- [x] As cidades foram confirmadas; a taxa de RO e MC anteriormente registrada como 1,2% foi corrigida para 1,17% em 11/11/2026 após confronto com o simulador.
 - [x] O usuário confirmou a matriz de perfis atual do catálogo de permissões.
 - [x] A captura de KM permanece manual para frota própria e agregados: a pessoa responsável digita KM inicial e final no Portal, e o sistema deriva KM rodado. Transportadoras independentes não informam hodômetro.
 - [ ] As regras de Paulo Cruz para Saveiro e Kia Bongo e os limites de peso precisam ser conferidos antes de liberar esses cálculos.
 - [x] O relatório e o CSV de pagamento filtram por período, modalidade e nome da transportadora/agregado. Registros legados de agregado sem nome podem ser consultados separadamente.
 - [x] A migration `f8a2d6c1e407` foi revisada e encadeada depois da migration `d4e7c9b2a610`; sua aplicação em staging aguarda snapshot e CI.
-- [x] A análise registra os valores aprovados do JSON e preserva 1,17% somente como observação da fórmula de exemplo da planilha.
+- [x] O cálculo de RO e MC usa 1,17%, conforme as fórmulas efetivas do simulador.
 - [x] Lançamento, histórico e pagamentos separados por modalidade: frota própria, agregado e transportadora independente.
 - [x] Frota própria não exige vínculo com agregado, não recebe custo inventado e fica fora do relatório de pagamentos de agregados enquanto não houver regra aprovada.
 - [x] Relatório financeiro soma os fretes da modalidade e do responsável selecionados; o período usa a data do serviço e o CSV apresenta o responsável e seus totais.
@@ -95,7 +103,7 @@ Esta atualização substitui o roteiro operacional abaixo, datado de 30/10. As r
 
 Estas regras já podem orientar a implementação:
 
-- **Agregados CD:** frete bruto = percentual da nota + tarifa por kg + tarifa por km. RO e MC usam **1,2%**, conforme confirmação do usuário, mesmo que a fórmula de exemplo na planilha aponte para uma célula de 1,17%. As outras taxas regionais permanecem como registradas em `initial_tariffs.json`.
+- **Agregados CD:** frete bruto = percentual da nota + tarifa por kg + tarifa por km. RO e MC usam **1,17%**, conforme as fórmulas do simulador e a conferência do lançamento de 11/11/2026; anteriormente o Portal usava 1,2%. As outras taxas regionais permanecem como registradas em `initial_tariffs.json`.
 - **Frete mínimo:** as planilhas exibem o rótulo, mas não têm valor numérico preenchido. Não aplicar mínimo sem um valor aprovado.
 - **JUST IN TIME:** calcular apenas quando houver uma faixa única. Limites sobrepostos, intervalos sem tarifa e faixas sem preço ficam pendentes de conferência. Mais de um adicional no mesmo local exige negociação; não somar automaticamente. Armazenagem e movimentação são cobranças separadas.
 - **Paulo Cruz:** Saveiro R$ 300, Kia Bongo R$ 500, caminhão 3/4 R$ 950 entre 1.500 e 4.000 kg e toco R$ 1.100 entre 4.001 e 9.000 kg. A planilha não publica limite numérico para Saveiro e Kia Bongo; não inventar um.

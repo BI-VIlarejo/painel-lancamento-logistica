@@ -28,6 +28,12 @@
 - Definir o formato da visualização específica (painel, aba ou outra apresentação) e quais números do Histórico de Fretes terão detalhamento próprio. Não reintroduzir o código do frete nem a memória tarifária completa que já foram removidos dos detalhes gerais.
 - Definir como agir quando um número ou gráfico não tiver dados subjacentes suficientes para um detalhamento individual; não inventar registros nem atribuir causas não armazenadas.
 
+### Frete sem lançamento de Entregas — 11/11/2026
+
+- [x] O commit `2a6c614` permite informar manualmente rota, quantidade de entregas, avarias e peso para agregado sem Entregas confirmadas na data. Havendo Entregas, seus dados continuam sendo usados; a API consulta novamente na simulação, criação e edição.
+- [x] CI e publicação da prévia Vercel concluídas. Não há migration para esta mudança.
+- [ ] Executar **Deploy Portal API to Staging** na branch `staging`, confirmar o sucesso e validar o lançamento no portal. O deploy da API não foi confirmado neste registro.
+
 ### Correção no lançamento de Fretes
 
 - [ ] Ao selecionar um agregado, preencher a quantidade de entregas somente com a soma das **entregas realizadas** na última revisão confirmada das Entregas daquele motorista/data. Excluir entregas não realizadas e coletas. Foi observado que o formulário atual inclui as não realizadas; corrigir e validar esse comportamento.

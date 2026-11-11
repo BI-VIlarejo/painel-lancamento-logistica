@@ -19,6 +19,7 @@ from app.modules.deliveries.models import (
 )
 
 from .models import Frete, FreteEvento
+from .status import route_only_pending_filter
 
 
 def get_active_sector_by_code(db: Session, *, codigo: str) -> Setor | None:
@@ -434,7 +435,10 @@ def list_freights(
     if tipo_transporte is not None:
         filters.append(Frete.tipo_transporte == tipo_transporte)
     if status_calculo is not None:
-        filters.append(Frete.status_calculo == status_calculo)
+        if status_calculo == "PENDENTE_CONFERENCIA":
+            filters.append(and_(Frete.status_calculo == status_calculo, ~route_only_pending_filter()))
+        else:
+            filters.append(or_(Frete.status_calculo == status_calculo, route_only_pending_filter()))
     if id_motorista == 0:
         filters.extend(
             (
