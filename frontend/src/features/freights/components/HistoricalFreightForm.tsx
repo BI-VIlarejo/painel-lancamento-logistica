@@ -54,6 +54,27 @@ function normalizePersonName(value: string): string {
   return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ");
 }
 
+function jitRegionForZone(
+  zoneCode: string | null | undefined,
+  options: FreightTariffOptions,
+): string | null {
+  if (!zoneCode) return null;
+  return options.zonas_just_in_time.find((region) =>
+    region.subzonas.some((zone) => zone.codigo === zoneCode),
+  )?.codigo ?? null;
+}
+
+function jitRegionForRoute(
+  route: string | null | undefined,
+  options: FreightTariffOptions,
+): string | null {
+  if (!route) return null;
+  const normalizedRoute = normalizePersonName(route);
+  return options.zonas_just_in_time.find((region) =>
+    normalizePersonName(region.nome) === normalizedRoute,
+  )?.codigo ?? null;
+}
+
 function inferJustInTimeZone(cities: string[], options: FreightTariffOptions): string | null {
   const normalizedCities = new Set(cities.map(normalizePersonName));
   const matchingZones = options.zonas_just_in_time
@@ -215,7 +236,18 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
   const [restored] = useState(() => readSessionDraft<{ values: Values; selectedDriverId: string; deliveryApplied: boolean; appliedDeliveryValues: Partial<Record<keyof Values, string>>; idempotency: { signature: string; key: string } | null }>(draftKey));
   const [values, setValues] = useState(() => {
     const defaults = valuesFromFreight(freight);
-    return restored?.values ? { ...defaults, ...restored.values } : defaults;
+    const current = restored?.values ? { ...defaults, ...restored.values } : defaults;
+    const allowedZoneCodes = new Set(options.zonas_just_in_time.flatMap((region) =>
+      region.subzonas.map((zone) => zone.codigo),
+    ));
+    return current.codigo_zona_jit && !allowedZoneCodes.has(current.codigo_zona_jit)
+      ? { ...current, codigo_zona_jit: "" }
+      : current;
+  });
+  const [jitRegionCode, setJitRegionCode] = useState(() => {
+    const zoneCode = restored?.values?.codigo_zona_jit ?? freight.codigo_zona_jit;
+    const route = restored?.values?.rota_cidade ?? freight.rota_cidade;
+    return jitRegionForZone(zoneCode, options) ?? jitRegionForRoute(route, options) ?? "";
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -310,6 +342,12 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
   }, [freight.data_servico, selectedDriverId]);
 
   useEffect(() => {
+    if (freight.codigo_fonte_tarifa !== "JUST_IN_TIME" || jitRegionCode) return;
+    const routeRegion = jitRegionForRoute(values.rota_cidade, options);
+    if (routeRegion) setJitRegionCode(routeRegion);
+  }, [freight.codigo_fonte_tarifa, jitRegionCode, options, values.rota_cidade]);
+
+  useEffect(() => {
     if (
       freight.codigo_fonte_tarifa !== "JUST_IN_TIME"
       || values.codigo_zona_jit
@@ -317,6 +355,8 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
     ) return;
     const inferredZone = inferJustInTimeZone(deliverySummary.cidades, options);
     if (inferredZone) {
+      const inferredRegion = jitRegionForZone(inferredZone, options);
+      if (inferredRegion) setJitRegionCode(inferredRegion);
       setValues((current) => current.codigo_zona_jit
         ? current
         : { ...current, codigo_zona_jit: inferredZone });
@@ -448,9 +488,15 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
     ? inferJustInTimeZone(deliverySummary.cidades, options)
     : null;
   const inferredZoneName = inferredZoneCode
+    && values.codigo_zona_jit === inferredZoneCode
     ? options.zonas_just_in_time.flatMap((region) => region.subzonas)
       .find((zone) => zone.codigo === inferredZoneCode)?.nome
     : undefined;
+  const selectedJitRegion = options.zonas_just_in_time.find((region) => region.codigo === jitRegionCode);
+  const selectedJitZone = selectedJitRegion?.subzonas.find((zone) => zone.codigo === values.codigo_zona_jit);
+  const routeJitRegionCode = jitRegionForRoute(values.rota_cidade, options);
+  const routeJitRegionName = options.zonas_just_in_time.find((region) => region.codigo === routeJitRegionCode)?.nome;
+  const deliveryIncludesNiteroi = deliverySummary?.cidades.some((city) => normalizePersonName(city) === "NITEROI") ?? false;
   const selectedAdditions = values.adicionais_jit.split(",").filter(Boolean);
 
   return (
@@ -553,18 +599,36 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
           </>}
           {field("valor_nota", "Valor da nota (R$)", "text", sourceHasValue(source, "valor_nota") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "valor_nota"))}
           {freight.codigo_fonte_tarifa === "JUST_IN_TIME" && <>
-            <label className={cx(formStyles, "field")}>Zona JUST IN TIME
-              <select value={values.codigo_zona_jit} onChange={(event) => update("codigo_zona_jit", event.target.value)} disabled={busy}>
-                <option value="">Selecione a zona tarifária</option>
-                {options.zonas_just_in_time.map((region) => <optgroup key={region.codigo} label={region.nome}>
-                  {region.subzonas.map((zone) => <option key={zone.codigo} value={zone.codigo}>{zone.nome}</option>)}
-                </optgroup>)}
+            <label className={cx(formStyles, "field")}>Região JUST IN TIME
+              <select value={jitRegionCode} onChange={(event) => {
+                const nextRegionCode = event.target.value;
+                setJitRegionCode(nextRegionCode);
+                const nextRegion = options.zonas_just_in_time.find((region) => region.codigo === nextRegionCode);
+                if (!nextRegion?.subzonas.some((zone) => zone.codigo === values.codigo_zona_jit)) {
+                  update("codigo_zona_jit", "");
+                } else {
+                  setError("");
+                }
+              }} disabled={busy}>
+                <option value="">Selecione a região</option>
+                {options.zonas_just_in_time.map((region) => <option key={region.codigo} value={region.codigo}>{region.nome}</option>)}
+              </select>
+              <small>{routeJitRegionName
+                ? `A rota “${values.rota_cidade}” corresponde à região ${routeJitRegionName}. Confirme a área atendida para calcular o valor.`
+                : "JUST IN TIME atende somente Rio de Janeiro e Região Serrana. KM não se aplica."}</small>
+            </label>
+            <label className={cx(formStyles, "field")}>Área tarifária
+              <select value={selectedJitZone ? values.codigo_zona_jit : ""} onChange={(event) => update("codigo_zona_jit", event.target.value)} disabled={busy || !selectedJitRegion}>
+                <option value="">{selectedJitRegion ? "Selecione a área tarifária" : "Selecione primeiro a região"}</option>
+                {selectedJitRegion?.subzonas.map((zone) => <option key={zone.codigo} value={zone.codigo}>{zone.nome}</option>)}
               </select>
               <small>{inferredZoneName
-                ? `Área ${inferredZoneName} sugerida pelas Entregas; será usada ao salvar. Só há tarifas para Rio de Janeiro e Região Serrana. KM não se aplica.`
-                : deliverySummary?.cidades.length
-                  ? "As Entregas não identificam uma única área tarifária válida de Rio de Janeiro ou Região Serrana. Selecione a área após conferência."
-                  : "Selecione uma área tarifária de Rio de Janeiro ou Região Serrana. KM não se aplica."}</small>
+                ? `Área ${inferredZoneName} sugerida pelas Entregas. O bruto será calculado ao salvar.`
+                : deliveryIncludesNiteroi
+                  ? "Niterói corresponde à operação Paulo Cruz e não será usada para escolher a área JIT. Confirme a área do Rio de Janeiro para este frete."
+                  : selectedJitRegion
+                    ? "A tarifa varia entre as áreas desta região; confirme a área do serviço antes de calcular."
+                    : "A área é necessária para calcular o bruto pela tarifa JUST IN TIME."}</small>
             </label>
             <fieldset className={cx(formStyles, "jit-additions-card")}>
               <legend>Adicionais JUST IN TIME (opcional)</legend>
