@@ -15,7 +15,7 @@ from app.core.exceptions import ConflictError, PermissionDeniedError
 from app.modules.fretes import service
 from app.modules.fretes.models import Frete, FreteEvento
 from app.modules.catalogs.models import Pessoa
-from app.modules.fretes.schemas import HistoricalFreightImportRequest
+from app.modules.fretes.schemas import HistoricalFreightEditInput, HistoricalFreightImportRequest
 
 
 class FreightServiceTests(TestCase):
@@ -69,6 +69,32 @@ class FreightServiceTests(TestCase):
         freight.motivo_pendencia = "Responsável não encontrado. " + freight.motivo_pendencia
         self.assertEqual(service._freight_response(freight).motivo_pendencia, "Responsável não encontrado.")
         self.assertEqual(service._freight_response(freight).status_calculo, "PENDENTE_CONFERENCIA")
+
+    def test_historical_aggregate_calculates_missing_gross_when_distance_is_supplied(self):
+        request = HistoricalFreightImportRequest.model_validate({
+            "nome_arquivo": "fretes.xlsx", "sha256_arquivo": "b" * 64, "aba_origem": "LANÇAMENTO",
+            "itens": [{"linha_planilha": 4, "data_servico": "2026-11-03",
+                       "nome_transportador": "Motorista Agregado Teste", "rota_cidade": "Macaé",
+                       "peso_kg": "2275", "valor_nota": "14727.57"}],
+        })
+        service.import_historical_freights(self.db, payload=request, access=access())
+        freight = self.db.scalar(select(Frete))
+        self.assertIn("KM rodado", service._freight_response(freight).motivo_pendencia)
+        edit = HistoricalFreightEditInput.model_validate({
+            "data_servico": "2026-11-03", "id_motorista_selecionado": 1,
+            "nome_transportador": freight.nome_transportador, "rota_cidade": "Macaé",
+            "km_inicial": None, "km_final": None, "km_rodado": "134",
+            "quantidade_entregas": None, "peso_kg": "2275", "valor_nota": "14727.57",
+            "valor_frete_bruto": None, "valor_frete_pago": None,
+            "percentual_frete": None, "valor_avaria": "0",
+        })
+        saved = service.update_historical_freight(self.db, codigo_frete=service.UUID(freight.codigo_frete),
+                                                 payload=edit, idempotency_key=uuid4(), access=access())
+        self.assertEqual(saved.valor_frete_bruto, Decimal("785.85"))
+        self.assertEqual(saved.valor_frete_pago, Decimal("785.85"))
+        self.assertEqual(saved.status_calculo, "CALCULADO")
+        self.assertEqual(saved.detalhe_calculo["calculo_tarifa_atual"]["aba_tarifa"], "MC")
+        self.assertIsNone(saved.km_inicial)
 
     def test_numbered_historical_routes_are_not_collapsed_to_base_city(self):
         index = {"NITEROI": {"Niterói"}, "NITEROI1": {"Niterói 1"}}

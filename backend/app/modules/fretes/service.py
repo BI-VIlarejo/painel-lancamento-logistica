@@ -602,6 +602,18 @@ def _tariff_source(value: str | None) -> TariffSource | None:
     raise ValueError(f"Código de fonte de tarifa inválido no frete: {value!r}")
 
 
+def _payment_amount(freight: Frete) -> Decimal | None:
+    """Usa o líquido gravado ou deriva bruto menos avaria pela regra do frete."""
+    gross = freight.valor_frete_bruto
+    if gross is None:
+        return None
+    if freight.valor_frete_pago is not None:
+        return freight.valor_frete_pago
+    if freight.valor_avaria > gross:
+        return None
+    return gross - freight.valor_avaria
+
+
 def _transport_type(value: str) -> TransportType:
     """Valida e tipa a modalidade do transporte persistida."""
     if value == "PROPRIO":
@@ -649,6 +661,7 @@ def _freight_response(
     status, reason = effective_status(freight)
     if status != freight.status_calculo or reason != freight.motivo_pendencia:
         calculation_detail.update(status=status, motivo=reason)
+    payment_amount = _payment_amount(freight)
     return FreightResponse(
         id_frete=freight.id_frete,
         codigo_frete=UUID(freight.codigo_frete),
@@ -675,7 +688,7 @@ def _freight_response(
         valor_frete_bruto=freight.valor_frete_bruto,
         valor_avaria=freight.valor_avaria,
         quantidade_avarias=freight.quantidade_avarias,
-        valor_frete_pago=freight.valor_frete_pago,
+        valor_frete_pago=payment_amount,
         percentual_frete=freight.percentual_frete,
         status_calculo=_freight_status(status),
         motivo_pendencia=reason,
@@ -1857,6 +1870,35 @@ def update_historical_freight(
             else payload.rota_cidade
         )
 
+        historical_calculation = None
+        if (
+            payload.valor_frete_bruto is None
+            and transport_fields["tipo_transporte"] == "AGREGADO"
+            and match.person is not None
+            and route_value is not None
+            and len(route_value.strip()) >= 2
+            and payload.km_rodado is not None
+            and payload.peso_kg is not None
+            and payload.valor_nota is not None
+        ):
+            calculation_input = FreightInput(
+                data_servico=payload.data_servico,
+                tipo_transporte="AGREGADO",
+                id_motorista_agregado=match.person.id_pessoa,
+                codigo_fonte_tarifa="AGREGADOS_CD",
+                rota_cidade=route_value,
+                km_inicial=Decimal("0"),
+                km_final=payload.km_rodado,
+                quantidade_entregas=payload.quantidade_entregas or 0,
+                peso_kg=payload.peso_kg,
+                valor_nota=payload.valor_nota,
+                valor_avaria=payload.valor_avaria,
+            )
+            result = calculate_freight(calculation_input)
+            if result.status == "CALCULADO" and result.valor_frete_bruto is not None:
+                payload = payload.model_copy(update={"valor_frete_bruto": result.valor_frete_bruto})
+                historical_calculation = result.detalhe
+
         paid = payload.valor_frete_pago
         if paid is None and payload.valor_frete_bruto is not None:
             paid = payload.valor_frete_bruto - payload.valor_avaria
@@ -2013,6 +2055,7 @@ def update_historical_freight(
             "percentual_frete": str(ratio) if ratio is not None else None,
             "motivo": pending_reason,
             "importacao_planilha": import_source,
+            **({"calculo_tarifa_atual": historical_calculation} if historical_calculation else {}),
         }
         after = _freight_response(freight).model_dump(mode="json")
         db.add(
@@ -2266,6 +2309,7 @@ def build_payment_report(
             nome_transportador=nome_transportador,
             sem_identificacao=sem_identificacao,
         )
+        records = _remove_relaunched_historical_duplicates(records)
         return _payment_report_from_records(
             records,
             data_de=data_de,
@@ -2322,6 +2366,153 @@ def build_payment_options(
         raise _database_unavailable(db, exc) from exc
 
 
+def _historical_import_source(freight: Frete) -> dict[str, object] | None:
+    detail = freight.detalhe_calculo or {}
+    source = detail.get("importacao_planilha")
+    if (
+        detail.get("metodo_calculo") != "VALOR_HISTORICO_IMPORTADO"
+        or not isinstance(source, dict)
+    ):
+        return None
+    return source
+
+
+def _payment_responsible_id(freight: Frete) -> int | None:
+    if freight.tipo_transporte == "AGREGADO":
+        return freight.id_motorista_agregado
+    if freight.tipo_transporte == "TRANSPORTADORA":
+        return freight.id_motorista_transportadora
+    return None
+
+
+def _payment_route_key(route: str | None) -> str:
+    normalized = normalize_label(route or "")
+    if normalized in {"BUZIOS", "ARMACAO DOS BUZIOS", "ARMACAO DE BUZIOS"}:
+        return "BUZIOS"
+    return normalized
+
+
+def _payment_match_key(freight: Frete) -> tuple[object, ...] | None:
+    responsible_id = _payment_responsible_id(freight)
+    if (
+        responsible_id is None
+        or not freight.rota_cidade
+        or freight.peso_kg is None
+        or freight.valor_nota is None
+    ):
+        return None
+    return (
+        freight.id_setor,
+        freight.data_servico,
+        freight.tipo_transporte,
+        freight.codigo_fonte_tarifa,
+        responsible_id,
+        _payment_route_key(freight.rota_cidade),
+        freight.peso_kg,
+        freight.valor_nota,
+    )
+
+
+def _same_relaunched_historical_freight(historical: Frete, launched: Frete) -> bool:
+    """Confere uma correspondência operacional forte sem confundir rotas do mesmo dia."""
+    source = _historical_import_source(historical)
+    if source is None or _historical_import_source(launched) is not None:
+        return False
+    historical_responsible = _payment_responsible_id(historical)
+    if (
+        historical_responsible is None
+        or historical_responsible != _payment_responsible_id(launched)
+        or historical.id_setor != launched.id_setor
+        or historical.data_servico != launched.data_servico
+        or historical.tipo_transporte != launched.tipo_transporte
+        or historical.codigo_fonte_tarifa != launched.codigo_fonte_tarifa
+        or _payment_route_key(historical.rota_cidade)
+        != _payment_route_key(launched.rota_cidade)
+        or historical.peso_kg is None
+        or historical.valor_nota is None
+        or historical.peso_kg != launched.peso_kg
+        or historical.valor_nota != launched.valor_nota
+    ):
+        return False
+
+    launched_status, _ = effective_status(launched)
+    if (
+        launched_status != "CALCULADO"
+        or launched.valor_frete_bruto is None
+        or _payment_amount(launched) is None
+    ):
+        return False
+
+    missing_source_fields = source.get("campos_nao_informados")
+    missing = set(missing_source_fields) if isinstance(missing_source_fields, list) else set()
+    for field_name in (
+        "valor_avaria",
+        "valor_frete_bruto",
+        "valor_frete_pago",
+    ):
+        historical_value = getattr(historical, field_name)
+        if historical_value is not None and field_name not in missing:
+            if historical_value != getattr(launched, field_name):
+                return False
+    if (
+        historical.tipo_caminhao is not None
+        and historical.tipo_caminhao != launched.tipo_caminhao
+    ):
+        return False
+    if (
+        historical.tipo_transporte == "AGREGADO"
+        and historical.km_rodado is not None
+        and historical.km_rodado != launched.km_rodado
+    ):
+        return False
+    return True
+
+
+def _remove_relaunched_historical_duplicates(records: list[Frete]) -> list[Frete]:
+    """Conta uma vez quando há um relançamento completo e inequívoco."""
+    imported = [freight for freight in records if _historical_import_source(freight) is not None]
+    launched = [freight for freight in records if _historical_import_source(freight) is None]
+    launches_by_key: dict[tuple[object, ...], list[Frete]] = {}
+    for candidate in launched:
+        status, _ = effective_status(candidate)
+        if (
+            status != "CALCULADO"
+            or candidate.valor_frete_bruto is None
+            or _payment_amount(candidate) is None
+        ):
+            continue
+        key = _payment_match_key(candidate)
+        if key is not None:
+            launches_by_key.setdefault(key, []).append(candidate)
+
+    matches_by_historical = {
+        historical.id_frete: [
+            candidate
+            for candidate in launches_by_key.get(_payment_match_key(historical), [])
+            if _same_relaunched_historical_freight(historical, candidate)
+        ]
+        for historical in imported
+    }
+    historical_matches_by_launch: dict[int, int] = {}
+    for matches in matches_by_historical.values():
+        for candidate in matches:
+            candidate_id = candidate.id_frete
+            historical_matches_by_launch[candidate_id] = (
+                historical_matches_by_launch.get(candidate_id, 0) + 1
+            )
+    superseded = {
+        historical_id
+        for historical_id, matches in matches_by_historical.items()
+        if (
+            len(matches) == 1
+            and historical_matches_by_launch.get(matches[0].id_frete) == 1
+        )
+    }
+    if not superseded:
+        return records
+    return [freight for freight in records if freight.id_frete not in superseded]
+
+
 def _payment_report_from_records(
     records: list[Frete],
     *,
@@ -2339,7 +2530,8 @@ def _payment_report_from_records(
 
     for freight in records:
         status, reason = effective_status(freight)
-        if status != "CALCULADO" or freight.valor_frete_pago is None:
+        payment_amount = _payment_amount(freight)
+        if status != "CALCULADO" or payment_amount is None:
             pending_items.append(FreightPaymentPending(
                 codigo_frete=UUID(freight.codigo_frete),
                 data_servico=freight.data_servico,
@@ -2347,9 +2539,9 @@ def _payment_report_from_records(
                 rota_cidade=freight.rota_cidade,
                 valor_frete_bruto=freight.valor_frete_bruto,
                 valor_avaria=freight.valor_avaria,
-                valor_frete_pago=freight.valor_frete_pago,
+                valor_frete_pago=payment_amount,
                 motivo_pendencia=reason or (
-                    "Valor líquido do frete não informado." if freight.valor_frete_pago is None
+                    "Valor líquido do frete não informado." if payment_amount is None
                     else "Frete aguardando conferência."
                 ),
             ))
@@ -2357,7 +2549,7 @@ def _payment_report_from_records(
 
         gross = freight.valor_frete_bruto or Decimal("0")
         damage = freight.valor_avaria
-        net = freight.valor_frete_pago
+        net = payment_amount
         gross_total += gross
         damage_total += damage
         net_total += net
@@ -2405,6 +2597,7 @@ def export_payment_report(
             nome_transportador=nome_transportador,
             sem_identificacao=sem_identificacao,
         )
+        records = _remove_relaunched_historical_duplicates(records)
         report = _payment_report_from_records(
             records,
             data_de=data_de,
@@ -2426,7 +2619,8 @@ def export_payment_report(
     grouped: dict[str, dict[str, object]] = {}
     for freight in records:
         # Pendências são bloqueadas acima; mantenha a proteção caso a regra mude.
-        if effective_status(freight)[0] != "CALCULADO" or freight.valor_frete_pago is None:
+        payment_amount = _payment_amount(freight)
+        if effective_status(freight)[0] != "CALCULADO" or payment_amount is None:
             continue
         responsible = freight.nome_transportador or "Sem identificação"
         row = grouped.setdefault(
@@ -2439,7 +2633,7 @@ def export_payment_report(
         days = row["days"]
         assert isinstance(days, set)
         days.add(freight.data_servico)
-        row["net"] = Decimal(row["net"]) + freight.valor_frete_pago
+        row["net"] = Decimal(row["net"]) + payment_amount
 
     workbook = Workbook()
     worksheet = workbook.active

@@ -30,11 +30,15 @@ Faça nesta ordem:
 
 ## Carro de apoio Paulo Cruz
 
-A partir da orientação de 11/11/2026, o frete Paulo Cruz usa os valores fixos dos veículos, independentemente de rota e peso; a rota é informativa. No lançamento de transportadora independente Paulo Cruz, o carro de apoio é opcional: Saveiro acrescenta R$ 300,00 e Bongo acrescenta R$ 500,00 ao frete do caminhão principal. A escolha e o valor ficam na memória de cálculo e são recuperados na edição. A regra não altera outras transportadoras.
+A partir da orientação de 11/11/2026, o frete Paulo Cruz usa o valor fixo do caminhão principal, sem depender da rota ou do peso; a rota permanece como informação operacional. O carro de apoio é opcional: sem seleção, não há adicional; Saveiro acrescenta R$ 300,00 e Bongo acrescenta R$ 500,00. A escolha e o valor ficam na memória de cálculo e são recuperados na edição. A regra não altera outras transportadoras.
+
+## Pendências de fretes históricos sem bruto — 11/11/2026
+
+Ao abrir **Corrigir** em um frete histórico de agregado sem valor bruto, o Portal calcula esse valor pela tarifa atual ao salvar, desde que o responsável esteja vinculado e haja rota, peso, valor da nota e KM rodado. Se faltar algum dado ou a rota não tiver tarifa, a pendência informa o que falta; nenhum valor é inventado. O total líquido é preenchido como bruto menos avaria quando não houver valor líquido histórico informado. No fechamento, uma linha importada só é omitida quando existe exatamente um lançamento completo com a mesma data, responsável cadastrado, rota, peso e valor da nota; o lançamento completo entra uma única vez no total e ambos continuam no histórico. Rotas diferentes são preservadas, e correspondências ambíguas continuam para revisão manual.
 
 ## Detalhamento de pendências no pagamento
 
-O histórico exibe a situação e o motivo junto ao lançamento pendente. No fechamento de pagamentos, a lista identifica data, responsável, rota, motivo e valores bruto, de avaria e líquido; usuários com acesso à edição podem abrir o frete para corrigi-lo. A lista respeita os mesmos filtros e exclusão de cancelados do relatório. A exportação continua bloqueada enquanto houver pendências.
+O histórico exibe a situação e o motivo junto ao lançamento pendente. No fechamento de pagamentos, a lista identifica data, responsável, rota, motivo e valores bruto, de avaria e líquido; usuários com acesso à edição podem abrir o frete para corrigi-lo. O relatório usa os mesmos filtros e exclui cancelados. Se um frete está calculado, tem bruto e não tem líquido gravado, o líquido é derivado como bruto menos avaria; esse caso não vira pendência. Transportadoras independentes não precisam informar KM. A exportação continua bloqueada quando houver pendência de cálculo ou quando o valor financeiro não puder ser determinado.
 
 ## Preenchimento de frete sem Entregas — 11/11/2026
 
@@ -74,7 +78,7 @@ Estas solicitações substituem, para lançamentos futuros, as regras histórica
 
 - [x] Lançamento, histórico, cálculo inicial e relatório/CSV por responsável implementados para a API real e demonstração.
 - [x] Testes novos cobrem fórmulas e arredondamento, faixas sobrepostas/vazias, permissões por escopo e ação, CSRF, idempotência, relatório e exportação; as verificações locais e o build passaram.
-- [x] Frete Paulo Cruz para Saveiro e Kia Bongo fica pendente até haver limites de peso aprovados. Faixas JUST IN TIME ambíguas, sem preço ou sem correspondência também ficam pendentes sem valor inventado.
+- [x] Regra atualizada em 11/11/2026: Paulo Cruz usa preço fixo por caminhão, sem faixa de peso ou tarifa por rota. O carro de apoio é opcional. Faixas JUST IN TIME ambíguas, sem preço ou sem correspondência continuam pendentes sem valor inventado.
 - [x] A cadeia completa foi aplicada e repetida em MySQL de teste: `b17d4e82c906` → `d4e7c9b2a610` → `f8a2d6c1e407`.
 - [ ] A migration `c7e3a91b5d42` foi atualizada localmente para adicionar o vínculo do motorista agregado, a quantidade de avarias e seus índices/restrições; ainda não foi aplicada nem validada em staging.
 - [ ] Em staging, Alembic ainda confirma `b17d4e82c906`; as migrations não foram aplicadas. A leitura de inventário RDS foi negada ao perfil IAM da instância (`rds:DescribeDBInstances`), então não foi possível confirmar se há snapshot recente. Um responsável com acesso RDS precisa verificar ou criar o snapshot primeiro.
@@ -95,7 +99,7 @@ Esta atualização substitui o roteiro operacional abaixo, datado de 30/10. As r
 - [x] As cidades foram confirmadas; a taxa de RO e MC anteriormente registrada como 1,2% foi corrigida para 1,17% em 11/11/2026 após confronto com o simulador.
 - [x] O usuário confirmou a matriz de perfis atual do catálogo de permissões.
 - [x] A captura de KM permanece manual para frota própria e agregados: a pessoa responsável digita KM inicial e final no Portal, e o sistema deriva KM rodado. Transportadoras independentes não informam hodômetro.
-- [ ] As regras de Paulo Cruz para Saveiro e Kia Bongo e os limites de peso precisam ser conferidos antes de liberar esses cálculos.
+- [x] As regras de Paulo Cruz foram confirmadas em 11/11/2026: o caminhão define o preço fixo, independentemente de rota e peso; o carro de apoio é opcional e soma R$ 300,00 para Saveiro ou R$ 500,00 para Bongo.
 - [x] O relatório e o CSV de pagamento filtram por período, modalidade e nome da transportadora/agregado. Registros legados de agregado sem nome podem ser consultados separadamente.
 - [x] A migration `f8a2d6c1e407` foi revisada e encadeada depois da migration `d4e7c9b2a610`; sua aplicação em staging aguarda snapshot e CI.
 - [x] O cálculo de RO e MC usa 1,17%, conforme as fórmulas efetivas do simulador.
@@ -116,7 +120,7 @@ Estas regras já podem orientar a implementação:
 - **Agregados CD:** frete bruto = percentual da nota + tarifa por kg + tarifa por km. RO e MC usam **1,17%**, conforme as fórmulas do simulador e a conferência do lançamento de 11/11/2026; anteriormente o Portal usava 1,2%. As outras taxas regionais permanecem como registradas em `initial_tariffs.json`.
 - **Frete mínimo:** as planilhas exibem o rótulo, mas não têm valor numérico preenchido. Não aplicar mínimo sem um valor aprovado.
 - **JUST IN TIME:** calcular apenas quando houver uma faixa única. Limites sobrepostos, intervalos sem tarifa e faixas sem preço ficam pendentes de conferência. Mais de um adicional no mesmo local exige negociação; não somar automaticamente. Armazenagem e movimentação são cobranças separadas.
-- **Paulo Cruz:** Saveiro R$ 300, Kia Bongo R$ 500, caminhão 3/4 R$ 950 entre 1.500 e 4.000 kg e toco R$ 1.100 entre 4.001 e 9.000 kg. A planilha não publica limite numérico para Saveiro e Kia Bongo; não inventar um.
+- **Paulo Cruz (regra vigente em 11/11/2026):** o preço do caminhão é fixo — Saveiro R$ 300, Kia Bongo R$ 500, caminhão 3/4 R$ 950 e toco R$ 1.100 — sem depender da rota ou do peso. Saveiro ou Bongo também podem ser selecionados como carro de apoio opcional, somando R$ 300 ou R$ 500 ao caminhão principal.
 - **Controle de lançamentos:** a pessoa responsável informa KM inicial e final para frota própria e agregados; o Portal deriva KM rodado = KM final − KM inicial. Transportadoras independentes não preenchem hodômetro. `Frete pago = frete bruto − R$ AVARIA` e `percentual = frete bruto ÷ valor da nota` são fórmulas observadas no controle histórico; a aplicação delas a transporte próprio ainda precisa de confirmação.
 - **Modalidade:** o Portal deve atender frota própria e serviço terceirizado. A planilha histórica não classifica cada transportador. A modalidade precisa ser informada e não pode ser inferida pelo nome ou pela tabela de tarifa.
 - **Fonte tarifária:** é independente do tipo de transporte. As tarifas existentes documentam tabelas de terceiros; não há tarifa ou regra de custo aprovada para frota própria.

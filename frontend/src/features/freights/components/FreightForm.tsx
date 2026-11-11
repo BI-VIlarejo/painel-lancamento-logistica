@@ -605,13 +605,13 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               {options.tipos_caminhao_paulo_cruz.map((truck) => <option value={truck.codigo} key={truck.codigo}>{truck.nome}</option>)}
             </select>
           </label>
-          <label className={cx(styles, "field", "field-compact")} htmlFor={supportId}>Carro de apoio
+          <label className={cx(styles, "field", "field-compact")} htmlFor={supportId}>Carro de apoio (opcional)
             <select id={supportId} value={values.carro_apoio || ""} onChange={(event) => update("carro_apoio", event.target.value as FormValues["carro_apoio"])} disabled={busy}>
               <option value="">Sem carro de apoio</option>
               <option value="SAVEIRO">Saveiro · adicional de R$ 300,00</option>
               <option value="KIA_BONGO">Bongo · adicional de R$ 500,00</option>
             </select>
-            <small>O adicional será somado ao valor do caminhão.</small>
+            <small>Se deixar sem carro de apoio, nenhum adicional será somado.</small>
           </label>
           <div className={cx(styles, commonStyles, "notice notice-warning", "source-note")}>
             O valor é definido pelo veículo e pelo carro de apoio. A rota é apenas informativa.

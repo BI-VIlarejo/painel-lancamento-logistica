@@ -479,7 +479,7 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
           <div><span className={cx(formStyles, "step-number")}>02</span><div><p>DADOS ORIGINAIS</p><h2>Operação e valores</h2></div></div>
         </div>
         <p className={cx(formStyles, "section-help")}>
-          Valores presentes na planilha ficam bloqueados. Campos ausentes podem ser completados; a edição não recalcula a tarifa atual.
+          Valores presentes na planilha ficam bloqueados. Se o bruto estiver vazio, o Portal poderá calculá-lo pela tarifa atual de agregados ao salvar, com rota, peso, nota e KM rodado informados.
         </p>
         <div className={cx(formStyles, "field-grid", "field-grid-two")}>
           {field("quantidade_entregas", "Entregas", "text", sourceHasValue(source, "quantidade_entregas") ? "Informado na planilha; bloqueado." : "Ausente na planilha; pode ser completado pelas Entregas.", "numeric", sourceHasValue(source, "quantidade_entregas"))}
@@ -488,7 +488,7 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
           {field("km_final", "KM final", "text", sourceHasValue(source, "km_final") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_final"))}
           {field("km_rodado", "KM rodado", "text", sourceHasValue(source, "km_rodado") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_rodado") || (sourceHasValue(source, "km_inicial") && sourceHasValue(source, "km_final")))}
           {field("valor_nota", "Valor da nota (R$)", "text", sourceHasValue(source, "valor_nota") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "valor_nota"))}
-          {field("valor_frete_bruto", "Frete bruto (R$)", "text", sourceHasValue(source, "valor_frete_bruto") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "valor_frete_bruto"))}
+          {field("valor_frete_bruto", "Frete bruto (R$)", "text", sourceHasValue(source, "valor_frete_bruto") ? "Informado na planilha; bloqueado." : "Opcional: em branco, será calculado para agregados quando houver rota, peso, nota e KM rodado.", "decimal", sourceHasValue(source, "valor_frete_bruto"))}
           {field("valor_avaria", "Avaria (R$)", "text", sourceHasValue(source, "valor_avaria") ? "Informado na planilha; bloqueado." : "Ausente na planilha; informe o valor em reais se conhecido.", "decimal", sourceHasValue(source, "valor_avaria"))}
           {field("valor_frete_pago", "Total líquido (R$)", "text", sourceHasValue(source, "valor_frete_pago") ? "Informado na planilha; bloqueado." : "Se deixar em branco, será calculado como frete bruto menos avaria.", "decimal", sourceHasValue(source, "valor_frete_pago"))}
           {field("percentual_frete", "Percentual (%)", "text", sourceHasValue(source, "percentual_frete") ? "Informado na planilha; bloqueado." : "Informe, por exemplo, 12 para 12%. Em branco, será calculado pela nota.", "decimal", sourceHasValue(source, "percentual_frete"))}
