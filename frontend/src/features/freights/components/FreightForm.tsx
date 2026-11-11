@@ -292,7 +292,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
       .then((summary) => {
         if (!active) return;
         setDeliverySummary(summary);
-        setValues((current) => current.data_servico === summary.data_servico
+        setValues((current) => summary.quantidade_registros > 0 && current.data_servico === summary.data_servico
           && current.id_motorista_agregado === String(summary.id_motorista)
           ? { ...current, rota_cidade: summary.rota_cidade, quantidade_entregas: String(summary.quantidade_entregas), peso_kg: summary.peso_total_kg === null ? "" : String(summary.peso_total_kg), quantidade_avarias: String(summary.quantidade_avarias) }
           : current);
@@ -327,12 +327,11 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const manuallyEnteredWeightAvailable = manuallyEnteredWeight !== null && manuallyEnteredWeight > 0;
   const aggregateSummaryReady = values.tipo_transporte !== "AGREGADO"
     || (aggregateSummaryMatches
-      && deliverySummary.quantidade_registros > 0
       && (deliveryWeightAvailable || manuallyEnteredWeightAvailable));
   const aggregateSummaryProblem = summaryError
-    || (deliverySummary && deliverySummary.quantidade_registros > 0
+    || (aggregateSummaryMatches
       ? "Informe um peso total maior que zero para continuar."
-      : "Selecione um motorista com Entregas confirmadas nesta data.");
+      : "Selecione um motorista e aguarde a consulta de Entregas.");
   const selectedCarrierDriverExists = carrierDrivers.some(
     (driver) => String(driver.id_motorista) === values.id_motorista_transportadora
       && driver.codigo_transportadora === values.codigo_fonte_tarifa,
@@ -511,13 +510,16 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
           </label>}
           {values.tipo_transporte === "AGREGADO" ? (
             <div className={cx(styles, "field")}>
-              <span>Cidade / rota das Entregas</span>
-              <div className={cx(styles, "locked-selection")} aria-live="polite">{summaryLoading ? "Buscando Entregas..." : deliverySummary?.rota_cidade || "Selecione o motorista e a data"}</div>
+              {aggregateSummaryMatches && deliverySummary.quantidade_registros === 0 ? <label htmlFor={routeId}>Cidade / rota
+                <select id={routeId} value={values.rota_cidade} onChange={(event) => update("rota_cidade", event.target.value)} required disabled={busy}>
+                  <option value="">Selecione a rota</option>
+                  {options.rotas_agregados_cd.map((route) => <option key={route.codigo} value={route.nome}>{route.nome}</option>)}
+                </select>
+              </label> : <><span>Cidade / rota das Entregas</span><div className={cx(styles, "locked-selection")} aria-live="polite">{summaryLoading ? "Buscando Entregas..." : values.rota_cidade || "Selecione o motorista e a data"}</div></>}
               {summaryError && <small role="alert">{summaryError}</small>}
               {deliverySummary && deliverySummary.cidades.length > 1 && <small>Cidades consideradas: {deliverySummary.cidades.join(", ")}</small>}
-              {deliverySummary?.quantidade_registros === 0 && <small>Nenhuma Entrega confirmada para esse motorista nesta data.</small>}
+              {aggregateSummaryMatches && deliverySummary.quantidade_registros === 0 && <small>Nenhuma Entrega confirmada nesta data. Preencha os dados do serviço manualmente.</small>}
               {deliverySummary && deliverySummary.quantidade_registros > 0 && !deliveryWeightAvailable && <small>O peso não está registrado nas Entregas; informe-o manualmente no campo abaixo.</small>}
-              <small>Preenchido pelo lançamento de Entregas; não pode ser editado aqui.</small>
             </div>
           ) : values.codigo_fonte_tarifa === "JUST_IN_TIME" ? (
             <>
@@ -612,8 +614,8 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
         </div>
         <div className={cx(styles, "field-grid", "field-grid-two")}>
           <label className={cx(styles, "field")} htmlFor={deliveriesId}>Quantidade de entregas
-            <input id={deliveriesId} type="number" min="0" step="1" value={values.quantidade_entregas} onChange={(event) => update("quantidade_entregas", event.target.value)} required readOnly={values.tipo_transporte === "AGREGADO"} disabled={busy || (values.tipo_transporte === "AGREGADO" && !deliverySummary)} />
-            {values.tipo_transporte === "AGREGADO" && <small>Soma das entregas realizadas e não realizadas nas Entregas confirmadas.</small>}
+            <input id={deliveriesId} type="number" min="0" step="1" value={values.quantidade_entregas} onChange={(event) => update("quantidade_entregas", event.target.value)} required readOnly={values.tipo_transporte === "AGREGADO" && !!deliverySummary?.quantidade_registros} disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
+            {values.tipo_transporte === "AGREGADO" && <small>{deliverySummary?.quantidade_registros ? "Preenchida pelas Entregas confirmadas." : "Informe a quantidade manualmente."}</small>}
           </label>
           <label className={cx(styles, "field")} htmlFor={weightId}>Peso total (kg)
             <input id={weightId} inputMode="decimal" type="text" value={values.peso_kg} onChange={(event) => update("peso_kg", event.target.value)} required readOnly={values.tipo_transporte === "AGREGADO" && deliveryWeightAvailable} disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
@@ -624,8 +626,8 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <input id={invoiceId} inputMode="decimal" type="text" value={values.valor_nota} onChange={(event) => update("valor_nota", event.target.value)} required={values.codigo_fonte_tarifa === "AGREGADOS_CD"} placeholder="R$ 0,00" disabled={busy} />
           </label>
           <label className={cx(styles, "field")} htmlFor={damageCountId}>Quantidade de avarias
-            <input id={damageCountId} type="number" min="0" step="1" value={values.quantidade_avarias} readOnly disabled />
-            <small>{values.tipo_transporte === "AGREGADO" ? "Somada das ocorrências AVARIA nas Entregas confirmadas." : "Não há motorista vinculado para buscar ocorrências de Entrega."}</small>
+            <input id={damageCountId} type="number" min="0" step="1" value={values.quantidade_avarias} onChange={(event) => update("quantidade_avarias", event.target.value)} readOnly={values.tipo_transporte !== "AGREGADO" || !!deliverySummary?.quantidade_registros} disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
+            <small>{values.tipo_transporte === "AGREGADO" ? deliverySummary?.quantidade_registros ? "Somada das ocorrências AVARIA nas Entregas confirmadas." : "Informe a quantidade manualmente." : "Não há motorista vinculado para buscar ocorrências de Entrega."}</small>
           </label>
           <label className={cx(styles, "field")} htmlFor={damageId}>
             <span className={cx(styles, "field-label-row")}><span>Valor da Avaria (R$)</span><span className={cx(styles, "optional-label")}>Se houver</span></span>

@@ -734,10 +734,6 @@ def _prepare_freight_payload(
         id_motorista=driver_id,
         data_servico=payload.data_servico,
     )
-    if require_delivery_data and delivery_rows == 0:
-        raise ConflictError(
-            "Não há entregas confirmadas para esse motorista na data selecionada."
-        )
     delivery_weight_available = weight is not None and weight > 0
     effective_weight = weight if delivery_weight_available else payload.peso_kg
     if require_delivery_data and effective_weight <= 0:
@@ -748,8 +744,8 @@ def _prepare_freight_payload(
         update={
             "nome_transportador": driver.nome_exibicao,
             "rota_cidade": route or payload.rota_cidade,
-            "quantidade_entregas": deliveries,
-            "quantidade_avarias": damages,
+            "quantidade_entregas": deliveries if delivery_rows else payload.quantidade_entregas,
+            "quantidade_avarias": damages if delivery_rows else payload.quantidade_avarias,
             "peso_kg": effective_weight,
         }
     )
@@ -764,6 +760,7 @@ def _prepare_freight_payload(
         "peso_total_kg_origem": str(weight) if weight is not None else None,
         "peso_total_kg_usado": str(effective_weight),
         "peso_informado_manualmente": not delivery_weight_available,
+        "dados_informados_manualmente": delivery_rows == 0,
     }
     return prepared, source_detail
 

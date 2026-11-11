@@ -125,6 +125,21 @@ class FreightServiceTests(TestCase):
         self.assertEqual(result.status_calculo, "CALCULADO")
         self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 0)
 
+    def test_aggregate_without_deliveries_uses_manual_values(self):
+        with patch(
+            "app.modules.fretes.repository.get_driver_delivery_summary",
+            return_value=("", [], 0, 0, 0, None),
+        ):
+            manual = payload(rota_cidade="Rio das Ostras", quantidade_entregas=7,
+                             quantidade_avarias=3, peso_kg="1500")
+            quote = service.quote_freight(self.db, payload=manual, access=access())
+            self.assertEqual(quote.status_calculo, "CALCULADO")
+            self.assertTrue(quote.detalhe_calculo["origem_entregas"]["dados_informados_manualmente"])
+            freight = service.create_freight(self.db, payload=manual, idempotency_key=uuid4(), access=access())
+            self.assertEqual((freight.rota_cidade, freight.quantidade_entregas, freight.quantidade_avarias),
+                             ("Rio das Ostras", 7, 3))
+            self.assertEqual(freight.peso_kg, Decimal("1500"))
+
     def test_aggregate_freight_uses_manual_weight_when_delivery_weight_is_missing(self):
         with patch(
             "app.modules.fretes.repository.get_driver_delivery_summary",
