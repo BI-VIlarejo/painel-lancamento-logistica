@@ -50,6 +50,10 @@ export function FreightLaunchPage({ onNavigate, canViewFreights, canViewAggregat
 
   function handleSaved(freight: FreightResponse) {
     if (canViewFreights) {
+      if (!editId) {
+        window.sessionStorage.removeItem("lancamento-logistica:freight-history-return");
+        window.sessionStorage.setItem("lancamento-logistica:freight-history-top", "1");
+      }
       window.sessionStorage.setItem(
         "lancamento-logistica:freight-saved",
         editId ? "Frete atualizado com sucesso." : "Frete registrado com sucesso e disponível no histórico.",

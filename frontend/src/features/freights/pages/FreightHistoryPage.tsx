@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { freightsApi } from "../api";
 import { formatDate, formatMoney, formatNumber, firstDayOfCurrentMonth, localDateValue, numericValue, tariffSourceLabel } from "../format";
 import { messageFromApiError } from "../../../shared/api/apiError";
@@ -333,6 +333,13 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [importOpen, setImportOpen] = useState(false);
   const historyTableRef = useRef<HTMLDivElement>(null);
   const restoreScrollPending = useRef(typeof restored.scrollY === "number" && Number.isFinite(restored.scrollY));
+
+  useLayoutEffect(() => {
+    if (window.sessionStorage.getItem("lancamento-logistica:freight-history-top") === "1") {
+      window.sessionStorage.removeItem("lancamento-logistica:freight-history-top");
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    }
+  }, []);
 
   useEffect(() => {
     window.sessionStorage.removeItem(historyReturnKey);
