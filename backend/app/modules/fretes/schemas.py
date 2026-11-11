@@ -259,7 +259,7 @@ class HistoricalFreightImportItem(BaseModel):
 
 
 class HistoricalFreightEditInput(BaseModel):
-    """Campos editáveis do frete histórico sem recalcular a tarifa vigente."""
+    """Correções de histórico e parâmetros necessários para calcular bruto ausente."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -293,6 +293,10 @@ class HistoricalFreightEditInput(BaseModel):
     percentual_frete: Decimal | None = Field(
         ge=Decimal("0"), max_digits=10, decimal_places=6, allow_inf_nan=False
     )
+    codigo_zona_jit: str | None = Field(default=None, max_length=60)
+    adicionais_jit: list[str] = Field(default_factory=list, max_length=8)
+    tipo_caminhao: TruckType = None
+    carro_apoio: Literal["SAVEIRO", "KIA_BONGO"] | None = None
     valor_avaria: Decimal = Field(
         ge=Decimal("0"), max_digits=14, decimal_places=2, allow_inf_nan=False
     )
@@ -305,8 +309,24 @@ class HistoricalFreightEditInput(BaseModel):
         normalized = " ".join(value.split())
         return normalized or None
 
+    @field_validator("codigo_zona_jit")
+    @classmethod
+    def normalize_edit_zone(cls, value: str | None) -> str | None:
+        normalized = value.strip().upper() if value else ""
+        return normalized or None
+
+    @field_validator("adicionais_jit")
+    @classmethod
+    def normalize_edit_additions(cls, values: list[str]) -> list[str]:
+        normalized = [normalize_label(value).replace(" ", "_") for value in values]
+        if any(not value for value in normalized) or len(normalized) != len(set(normalized)):
+            raise ValueError("Os adicionais devem ser únicos e válidos.")
+        return normalized
+
     @model_validator(mode="after")
     def validate_edit_odometer(self) -> HistoricalFreightEditInput:
+        if self.carro_apoio is not None and self.tipo_caminhao is None:
+            raise ValueError("Informe o tipo de caminhão antes de selecionar carro de apoio.")
         if self.km_inicial is None or self.km_final is None:
             return self
         if self.km_final < self.km_inicial:
@@ -455,6 +475,17 @@ class FreightPaymentPending(BaseModel):
     motivo_pendencia: str
 
 
+class FreightPaymentWarning(BaseModel):
+    """Dado histórico ausente que não impede o envio do valor ao financeiro."""
+
+    codigo_frete: UUID
+    data_servico: date
+    nome_transportador: str | None
+    rota_cidade: str | None
+    campos_ausentes: list[str]
+    motivo_aviso: str
+
+
 class FreightPaymentReport(BaseModel):
     """Resumo de pagamento filtrado por modalidade e responsável."""
 
@@ -466,6 +497,7 @@ class FreightPaymentReport(BaseModel):
     quantidade_fretes: int
     quantidade_pendentes: int
     pendencias: list[FreightPaymentPending]
+    avisos: list[FreightPaymentWarning] = Field(default_factory=list)
     valor_frete_bruto: Decimal
     valor_avarias: Decimal
     valor_a_pagar: Decimal

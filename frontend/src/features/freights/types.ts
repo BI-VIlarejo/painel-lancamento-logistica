@@ -120,6 +120,10 @@ export type HistoricalFreightEditInput = {
   valor_frete_bruto: DecimalValue | null;
   valor_frete_pago: DecimalValue | null;
   percentual_frete: DecimalValue | null;
+  codigo_zona_jit: string | null;
+  adicionais_jit: string[];
+  tipo_caminhao: FreightTruckType | null;
+  carro_apoio: "SAVEIRO" | "KIA_BONGO" | null;
   valor_avaria: DecimalValue;
 };
 
@@ -254,6 +258,14 @@ export type FreightPaymentReport = {
     valor_avaria: DecimalValue;
     valor_frete_pago: DecimalValue | null;
     motivo_pendencia: string;
+  }>;
+  avisos?: Array<{
+    codigo_frete: string;
+    data_servico: string;
+    nome_transportador: string | null;
+    rota_cidade: string | null;
+    campos_ausentes: string[];
+    motivo_aviso: string;
   }>;
   valor_frete_bruto: DecimalValue;
   valor_avarias: DecimalValue;

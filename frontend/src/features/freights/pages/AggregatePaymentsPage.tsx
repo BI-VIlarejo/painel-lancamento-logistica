@@ -194,7 +194,23 @@ export function AggregatePaymentsPage({ canExport, canViewFreights, canEditFreig
               <td><strong>{item.nome_transportador || "Sem identificação"}</strong><small>{item.rota_cidade || "Rota não informada"}</small></td>
               <td>{item.motivo_pendencia}</td>
               <td><small>Bruto: {item.valor_frete_bruto === null ? "Não informado" : formatMoney(item.valor_frete_bruto)}</small><small>Avaria: {formatMoney(item.valor_avaria)}</small><small>Líquido: {item.valor_frete_pago === null ? "Não informado" : formatMoney(item.valor_frete_pago)}</small></td>
-              {canEditFreights && <td><button type="button" className={cx(styles, commonStyles, "table-action")} onClick={() => onNavigate(`/fretes/${encodeURIComponent(item.codigo_frete)}`)}>Corrigir</button></td>}
+              {canEditFreights && <td><button type="button" className={cx(styles, commonStyles, "button button-secondary", "warning-action")} onClick={() => onNavigate(`/fretes/${encodeURIComponent(item.codigo_frete)}`)}>Corrigir</button></td>}
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </section>}
+      {Boolean(report?.avisos?.length) && <section className={cx(styles, "informational-card")} aria-labelledby="payment-warning-heading">
+        <h2 id="payment-warning-heading">Dados ausentes no histórico · não bloqueiam a exportação</h2>
+        <p>Os valores calculados ou líquidos informados são mantidos. Os campos abaixo só serão necessários se for preciso recalcular o frete pela tarifa.</p>
+        <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Dados informativos ausentes" tabIndex={0}>
+          <table className={cx(styles, commonStyles, "data-table", "pending-table")}>
+            <thead><tr><th>Data</th><th>Responsável / rota</th><th>Campos não informados</th><th>Observação</th>{canEditFreights && <th>Ação</th>}</tr></thead>
+            <tbody>{report?.avisos?.map((item) => <tr key={item.codigo_frete}>
+              <td>{formatDate(item.data_servico)}</td>
+              <td><strong>{item.nome_transportador || "Sem identificação"}</strong><small>{item.rota_cidade || "Rota não informada"}</small></td>
+              <td>{item.campos_ausentes.join(", ")}</td>
+              <td>{item.motivo_aviso}</td>
+              {canEditFreights && <td><button type="button" className={cx(styles, commonStyles, "button button-secondary", "warning-action")} onClick={() => onNavigate(`/fretes/${encodeURIComponent(item.codigo_frete)}`)}>Corrigir</button></td>}
             </tr>)}</tbody>
           </table>
         </div>
@@ -202,8 +218,8 @@ export function AggregatePaymentsPage({ canExport, canViewFreights, canEditFreig
       {loading ? <div className={cx(styles, commonStyles, "loading-card")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Calculando o relatório...</div>
         : report && !error && <>
           <section className={cx(styles, "summary-grid")} aria-label="Resumo do período">
-            <article className={cx(styles, "summary-card")}><span>Fretes no período</span><strong>{report.quantidade_fretes.toLocaleString("pt-BR")}</strong><small>{report.quantidade_pendentes ? `${report.quantidade_pendentes.toLocaleString("pt-BR")} aguardando conferência` : "Todos calculados"}</small></article>
-            <article className={cx(styles, "summary-card")}><span>Frete bruto calculado</span><strong>{formatMoney(report.valor_frete_bruto)}</strong><small>Somente lançamentos calculados</small></article>
+            <article className={cx(styles, "summary-card")}><span>Fretes no período</span><strong>{report.quantidade_fretes.toLocaleString("pt-BR")}</strong><small>{report.quantidade_pendentes ? `${report.quantidade_pendentes.toLocaleString("pt-BR")} bloqueiam o envio` : "Valores disponíveis para o pagamento"}</small></article>
+            <article className={cx(styles, "summary-card")}><span>Frete bruto informado</span><strong>{formatMoney(report.valor_frete_bruto)}</strong><small>Veja os avisos se faltar valor bruto histórico</small></article>
             <article className={cx(styles, "summary-card")}><span>Valor das avarias (R$)</span><strong>{formatMoney(report.valor_avarias)}</strong><small>Descontos registrados no período</small></article>
             <article className={cx(styles, "summary-card", "summary-payable")}><span>Total a pagar</span><strong>{formatMoney(report.valor_a_pagar)}</strong><small>Após os descontos por avaria</small></article>
           </section>

@@ -220,6 +220,50 @@ def get_freight_history_filter_options(
     )
 
 
+@router.get("/export.xlsx")
+def export_freight_history(
+    db: DatabaseSession,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: TransportType | None = None,
+    status_calculo: Literal["CALCULADO", "PENDENTE_CONFERENCIA"] | None = None,
+    id_motorista: int | None = Query(default=None, ge=0),
+    rota_cidade: str | None = Query(default=None, max_length=160),
+    codigo_transportadora: Literal["JUST_IN_TIME", "PAULO_CRUZ"] | None = None,
+    access: AuthorizationContext = Depends(_read_access),  # noqa: B008
+) -> Response:
+    """Exporta todos os lançamentos que correspondem aos filtros do histórico."""
+    content = service.export_freight_history(
+        db,
+        access=access,
+        data_de=data_de,
+        data_ate=data_ate,
+        tipo_transporte=tipo_transporte,
+        status_calculo=status_calculo,
+        id_motorista=id_motorista,
+        rota_cidade=rota_cidade,
+        codigo_transportadora=codigo_transportadora,
+    )
+    date_label = (
+        f"{data_de:%Y%m%d}-{data_ate:%Y%m%d}"
+        if data_de is not None and data_ate is not None
+        else f"a-partir-de-{data_de:%Y%m%d}"
+        if data_de is not None
+        else f"ate-{data_ate:%Y%m%d}"
+        if data_ate is not None
+        else "historico-completo"
+    )
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="historico-fretes-{date_label}.xlsx"',
+            "Cache-Control": "no-store",
+            "Pragma": "no-cache",
+        },
+    )
+
+
 @router.get("/payments/report", response_model=FreightPaymentReport)
 def get_payment_report(
     db: DatabaseSession,

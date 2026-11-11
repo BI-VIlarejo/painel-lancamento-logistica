@@ -6,6 +6,7 @@ import { cx } from "../../../shared/styles/classNames";
 import commonStyles from "../../../shared/styles/common.module.css";
 import type {
   FreightCarrierSource,
+  FreightHistoryFilters,
   FreightHistoryFilterOptions,
   FreightRecordedTransportType,
   FreightResponse,
@@ -23,7 +24,7 @@ const historyReturnKey = "lancamento-logistica:freight-history-return";
 type HistoryReturnState = {
   fromDate: string; toDate: string; transportType: FreightRecordedTransportType | "TODOS";
   statusFilter: FreightStatus | "TODOS"; driverId: string; routeFilter: string;
-  carrierFilter: FreightCarrierSource | ""; pageSize: number; offset: number;
+  carrierFilter: FreightCarrierSource | ""; pageSize: number; offset: number; allHistory: boolean;
   scrollX: number; scrollY: number; tableScrollLeft: number;
 };
 
@@ -309,6 +310,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [total, setTotal] = useState(0);
   const [fromDate, setFromDate] = useState(restored.fromDate ?? firstDayOfCurrentMonth());
   const [toDate, setToDate] = useState(restored.toDate ?? localDateValue());
+  const [allHistory, setAllHistory] = useState(restored.allHistory ?? false);
   const [transportType, setTransportType] = useState<FreightRecordedTransportType | "TODOS">(restored.transportType ?? "TODOS");
   const [statusFilter, setStatusFilter] = useState<FreightStatus | "TODOS">(restored.statusFilter ?? "TODOS");
   const [driverId, setDriverId] = useState(restored.driverId ?? "");
@@ -327,6 +329,8 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [filterOptionsSettled, setFilterOptionsSettled] = useState(false);
   const [error, setError] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [exportingHistory, setExportingHistory] = useState(false);
   const [notice, setNotice] = useState("");
   const [selected, setSelected] = useState<FreightResponse | null>(null);
   const [selectedSection, setSelectedSection] = useState<FreightDetailSection | null>(null);
@@ -434,6 +438,24 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
     setOffset(0);
   }
 
+  function selectAllHistory(checked: boolean) {
+    setAllHistory(checked);
+    setOffset(0);
+    setExportError("");
+    if (checked) {
+      setFromDate("");
+      setToDate("");
+      setTransportType("TODOS");
+      setStatusFilter("TODOS");
+      setDriverId("");
+      setRouteFilter("");
+      setCarrierFilter("");
+    } else {
+      setFromDate(firstDayOfCurrentMonth());
+      setToDate(localDateValue());
+    }
+  }
+
   function changeTransportType(value: FreightRecordedTransportType | "TODOS") {
     setTransportType(value);
     setCarrierFilter("");
@@ -442,7 +464,7 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
 
   function startEdit(item: FreightResponse) {
     const state: HistoryReturnState = {
-      fromDate, toDate, transportType, statusFilter, driverId, routeFilter, carrierFilter, pageSize, offset,
+      fromDate, toDate, transportType, statusFilter, driverId, routeFilter, carrierFilter, pageSize, offset, allHistory,
       scrollX: window.scrollX, scrollY: window.scrollY,
       tableScrollLeft: historyTableRef.current?.scrollLeft ?? 0,
     };
@@ -450,6 +472,38 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
     setSelected(null);
     setSelectedSection(null);
     onNavigate(`/fretes/${encodeURIComponent(item.codigo_frete)}`);
+  }
+
+  async function exportHistory() {
+    if (exportingHistory || loading || total === 0) return;
+    setExportingHistory(true);
+    setExportError("");
+    const filters: FreightHistoryFilters = allHistory ? {} : {
+      data_de: fromDate || undefined,
+      data_ate: toDate || undefined,
+      tipo_transporte: transportType,
+      status_calculo: statusFilter,
+      id_motorista: driverId === "" ? undefined : Number(driverId),
+      rota_cidade: routeFilter || undefined,
+      codigo_transportadora: carrierFilter || undefined,
+    };
+    try {
+      const blob = await freightsApi.exportHistory(filters);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = allHistory
+        ? "historico-fretes-todos.xlsx"
+        : `historico-fretes-${fromDate || "inicio"}-${toDate || "fim"}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch (exportFailure: unknown) {
+      setExportError(messageFromApiError(exportFailure));
+    } finally {
+      setExportingHistory(false);
+    }
   }
 
   function openDetails(item: FreightResponse, section: FreightDetailSection | null = null) {
@@ -486,8 +540,11 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
     setNotice(result.linhasComErro
       ? `${message} ${result.linhasComErro.toLocaleString("pt-BR")} linhas precisam de correção e podem ser reenviadas.`
       : message);
-    if (result.dataDe) setFromDate(result.dataDe);
-    if (result.dataAte) setToDate(result.dataAte);
+    if (result.dataDe || result.dataAte) {
+      setAllHistory(false);
+      if (result.dataDe) setFromDate(result.dataDe);
+      if (result.dataAte) setToDate(result.dataAte);
+    }
     setOffset(0);
     setReloadVersion((version) => version + 1);
   }
@@ -499,21 +556,24 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
         <div><p className={cx(styles, commonStyles, "eyebrow")}>OPERAÇÃO DE TRANSPORTE</p><h1>Histórico de fretes</h1><p className={cx(styles, commonStyles, "page-lead")}>Consulte, edite, cancele ou abra os dados completos dos serviços registrados.</p></div>
         <div className={cx(styles, "heading-actions")}>
           {canViewPayments && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/fretes/pagamentos")}>Pagamentos</button>}
+          <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => void exportHistory()} disabled={loading || total === 0 || exportingHistory}>{exportingHistory ? "Preparando XLSX…" : "Exportar histórico XLSX"}</button>
           {canCreate && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setImportOpen(true)}>Importar planilha XLSX</button>}
           {canCreate && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => onNavigate("/fretes")}>+ Lançar frete</button>}
         </div>
       </header>
 
       {notice && <div className={cx(styles, commonStyles, "notice notice-success")} role="status"><span>{notice}</span><button type="button" onClick={() => setNotice("")} aria-label="Fechar aviso">×</button></div>}
+      {exportError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{exportError}</div>}
 
       <section className={cx(styles, "filter-panel")} aria-label="Filtros do histórico">
-        <label className={cx(styles, commonStyles, "filter-control")}>Data inicial<input type="date" value={fromDate} onChange={(event) => changeFilter(setFromDate, event.target.value)} /></label>
-        <label className={cx(styles, commonStyles, "filter-control")}>Data final<input type="date" value={toDate} onChange={(event) => changeFilter(setToDate, event.target.value)} /></label>
-        <label className={cx(styles, commonStyles, "filter-control")}>Tipo de transporte<select value={transportType} onChange={(event) => changeTransportType(event.target.value as FreightRecordedTransportType | "TODOS")}><option value="TODOS">Todos</option><option value="AGREGADO">Agregados</option><option value="TRANSPORTADORA">Transportadoras</option></select></label>
-        <label className={cx(styles, commonStyles, "filter-control")}>Pendências<select value={statusFilter} onChange={(event) => changeFilter(setStatusFilter, event.target.value as FreightStatus | "TODOS")}><option value="TODOS">Todos os lançamentos</option><option value="PENDENTE_CONFERENCIA">Somente pendentes</option></select></label>
-        {transportType === "TRANSPORTADORA" && <label className={cx(styles, commonStyles, "filter-control")}>Transportadora<select value={carrierFilter} onChange={(event) => changeFilter(setCarrierFilter, event.target.value as FreightCarrierSource | "")}><option value="">Todas as transportadoras</option><option value="JUST_IN_TIME">JUST IN TIME</option><option value="PAULO_CRUZ">Paulo Cruz</option></select></label>}
-        <label className={cx(styles, commonStyles, "filter-control")}>Motorista<select value={driverId} onChange={(event) => changeFilter(setDriverId, event.target.value)}><option value="">Todos os motoristas</option>{filterOptions.motoristas.map((driver) => <option key={driver.id_motorista} value={driver.id_motorista}>{driver.nome_motorista}</option>)}</select></label>
-        <label className={cx(styles, commonStyles, "filter-control")}>Rota / cidade<select value={routeFilter} onChange={(event) => changeFilter(setRouteFilter, event.target.value)}><option value="">Todas as rotas</option>{filterOptions.rotas.map((route) => <option key={route} value={route}>{route}</option>)}</select></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Data inicial<input type="date" value={fromDate} disabled={allHistory} onChange={(event) => changeFilter(setFromDate, event.target.value)} /></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Data final<input type="date" value={toDate} disabled={allHistory} onChange={(event) => changeFilter(setToDate, event.target.value)} /></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Tipo de transporte<select value={transportType} disabled={allHistory} onChange={(event) => changeTransportType(event.target.value as FreightRecordedTransportType | "TODOS")}><option value="TODOS">Todos</option><option value="AGREGADO">Agregados</option><option value="TRANSPORTADORA">Transportadoras</option><option value="PROPRIO">Frota própria</option></select></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Pendências<select value={statusFilter} disabled={allHistory} onChange={(event) => changeFilter(setStatusFilter, event.target.value as FreightStatus | "TODOS")}><option value="TODOS">Todos os lançamentos</option><option value="PENDENTE_CONFERENCIA">Somente pendentes</option><option value="CALCULADO">Somente calculados</option></select></label>
+        {transportType === "TRANSPORTADORA" && <label className={cx(styles, commonStyles, "filter-control")}>Transportadora<select value={carrierFilter} disabled={allHistory} onChange={(event) => changeFilter(setCarrierFilter, event.target.value as FreightCarrierSource | "")}><option value="">Todas as transportadoras</option><option value="JUST_IN_TIME">JUST IN TIME</option><option value="PAULO_CRUZ">Paulo Cruz</option></select></label>}
+        <label className={cx(styles, commonStyles, "filter-control")}>Motorista<select value={driverId} disabled={allHistory} onChange={(event) => changeFilter(setDriverId, event.target.value)}><option value="">Todos os motoristas</option>{filterOptions.motoristas.map((driver) => <option key={driver.id_motorista} value={driver.id_motorista}>{driver.nome_motorista}</option>)}</select></label>
+        <label className={cx(styles, commonStyles, "filter-control")}>Rota / cidade<select value={routeFilter} disabled={allHistory} onChange={(event) => changeFilter(setRouteFilter, event.target.value)}><option value="">Todas as rotas</option>{filterOptions.rotas.map((route) => <option key={route} value={route}>{route}</option>)}</select></label>
+        <label className={cx(styles, "all-history-control")}><input type="checkbox" checked={allHistory} onChange={(event) => selectAllHistory(event.target.checked)} /><span><strong>Selecionar tudo</strong><small>Todo o histórico, sem aplicar filtros</small></span></label>
         <span className={cx(styles, "result-count")}>{total.toLocaleString("pt-BR")} {total === 1 ? "lançamento" : "lançamentos"}</span>
       </section>
 

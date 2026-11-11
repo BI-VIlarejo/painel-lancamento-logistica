@@ -10,6 +10,8 @@ import { numericValue } from "../format";
 import type {
   FreightDeliverySummary,
   FreightResponse,
+  FreightTariffOptions,
+  FreightTruckType,
   HistoricalFreightEditDriverOption,
   HistoricalFreightEditInput,
 } from "../types";
@@ -17,14 +19,15 @@ import formStyles from "./FreightForm.module.css";
 
 type Props = {
   freight: FreightResponse;
+  options: FreightTariffOptions;
   onUpdated: (freight: FreightResponse) => void;
   onCancel: () => void;
 };
 
 type Values = Record<Exclude<
   keyof HistoricalFreightEditInput,
-  "id_motorista_selecionado" | "complementar_com_entregas"
->, string>;
+  "id_motorista_selecionado" | "complementar_com_entregas" | "adicionais_jit"
+>, string> & { adicionais_jit: string };
 
 function importDetails(freight: FreightResponse): Record<string, unknown> {
   const source = freight.detalhe_calculo.importacao_planilha;
@@ -49,6 +52,16 @@ function registeredDriverId(freight: FreightResponse, source: Record<string, unk
 
 function normalizePersonName(value: string): string {
   return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\s+/g, " ");
+}
+
+function inferJustInTimeZone(cities: string[], options: FreightTariffOptions): string | null {
+  const normalizedCities = new Set(cities.map(normalizePersonName));
+  const matchingZones = options.zonas_just_in_time
+    .flatMap((region) => region.subzonas)
+    .filter((zone) => zone.areas.split(",").some((area) => normalizedCities.has(normalizePersonName(area))))
+    .map((zone) => zone.codigo);
+  const uniqueMatches = [...new Set(matchingZones)];
+  return uniqueMatches.length === 1 ? uniqueMatches[0] : null;
 }
 
 function matchesSourceName(candidate: string, sourceName: string): boolean {
@@ -112,6 +125,10 @@ function valuesFromFreight(freight: FreightResponse): Values {
     valor_frete_bruto: freight.valor_frete_bruto === null ? "" : String(freight.valor_frete_bruto),
     valor_frete_pago: freight.valor_frete_pago === null ? "" : String(freight.valor_frete_pago),
     percentual_frete: percentForInput(freight, source),
+    codigo_zona_jit: freight.codigo_zona_jit ?? "",
+    adicionais_jit: freight.adicionais_jit.join(","),
+    tipo_caminhao: freight.tipo_caminhao ?? "",
+    carro_apoio: freight.carro_apoio ?? "",
     valor_avaria: rawDamageValue || numericValue(freight.valor_avaria) !== 0
       ? String(freight.valor_avaria)
       : "",
@@ -179,16 +196,27 @@ function makePayload(
     valor_frete_bruto: optionalNonNegativeNumber(values.valor_frete_bruto, "Frete bruto"),
     valor_frete_pago: optionalNumber(values.valor_frete_pago, "Total líquido"),
     percentual_frete: percentage === null ? null : (percentage / 100).toFixed(6),
+    codigo_zona_jit: values.codigo_zona_jit.trim() || null,
+    adicionais_jit: values.adicionais_jit
+      ? values.adicionais_jit.split(",").filter(Boolean)
+      : [],
+    tipo_caminhao: values.tipo_caminhao ? values.tipo_caminhao as FreightTruckType : null,
+    carro_apoio: values.carro_apoio === "SAVEIRO" || values.carro_apoio === "KIA_BONGO"
+      ? values.carro_apoio
+      : null,
     valor_avaria: optionalNonNegativeNumber(values.valor_avaria, "Valor da avaria") ?? 0,
   };
 }
 
 /** Edição de dados importados que conserva os valores históricos e audita as alterações. */
-export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
+export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }: Props) {
   const { user } = useAuth();
   const draftKey = `lancamento-logistica:draft:historical-freight:${user?.id_usuario}:${freight.codigo_frete}`;
   const [restored] = useState(() => readSessionDraft<{ values: Values; selectedDriverId: string; deliveryApplied: boolean; appliedDeliveryValues: Partial<Record<keyof Values, string>>; idempotency: { signature: string; key: string } | null }>(draftKey));
-  const [values, setValues] = useState(() => restored?.values ?? valuesFromFreight(freight));
+  const [values, setValues] = useState(() => {
+    const defaults = valuesFromFreight(freight);
+    return restored?.values ? { ...defaults, ...restored.values } : defaults;
+  });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [editDrivers, setEditDrivers] = useState<HistoricalFreightEditDriverOption[]>([]);
@@ -280,6 +308,20 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
       .finally(() => { if (active) setSummaryLoading(false); });
     return () => { active = false; };
   }, [freight.data_servico, selectedDriverId]);
+
+  useEffect(() => {
+    if (
+      freight.codigo_fonte_tarifa !== "JUST_IN_TIME"
+      || values.codigo_zona_jit
+      || !deliverySummary
+    ) return;
+    const inferredZone = inferJustInTimeZone(deliverySummary.cidades, options);
+    if (inferredZone) {
+      setValues((current) => current.codigo_zona_jit
+        ? current
+        : { ...current, codigo_zona_jit: inferredZone });
+    }
+  }, [freight.codigo_fonte_tarifa, deliverySummary, options, values.codigo_zona_jit]);
 
   function update<K extends keyof Values>(key: K, value: Values[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -402,6 +444,10 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
       {hint && <small>{hint}</small>}
     </label>
   );
+  const inferredZoneName = freight.codigo_fonte_tarifa === "JUST_IN_TIME" && deliverySummary
+    ? options.zonas_just_in_time.flatMap((region) => region.subzonas)
+      .find((zone) => zone.codigo === values.codigo_zona_jit)?.nome
+    : undefined;
 
   return (
     <form className={cx(formStyles, "freight-form")} onSubmit={(event) => void submit(event)}>
@@ -457,6 +503,12 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
                 <div><small>Peso total</small><strong>{deliverySummary.peso_total_kg === null ? "Não informado" : `${deliverySummary.peso_total_kg} kg`}</strong></div>
                 <div><small>Avarias registradas</small><strong>{deliverySummary.quantidade_avarias} ocorrências</strong></div>
               </div>
+              {freight.codigo_fonte_tarifa === "JUST_IN_TIME"
+                && values.quantidade_entregas.trim()
+                && Number(values.quantidade_entregas) !== deliverySummary.quantidade_entregas
+                && <p className={cx(formStyles, "delivery-match-message")}>
+                  A planilha informa {values.quantidade_entregas} entregas e o registro de Entregas soma {deliverySummary.quantidade_entregas}. Essa diferença fica para conferência; a quantidade de entregas não altera a tarifa JUST IN TIME.
+                </p>}
               <p className={cx(formStyles, "delivery-match-message")}>
                 A ação abaixo só completa rota, entregas e peso que estejam vazios. Os valores já informados na planilha ficam bloqueados. As Entregas não fornecem KM, valor da nota, frete ou valor em R$ das avarias.
               </p>
@@ -479,21 +531,61 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
           <div><span className={cx(formStyles, "step-number")}>02</span><div><p>DADOS ORIGINAIS</p><h2>Operação e valores</h2></div></div>
         </div>
         <p className={cx(formStyles, "section-help")}>
-          Valores presentes na planilha ficam bloqueados. Se o bruto estiver vazio, o Portal poderá calculá-lo pela tarifa atual de agregados ao salvar, com rota, peso, nota e KM rodado informados.
+          {freight.codigo_fonte_tarifa === "AGREGADOS_CD"
+            ? freight.valor_frete_bruto !== null
+              ? "O frete bruto histórico será preservado. KM ausente fica como aviso e não bloqueia o pagamento; rota, peso, nota e KM só são necessários para recalcular um bruto ausente."
+              : "Para calcular o bruto de Agregados CD, preencha rota, peso, valor da nota e KM rodado. Entregas e quantidade de avarias não entram na fórmula da tarifa."
+            : freight.codigo_fonte_tarifa === "JUST_IN_TIME"
+              ? "JUST IN TIME não usa KM. Se o bruto estiver ausente, informe zona e peso; adicional é opcional. O valor líquido histórico, quando preenchido, basta para o pagamento."
+              : "Paulo Cruz não usa KM, rota nem peso para calcular a tarifa. Se o bruto estiver ausente, informe o tipo de caminhão; carro de apoio é opcional. O valor líquido histórico, quando preenchido, basta para o pagamento."}
         </p>
         <div className={cx(formStyles, "field-grid", "field-grid-two")}>
           {field("quantidade_entregas", "Entregas", "text", sourceHasValue(source, "quantidade_entregas") ? "Informado na planilha; bloqueado." : "Ausente na planilha; pode ser completado pelas Entregas.", "numeric", sourceHasValue(source, "quantidade_entregas"))}
           {field("peso_kg", "Peso (kg)", "text", sourceHasValue(source, "peso_kg") ? "Informado na planilha; bloqueado." : "Ausente na planilha; pode ser completado pelas Entregas.", "decimal", sourceHasValue(source, "peso_kg"))}
-          {field("km_inicial", "KM inicial", "text", sourceHasValue(source, "km_inicial") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_inicial"))}
-          {field("km_final", "KM final", "text", sourceHasValue(source, "km_final") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_final"))}
-          {field("km_rodado", "KM rodado", "text", sourceHasValue(source, "km_rodado") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_rodado") || (sourceHasValue(source, "km_inicial") && sourceHasValue(source, "km_final")))}
+          {freight.tipo_transporte === "AGREGADO" && <>
+            {field("km_inicial", "KM inicial", "text", sourceHasValue(source, "km_inicial") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_inicial"))}
+            {field("km_final", "KM final", "text", sourceHasValue(source, "km_final") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_final"))}
+            {field("km_rodado", "KM rodado", "text", sourceHasValue(source, "km_rodado") ? "Informado na planilha; bloqueado." : "Necessário apenas para calcular o bruto pela tarifa Agregados CD.", "decimal", sourceHasValue(source, "km_rodado") || (sourceHasValue(source, "km_inicial") && sourceHasValue(source, "km_final")))}
+          </>}
           {field("valor_nota", "Valor da nota (R$)", "text", sourceHasValue(source, "valor_nota") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "valor_nota"))}
-          {field("valor_frete_bruto", "Frete bruto (R$)", "text", sourceHasValue(source, "valor_frete_bruto") ? "Informado na planilha; bloqueado." : "Opcional: em branco, será calculado para agregados quando houver rota, peso, nota e KM rodado.", "decimal", sourceHasValue(source, "valor_frete_bruto"))}
+          {freight.codigo_fonte_tarifa === "JUST_IN_TIME" && <>
+            <label className={cx(formStyles, "field")}>Zona JUST IN TIME
+              <select value={values.codigo_zona_jit} onChange={(event) => update("codigo_zona_jit", event.target.value)} disabled={busy}>
+                <option value="">Selecione a zona tarifária</option>
+                {options.zonas_just_in_time.flatMap((region) => region.subzonas).map((zone) => <option key={zone.codigo} value={zone.codigo}>{zone.nome}</option>)}
+              </select>
+              <small>{inferredZoneName ? `Zona ${inferredZoneName} identificada pelas Entregas; será usada para calcular o bruto ao salvar. KM não se aplica.` : "Necessária para calcular o bruto pela tarifa JUST IN TIME; KM não se aplica."}</small>
+            </label>
+            <label className={cx(formStyles, "field")}>Adicionais JUST IN TIME (opcional)
+              <select multiple value={values.adicionais_jit ? values.adicionais_jit.split(",") : []} onChange={(event) => update("adicionais_jit", [...event.currentTarget.selectedOptions].map((option) => option.value).join(","))} disabled={busy}>
+                {options.adicionais_just_in_time.map((addition) => <option key={addition.codigo} value={addition.codigo}>{addition.nome}</option>)}
+              </select>
+              <small>Selecione no máximo um adicional para a tarifa.</small>
+            </label>
+          </>}
+          {freight.codigo_fonte_tarifa === "PAULO_CRUZ" && <>
+            <label className={cx(formStyles, "field")}>Tipo de caminhão
+              <select value={values.tipo_caminhao} onChange={(event) => update("tipo_caminhao", event.target.value)} disabled={busy}>
+                <option value="">Selecione o caminhão tarifado</option>
+                {options.tipos_caminhao_paulo_cruz.map((truck) => <option key={truck.codigo} value={truck.codigo}>{truck.nome}</option>)}
+              </select>
+              <small>Campo necessário para calcular o bruto; rota, peso e KM não alteram essa tarifa.</small>
+            </label>
+            <label className={cx(formStyles, "field")}>Carro de apoio (opcional)
+              <select value={values.carro_apoio} onChange={(event) => update("carro_apoio", event.target.value)} disabled={busy}>
+                <option value="">Sem carro de apoio</option>
+                <option value="SAVEIRO">Saveiro · adicional de R$ 300,00</option>
+                <option value="KIA_BONGO">Bongo · adicional de R$ 500,00</option>
+              </select>
+              <small>Deixe sem seleção quando não houver carro de apoio.</small>
+            </label>
+          </>}
+          {field("valor_frete_bruto", "Frete bruto (R$)", "text", sourceHasValue(source, "valor_frete_bruto") ? "Informado na planilha; bloqueado." : freight.codigo_fonte_tarifa === "AGREGADOS_CD" ? "Em branco: calcula com rota, peso, nota e KM rodado, se os dados e a rota tarifária estiverem válidos." : freight.codigo_fonte_tarifa === "JUST_IN_TIME" ? "Em branco: calcula com zona, peso e o adicional opcional selecionado." : "Em branco: calcula pelo tipo de caminhão e pelo carro de apoio opcional.", "decimal", sourceHasValue(source, "valor_frete_bruto"))}
           {field("valor_avaria", "Avaria (R$)", "text", sourceHasValue(source, "valor_avaria") ? "Informado na planilha; bloqueado." : "Ausente na planilha; informe o valor em reais se conhecido.", "decimal", sourceHasValue(source, "valor_avaria"))}
           {field("valor_frete_pago", "Total líquido (R$)", "text", sourceHasValue(source, "valor_frete_pago") ? "Informado na planilha; bloqueado." : "Se deixar em branco, será calculado como frete bruto menos avaria.", "decimal", sourceHasValue(source, "valor_frete_pago"))}
           {field("percentual_frete", "Percentual (%)", "text", sourceHasValue(source, "percentual_frete") ? "Informado na planilha; bloqueado." : "Informe, por exemplo, 12 para 12%. Em branco, será calculado pela nota.", "decimal", sourceHasValue(source, "percentual_frete"))}
         </div>
-        {freight.tipo_transporte === "TRANSPORTADORA" && <div className={cx(formStyles, "distance-result")}><span>Hodômetro operacional</span><strong>Não se aplica</strong><small>Os valores da planilha continuam preservados na origem do frete.</small></div>}
+        {freight.tipo_transporte === "TRANSPORTADORA" && <div className={cx(formStyles, "distance-result")}><span>Hodômetro operacional</span><strong>Não se aplica</strong><small>JUST IN TIME e Paulo Cruz não usam KM no cálculo do frete; eventual KM original continua preservado na planilha de origem.</small></div>}
         {Boolean(source.ultima_edicao_manual) && <p className={cx(formStyles, "route-hint")}>Este lançamento já foi corrigido anteriormente. A próxima alteração também será auditada.</p>}
       </div>
 
@@ -503,7 +595,7 @@ export function HistoricalFreightForm({ freight, onUpdated, onCancel }: Props) {
         <span>O histórico da planilha será mantido junto com a nova revisão dos dados.</span>
         <div>
           <button className={cx(commonStyles, "button button-secondary")} type="button" onClick={onCancel} disabled={busy}>Voltar</button>
-          <button className={cx(commonStyles, "button button-primary")} type="submit" disabled={busy}>{busy ? "Salvando…" : "Salvar alterações"}</button>
+          <button className={cx(commonStyles, "button button-primary")} type="submit" disabled={busy}>{busy ? "Salvando…" : freight.valor_frete_bruto === null ? "Salvar e calcular frete" : "Salvar alterações"}</button>
         </div>
       </div>
     </form>

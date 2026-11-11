@@ -83,18 +83,22 @@ const jitZones: JustInTimeZoneOption[] = [
   { codigo: "VALE_DO_PARAIBA_2", nome: "VALE DO PARAIBA 2", areas: "Miguel Pereira, Paty Alferes, Mendes, Paraiba do Sul, Vassouras, Avelar" },
 ];
 
-const jitRegions: JustInTimeRegionOption[] = [
-  {
-    codigo: "RIO_DE_JANEIRO",
-    nome: "Rio de Janeiro",
-    subzonas: jitZones.filter((zone) => ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"].includes(zone.codigo)),
-  },
-  {
-    codigo: "REGIAO_SERRANA",
-    nome: "Região Serrana",
-    subzonas: jitZones.filter((zone) => ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"].includes(zone.codigo)),
-  },
+const jitRegionGroups: Array<[string, string, string[]]> = [
+  ["RIO_DE_JANEIRO", "Rio de Janeiro", ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"]],
+  ["REGIAO_SERRANA", "Região Serrana", ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"]],
+  ["BAIXADA_FLUMINENSE", "Baixada Fluminense", ["BAIXADA_FLUMINENSE"]],
+  ["NORTE_FLUMINENSE", "Norte Fluminense", ["NORTE_FLUMINENSE"]],
+  ["NOROESTE_FLUMINENSE", "Noroeste Fluminense", ["NOROESTE_FLUMINENSE"]],
+  ["NITEROI", "Niterói e região", ["NITEROI_1", "NITEROI_2"]],
+  ["REGIAO_DOS_LAGOS", "Região dos Lagos", ["REGI_O_DOS_LAGOS_1", "REGI_O_DOS_LAGOS_2"]],
+  ["COSTA_VERDE", "Costa Verde", ["COSTA_VERDE_1", "COSTA_VERDE_2"]],
+  ["VALE_DO_PARAIBA", "Vale do Paraíba", ["VALE_DO_PARAIBA1", "VALE_DO_PARAIBA_2"]],
 ];
+const jitRegions: JustInTimeRegionOption[] = jitRegionGroups.map(([codigo, nome, zoneCodes]) => ({
+  codigo,
+  nome,
+  subzonas: jitZones.filter((zone) => zoneCodes.includes(zone.codigo)),
+}));
 const jitAllowedZoneCodes = new Set(jitRegions.flatMap((region) => region.subzonas.map((zone) => zone.codigo)));
 
 const additionalNames = [
@@ -527,6 +531,52 @@ function paymentRecords(filters: FreightPaymentFilters): FreightResponse[] {
       : !filters.nome_transportador || item.nome_transportador === filters.nome_transportador);
 }
 
+function demoPaymentAmount(item: FreightResponse): number | null {
+  const importedNet = numeric(item.valor_frete_pago);
+  if (importedNet !== null) return importedNet;
+  const gross = numeric(item.valor_frete_bruto);
+  const damage = numeric(item.valor_avaria) ?? 0;
+  return gross === null || damage > gross ? null : gross - damage;
+}
+
+function demoPaymentReady(item: FreightResponse): boolean {
+  if (demoPaymentAmount(item) === null) return false;
+  if (item.status_calculo === "CALCULADO") return true;
+  const source = item.detalhe_calculo.importacao_planilha;
+  if (typeof source !== "object" || source === null) return false;
+  const imported = source as Record<string, unknown>;
+  return Boolean(item.nome_transportador?.trim())
+    && imported.tipo_transporte_identificado !== false
+    && !(item.tipo_transporte === "AGREGADO" && imported.vinculo_responsavel_status === "AMBIGUO");
+}
+
+function demoPaymentWarning(item: FreightResponse) {
+  const source = item.detalhe_calculo.importacao_planilha;
+  if (!demoPaymentReady(item) || typeof source !== "object" || source === null) return null;
+  const missing: string[] = [];
+  if (item.valor_frete_bruto === null) missing.push("frete bruto");
+  if (item.codigo_fonte_tarifa === "AGREGADOS_CD") {
+    if (!item.rota_cidade) missing.push("rota/cidade");
+    if (item.peso_kg === null) missing.push("peso");
+    if (item.valor_nota === null) missing.push("valor da nota");
+    if (item.km_rodado === null) missing.push("KM rodado");
+  } else if (item.codigo_fonte_tarifa === "JUST_IN_TIME") {
+    if (!item.codigo_zona_jit) missing.push("zona JUST IN TIME");
+    if (item.peso_kg === null) missing.push("peso");
+  } else if (item.codigo_fonte_tarifa === "PAULO_CRUZ" && !item.tipo_caminhao) {
+    missing.push("tipo de caminhão");
+  }
+  if (!missing.length) return null;
+  return {
+    codigo_frete: item.codigo_frete,
+    data_servico: item.data_servico,
+    nome_transportador: item.nome_transportador,
+    rota_cidade: item.rota_cidade,
+    campos_ausentes: missing,
+    motivo_aviso: "Os valores históricos foram preservados. Estes campos só são necessários para auditar ou recalcular a tarifa; o aviso não bloqueia a exportação.",
+  };
+}
+
 /** Operações locais usadas somente quando VITE_DEMO_MODE estiver ativo. */
 export const freightsDemoApi = {
   async tariffOptions(): Promise<FreightTariffOptions> {
@@ -897,9 +947,88 @@ export const freightsDemoApi = {
       ?? (carrierCode === "JUST_IN_TIME" ? "JUST IN TIME" : carrierCode === "PAULO_CRUZ" ? "Paulo Cruz" : null)
       ?? aggregateDriver?.name
       ?? savedPayload.nome_transportador;
-    const gross = numeric(savedPayload.valor_frete_bruto);
+    const tariffCode = carrierDriver?.codigo_transportadora ?? carrierCode;
+    let gross = numeric(savedPayload.valor_frete_bruto);
     const damage = numeric(savedPayload.valor_avaria) ?? 0;
     const invoice = numeric(savedPayload.valor_nota);
+    let historicalCalculation: FreightQuoteResponse | null = null;
+    if (gross === null && linked) {
+      if (
+        type === "AGREGADO"
+        && aggregateDriver
+        && savedPayload.rota_cidade
+        && savedPayload.km_rodado !== null
+        && numeric(savedPayload.peso_kg) !== null
+        && invoice !== null
+      ) {
+        historicalCalculation = calculateQuote({
+          data_servico: savedPayload.data_servico,
+          tipo_transporte: "AGREGADO",
+          nome_transportador: transporterName,
+          id_motorista_agregado: aggregateDriver.id,
+          id_motorista_transportadora: null,
+          codigo_fonte_tarifa: "AGREGADOS_CD",
+          rota_cidade: savedPayload.rota_cidade,
+          km_inicial: "0",
+          km_final: savedPayload.km_rodado,
+          quantidade_entregas: savedPayload.quantidade_entregas ?? 0,
+          peso_kg: savedPayload.peso_kg ?? "0",
+          valor_nota: savedPayload.valor_nota,
+          valor_avaria: moneyText(damage),
+          quantidade_avarias: existing.quantidade_avarias,
+        });
+      } else if (
+        type === "TRANSPORTADORA"
+        && carrierDriver?.codigo_transportadora === "JUST_IN_TIME"
+        && savedPayload.codigo_zona_jit
+        && numeric(savedPayload.peso_kg) !== null
+      ) {
+        historicalCalculation = calculateQuote({
+          data_servico: savedPayload.data_servico,
+          tipo_transporte: "TRANSPORTADORA",
+          nome_transportador: transporterName,
+          id_motorista_agregado: null,
+          id_motorista_transportadora: carrierDriver.id_motorista,
+          codigo_fonte_tarifa: "JUST_IN_TIME",
+          rota_cidade: savedPayload.rota_cidade || "JUST IN TIME",
+          km_inicial: null,
+          km_final: null,
+          quantidade_entregas: savedPayload.quantidade_entregas ?? 0,
+          peso_kg: savedPayload.peso_kg ?? "0",
+          valor_nota: savedPayload.valor_nota,
+          valor_avaria: moneyText(damage),
+          quantidade_avarias: existing.quantidade_avarias,
+          codigo_zona_jit: savedPayload.codigo_zona_jit,
+          adicionais_jit: savedPayload.adicionais_jit,
+        });
+      } else if (
+        type === "TRANSPORTADORA"
+        && carrierDriver?.codigo_transportadora === "PAULO_CRUZ"
+        && savedPayload.tipo_caminhao
+      ) {
+        historicalCalculation = calculateQuote({
+          data_servico: savedPayload.data_servico,
+          tipo_transporte: "TRANSPORTADORA",
+          nome_transportador: transporterName,
+          id_motorista_agregado: null,
+          id_motorista_transportadora: carrierDriver.id_motorista,
+          codigo_fonte_tarifa: "PAULO_CRUZ",
+          rota_cidade: savedPayload.rota_cidade || "Paulo Cruz",
+          km_inicial: null,
+          km_final: null,
+          quantidade_entregas: savedPayload.quantidade_entregas ?? 0,
+          peso_kg: savedPayload.peso_kg ?? "0",
+          valor_nota: savedPayload.valor_nota,
+          valor_avaria: moneyText(damage),
+          quantidade_avarias: existing.quantidade_avarias,
+          tipo_caminhao: savedPayload.tipo_caminhao,
+          carro_apoio: savedPayload.carro_apoio,
+        });
+      }
+      if (historicalCalculation?.status_calculo === "CALCULADO") {
+        gross = numeric(historicalCalculation.valor_frete_bruto);
+      }
+    }
     const paid = numeric(savedPayload.valor_frete_pago)
       ?? (gross === null ? null : gross - damage);
     const ratio = numeric(savedPayload.percentual_frete)
@@ -951,6 +1080,10 @@ export const freightsDemoApi = {
       quantidade_entregas: savedPayload.quantidade_entregas,
       peso_kg: savedPayload.peso_kg,
       valor_nota: savedPayload.valor_nota,
+      tipo_caminhao: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.tipo_caminhao : null,
+      carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
+      codigo_zona_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME" ? savedPayload.codigo_zona_jit : null,
+      adicionais_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME" ? savedPayload.adicionais_jit : [],
       valor_frete_bruto: gross === null ? null : moneyText(gross),
       valor_avaria: moneyText(damage),
       quantidade_avarias: deliveryMatch && deliveryMatch.quantidade_registros > 0 && existing.quantidade_avarias === 0
@@ -964,8 +1097,10 @@ export const freightsDemoApi = {
         ...existing.detalhe_calculo,
         status: reasons.length ? "PENDENTE_CONFERENCIA" : "CALCULADO",
         motivo: reasons.length ? reasons.join(" ") : null,
-        fonte_tarifa: carrierDriver?.codigo_transportadora ?? carrierCode ?? "AGREGADOS_CD",
+        fonte_tarifa: tariffCode ?? "AGREGADOS_CD",
         percentual_frete: ratio === null ? null : String(ratio),
+        carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
+        ...(historicalCalculation ? { calculo_tarifa_atual: historicalCalculation.detalhe_calculo } : {}),
         importacao_planilha: nextSource,
       },
     };
@@ -1013,6 +1148,22 @@ export const freightsDemoApi = {
     };
   },
 
+  async exportHistory(filters: FreightHistoryFilters = {}): Promise<Blob> {
+    await pause();
+    const records = readFreights()
+      .filter((item) => dateInRange(item.data_servico, filters.data_de, filters.data_ate))
+      .filter((item) => !filters.tipo_transporte || filters.tipo_transporte === "TODOS" || item.tipo_transporte === filters.tipo_transporte)
+      .filter((item) => !filters.status_calculo || filters.status_calculo === "TODOS" || item.status_calculo === filters.status_calculo)
+      .filter((item) => filters.id_motorista === undefined || (filters.id_motorista === 0
+        ? item.id_motorista_agregado === null && item.id_motorista_transportadora === null
+        : item.id_motorista_agregado === filters.id_motorista || item.id_motorista_transportadora === filters.id_motorista))
+      .filter((item) => !filters.rota_cidade || item.rota_cidade === filters.rota_cidade)
+      .filter((item) => !filters.codigo_transportadora || item.codigo_fonte_tarifa === filters.codigo_transportadora)
+      .sort((a, b) => b.data_servico.localeCompare(a.data_servico) || b.id_frete - a.id_frete);
+    const { createFreightHistoryWorkbook } = await import("./historyWorkbook");
+    return createFreightHistoryWorkbook(records, filters);
+  },
+
   async historyFilterOptions(
     dataDe: string,
     dataAte: string,
@@ -1056,13 +1207,13 @@ export const freightsDemoApi = {
     let pendingTotal = 0;
 
     for (const freight of records) {
-      if (freight.status_calculo !== "CALCULADO" || freight.valor_frete_pago === null) {
+      if (!demoPaymentReady(freight)) {
         pendingTotal += 1;
         continue;
       }
       const gross = numeric(freight.valor_frete_bruto) ?? 0;
       const damage = numeric(freight.valor_avaria) ?? 0;
-      const net = numeric(freight.valor_frete_pago) ?? 0;
+      const net = demoPaymentAmount(freight) ?? 0;
       grossTotal += gross;
       damageTotal += damage;
       netTotal += net;
@@ -1076,13 +1227,17 @@ export const freightsDemoApi = {
       sem_identificacao: Boolean(filters.sem_identificacao),
       quantidade_fretes: records.length,
       quantidade_pendentes: pendingTotal,
-      pendencias: records.filter((item) => item.status_calculo !== "CALCULADO" || item.valor_frete_pago === null).map((item) => ({
+      pendencias: records.filter((item) => !demoPaymentReady(item)).map((item) => ({
         codigo_frete: item.codigo_frete, data_servico: item.data_servico,
         nome_transportador: item.nome_transportador, rota_cidade: item.rota_cidade,
         valor_frete_bruto: item.valor_frete_bruto, valor_avaria: item.valor_avaria,
-        valor_frete_pago: item.valor_frete_pago,
+        valor_frete_pago: demoPaymentAmount(item) === null ? null : moneyText(demoPaymentAmount(item) as number),
         motivo_pendencia: item.motivo_pendencia || (item.valor_frete_pago === null ? "Valor líquido do frete não informado." : "Frete aguardando conferência."),
       })),
+      avisos: records.flatMap((item) => {
+        const warning = demoPaymentWarning(item);
+        return warning ? [warning] : [];
+      }),
       valor_frete_bruto: moneyText(grossTotal),
       valor_avarias: moneyText(damageTotal),
       valor_a_pagar: moneyText(netTotal),
@@ -1118,11 +1273,11 @@ export const freightsDemoApi = {
       net: number;
     }>();
     for (const freight of paymentRecords(filters)) {
-      if (freight.status_calculo !== "CALCULADO" || freight.valor_frete_pago === null) continue;
+      if (!demoPaymentReady(freight)) continue;
       const responsible = freight.nome_transportador ?? "Sem identificação";
       const group = groups.get(responsible) ?? { days: new Set<string>(), net: 0 };
       group.days.add(freight.data_servico);
-      group.net += numeric(freight.valor_frete_pago) ?? 0;
+      group.net += demoPaymentAmount(freight) ?? 0;
       groups.set(responsible, group);
     }
 

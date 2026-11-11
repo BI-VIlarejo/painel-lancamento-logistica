@@ -82,7 +82,7 @@ export function FreightLaunchPage({ onNavigate, canViewFreights, canViewAggregat
     <div className={cx(styles, commonStyles, "portal-page", "page-stack", "freight-launch-page")}>
       <div className={cx(styles, commonStyles, "breadcrumb")}><span>Fretes</span><span aria-hidden="true">/</span><strong>{pageAction}</strong></div>
       <header className={cx(styles, commonStyles, "page-heading-row", "launch-heading")}>
-        <div><p className={cx(styles, commonStyles, "eyebrow")}>OPERAÇÃO DE TRANSPORTE</p><h1>{historicalEdit ? "Editar frete histórico" : editId ? "Editar frete" : "Lançar frete"}</h1><p className={cx(styles, commonStyles, "page-lead")}>{historicalEdit ? "Corrija os dados importados. Se o frete bruto estiver vazio, poderá ser calculado pela tarifa atual de agregados com rota, peso, nota e quilômetros." : editId ? "Atualize os dados do serviço. O frete será recalculado e a alteração ficará registrada na auditoria." : "Selecione o responsável e complete os dados do serviço. Para agregados, os dados de Entregas são preenchidos automaticamente quando disponíveis; caso contrário, informe-os manualmente."}</p></div>
+        <div><p className={cx(styles, commonStyles, "eyebrow")}>OPERAÇÃO DE TRANSPORTE</p><h1>{historicalEdit ? "Editar frete histórico" : editId ? "Editar frete" : "Lançar frete"}</h1><p className={cx(styles, commonStyles, "page-lead")}>{historicalEdit ? initialFreight?.codigo_fonte_tarifa === "AGREGADOS_CD" ? "Para calcular um frete bruto ausente de Agregados CD, informe rota, peso, valor da nota e KM rodado. Se o bruto ou líquido histórico já estiver informado, o KM ausente é apenas um aviso e não bloqueia o pagamento." : initialFreight?.codigo_fonte_tarifa === "JUST_IN_TIME" ? "JUST IN TIME não usa KM. Para calcular um bruto ausente, informe zona e peso; adicional é opcional. Valores históricos existentes são preservados." : "Paulo Cruz não usa KM, rota nem peso na tarifa. Para calcular um bruto ausente, informe o tipo de caminhão; carro de apoio é opcional. Valores históricos existentes são preservados." : editId ? "Atualize os dados do serviço. O frete será recalculado e a alteração ficará registrada na auditoria." : "Selecione o responsável e complete os dados do serviço. Para agregados, os dados de Entregas são preenchidos automaticamente quando disponíveis; caso contrário, informe-os manualmente."}</p></div>
         <div className={cx(styles, "heading-actions")}>
           {!editId && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setImportOpen(true)}>Importar planilha XLSX</button>}
           {canViewFreights && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/fretes/historico")}>Ver histórico</button>}
@@ -95,9 +95,10 @@ export function FreightLaunchPage({ onNavigate, canViewFreights, canViewAggregat
 
       {loading ? <div className={cx(styles, commonStyles, "loading-card")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />{editId ? "Carregando lançamento e tabelas de tarifa..." : "Carregando tabelas de tarifa..."}</div>
         : error ? <div className={cx(styles, commonStyles, "notice notice-error", "load-error")} role="alert"><span>{error}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setReloadVersion((value) => value + 1)}>Tentar novamente</button></div>
-          : historicalEdit && initialFreight
+          : historicalEdit && initialFreight && options
             ? <HistoricalFreightForm
                 freight={initialFreight}
+                options={options}
                 onUpdated={handleSaved}
                 onCancel={() => onNavigate("/fretes/historico")}
               />

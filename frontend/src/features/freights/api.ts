@@ -30,6 +30,13 @@ type TariffOptionsResponse = Omit<FreightTariffOptions, "zonas_just_in_time"> & 
 const jitRegionGroups: Array<[string, string, string[]]> = [
   ["RIO_DE_JANEIRO", "Rio de Janeiro", ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"]],
   ["REGIAO_SERRANA", "Região Serrana", ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"]],
+  ["BAIXADA_FLUMINENSE", "Baixada Fluminense", ["BAIXADA_FLUMINENSE"]],
+  ["NORTE_FLUMINENSE", "Norte Fluminense", ["NORTE_FLUMINENSE"]],
+  ["NOROESTE_FLUMINENSE", "Noroeste Fluminense", ["NOROESTE_FLUMINENSE"]],
+  ["NITEROI", "Niterói e região", ["NITEROI_1", "NITEROI_2"]],
+  ["REGIAO_DOS_LAGOS", "Região dos Lagos", ["REGI_O_DOS_LAGOS_1", "REGI_O_DOS_LAGOS_2"]],
+  ["COSTA_VERDE", "Costa Verde", ["COSTA_VERDE_1", "COSTA_VERDE_2"]],
+  ["VALE_DO_PARAIBA", "Vale do Paraíba", ["VALE_DO_PARAIBA1", "VALE_DO_PARAIBA_2"]],
 ];
 
 /** Agrupa a resposta antiga da API enquanto o backend de staging é atualizado. */
@@ -73,6 +80,23 @@ function historyQuery(filters: FreightHistoryFilters = {}): string {
   }
   params.set("limit", String(filters.limit ?? 50));
   params.set("offset", String(filters.offset ?? 0));
+  return params.toString();
+}
+
+/** Mesmos filtros do histórico, sem paginação, para exportar todas as correspondências. */
+function historyExportQuery(filters: FreightHistoryFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.data_de) params.set("data_de", filters.data_de);
+  if (filters.data_ate) params.set("data_ate", filters.data_ate);
+  if (filters.tipo_transporte && filters.tipo_transporte !== "TODOS") {
+    params.set("tipo_transporte", filters.tipo_transporte);
+  }
+  if (filters.status_calculo && filters.status_calculo !== "TODOS") {
+    params.set("status_calculo", filters.status_calculo);
+  }
+  if (filters.id_motorista !== undefined) params.set("id_motorista", String(filters.id_motorista));
+  if (filters.rota_cidade) params.set("rota_cidade", filters.rota_cidade);
+  if (filters.codigo_transportadora) params.set("codigo_transportadora", filters.codigo_transportadora);
   return params.toString();
 }
 
@@ -232,6 +256,12 @@ export const freightsApi = {
     return isDemoMode
       ? freightsDemoApi.list(filters)
       : apiRequest<FreightPage>(`/freights?${historyQuery(filters)}`);
+  },
+
+  exportHistory(filters: FreightHistoryFilters = {}): Promise<Blob> {
+    return isDemoMode
+      ? freightsDemoApi.exportHistory(filters)
+      : apiBlob(`/freights/export.xlsx?${historyExportQuery(filters)}`, XLSX_MIME_TYPE);
   },
 
   historyFilterOptions(

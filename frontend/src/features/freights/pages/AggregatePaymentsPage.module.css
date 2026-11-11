@@ -63,3 +63,9 @@
 .pending-table td { vertical-align: top; }
 .pending-table td small { display: block; margin-top: 4px; }
 .pending-table td:nth-child(3) { min-width: 220px; white-space: normal; }
+.warning-action { min-height: 32px; padding: 0 11px; font-size: 12px; white-space: nowrap; }
+.informational-card { min-width: 0; padding: 16px; border: 1px solid #c8d9e8; border-radius: var(--freight-radius-card); background: #f5f9fc; }
+.informational-card h2 { margin: 0; color: #294d6b; font-size: 15px; }
+.informational-card > p { margin: 6px 0 12px; color: #61778a; font-size: 12px; line-height: 1.5; }
+.informational-card .pending-table td:nth-child(3) { min-width: 145px; }
+.informational-card .pending-table td:nth-child(4) { min-width: 300px; white-space: normal; }

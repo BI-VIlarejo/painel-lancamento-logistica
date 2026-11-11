@@ -45,6 +45,7 @@ from .schemas import (
     FreightPaymentOptions,
     FreightPaymentPending,
     FreightPaymentReport,
+    FreightPaymentWarning,
     FreightQuoteResponse,
     FreightResponse,
     FreightStatus,
@@ -603,15 +604,65 @@ def _tariff_source(value: str | None) -> TariffSource | None:
 
 
 def _payment_amount(freight: Frete) -> Decimal | None:
-    """Usa o líquido gravado ou deriva bruto menos avaria pela regra do frete."""
+    """Usa o líquido histórico ou deriva bruto menos avaria."""
+    if freight.valor_frete_pago is not None:
+        return freight.valor_frete_pago
     gross = freight.valor_frete_bruto
     if gross is None:
         return None
-    if freight.valor_frete_pago is not None:
-        return freight.valor_frete_pago
     if freight.valor_avaria > gross:
         return None
     return gross - freight.valor_avaria
+
+
+def _historical_payment_warning(freight: Frete) -> FreightPaymentWarning | None:
+    """Lista dados tarifários ausentes quando o valor financeiro histórico existe."""
+    imported = _historical_import_source(freight)
+    if imported is None:
+        return None
+
+    missing: list[str] = []
+    if freight.valor_frete_bruto is None:
+        missing.append("frete bruto")
+
+    if freight.codigo_fonte_tarifa == "AGREGADOS_CD":
+        if not freight.rota_cidade:
+            missing.append("rota/cidade")
+        if freight.peso_kg is None:
+            missing.append("peso")
+        if freight.valor_nota is None:
+            missing.append("valor da nota")
+        if freight.km_rodado is None:
+            missing.append("KM rodado")
+    elif freight.codigo_fonte_tarifa == "JUST_IN_TIME":
+        if freight.codigo_zona_jit is None:
+            missing.append("zona JUST IN TIME")
+        if freight.peso_kg is None:
+            missing.append("peso")
+    elif freight.codigo_fonte_tarifa == "PAULO_CRUZ" and freight.tipo_caminhao is None:
+        missing.append("tipo de caminhão")
+
+    if not missing:
+        return None
+
+    if freight.valor_frete_bruto is None and freight.valor_frete_pago is not None:
+        message = (
+            "O líquido informado na planilha será usado no pagamento. O frete bruto e os dados "
+            "tarifários listados não estão disponíveis para conferência ou recálculo; este aviso não bloqueia a exportação."
+        )
+    else:
+        message = (
+            "O valor histórico calculado será preservado. Os campos ausentes só são necessários "
+            "para auditar ou recalcular a tarifa; este aviso não bloqueia a exportação."
+        )
+    return FreightPaymentWarning(
+        codigo_frete=UUID(freight.codigo_frete),
+        data_servico=freight.data_servico,
+        nome_transportador=freight.nome_transportador,
+        rota_cidade=freight.rota_cidade,
+        campos_ausentes=missing,
+        motivo_aviso=message,
+    )
 
 
 def _transport_type(value: str) -> TransportType:
@@ -1871,33 +1922,82 @@ def update_historical_freight(
         )
 
         historical_calculation = None
-        if (
-            payload.valor_frete_bruto is None
-            and transport_fields["tipo_transporte"] == "AGREGADO"
-            and match.person is not None
-            and route_value is not None
-            and len(route_value.strip()) >= 2
-            and payload.km_rodado is not None
-            and payload.peso_kg is not None
-            and payload.valor_nota is not None
-        ):
-            calculation_input = FreightInput(
-                data_servico=payload.data_servico,
-                tipo_transporte="AGREGADO",
-                id_motorista_agregado=match.person.id_pessoa,
-                codigo_fonte_tarifa="AGREGADOS_CD",
-                rota_cidade=route_value,
-                km_inicial=Decimal("0"),
-                km_final=payload.km_rodado,
-                quantidade_entregas=payload.quantidade_entregas or 0,
-                peso_kg=payload.peso_kg,
-                valor_nota=payload.valor_nota,
-                valor_avaria=payload.valor_avaria,
-            )
-            result = calculate_freight(calculation_input)
-            if result.status == "CALCULADO" and result.valor_frete_bruto is not None:
-                payload = payload.model_copy(update={"valor_frete_bruto": result.valor_frete_bruto})
-                historical_calculation = result.detalhe
+        if payload.valor_frete_bruto is None and match.person is not None:
+            tariff_source = str(transport_fields["codigo_fonte_tarifa"])
+            calculation_input: FreightInput | None = None
+            if (
+                tariff_source == "AGREGADOS_CD"
+                and transport_fields["tipo_transporte"] == "AGREGADO"
+                and route_value is not None
+                and len(route_value.strip()) >= 2
+                and payload.km_rodado is not None
+                and payload.peso_kg is not None
+                and payload.valor_nota is not None
+            ):
+                calculation_input = FreightInput(
+                    data_servico=payload.data_servico,
+                    tipo_transporte="AGREGADO",
+                    id_motorista_agregado=match.person.id_pessoa,
+                    codigo_fonte_tarifa="AGREGADOS_CD",
+                    rota_cidade=route_value,
+                    km_inicial=Decimal("0"),
+                    km_final=payload.km_rodado,
+                    quantidade_entregas=payload.quantidade_entregas or 0,
+                    peso_kg=payload.peso_kg,
+                    valor_nota=payload.valor_nota,
+                    valor_avaria=payload.valor_avaria,
+                )
+            elif (
+                tariff_source == "JUST_IN_TIME"
+                and transport_fields["tipo_transporte"] == "TRANSPORTADORA"
+                and transport_fields["id_motorista_transportadora"] is not None
+                and payload.codigo_zona_jit is not None
+                and payload.peso_kg is not None
+            ):
+                calculation_input = FreightInput(
+                    data_servico=payload.data_servico,
+                    tipo_transporte="TRANSPORTADORA",
+                    nome_transportador=str(transport_fields["nome_transportador"]),
+                    id_motorista_transportadora=int(transport_fields["id_motorista_transportadora"]),
+                    codigo_fonte_tarifa="JUST_IN_TIME",
+                    rota_cidade=route_value or payload.rota_cidade or "JUST IN TIME",
+                    km_inicial=None,
+                    km_final=None,
+                    quantidade_entregas=payload.quantidade_entregas or 0,
+                    peso_kg=payload.peso_kg,
+                    valor_nota=payload.valor_nota,
+                    valor_avaria=payload.valor_avaria,
+                    codigo_zona_jit=payload.codigo_zona_jit,
+                    adicionais_jit=payload.adicionais_jit,
+                )
+            elif (
+                tariff_source == "PAULO_CRUZ"
+                and transport_fields["tipo_transporte"] == "TRANSPORTADORA"
+                and transport_fields["id_motorista_transportadora"] is not None
+                and payload.tipo_caminhao is not None
+            ):
+                calculation_input = FreightInput(
+                    data_servico=payload.data_servico,
+                    tipo_transporte="TRANSPORTADORA",
+                    nome_transportador=str(transport_fields["nome_transportador"]),
+                    id_motorista_transportadora=int(transport_fields["id_motorista_transportadora"]),
+                    codigo_fonte_tarifa="PAULO_CRUZ",
+                    rota_cidade=route_value or payload.rota_cidade or "Paulo Cruz",
+                    km_inicial=None,
+                    km_final=None,
+                    quantidade_entregas=payload.quantidade_entregas or 0,
+                    peso_kg=payload.peso_kg or Decimal("0"),
+                    valor_nota=payload.valor_nota,
+                    valor_avaria=payload.valor_avaria,
+                    tipo_caminhao=payload.tipo_caminhao,
+                    carro_apoio=payload.carro_apoio,
+                )
+
+            if calculation_input is not None:
+                result = calculate_freight(calculation_input)
+                if result.status == "CALCULADO" and result.valor_frete_bruto is not None:
+                    payload = payload.model_copy(update={"valor_frete_bruto": result.valor_frete_bruto})
+                    historical_calculation = result.detalhe
 
         paid = payload.valor_frete_pago
         if paid is None and payload.valor_frete_bruto is not None:
@@ -2034,6 +2134,21 @@ def update_historical_freight(
         freight.quantidade_entregas = payload.quantidade_entregas
         freight.peso_kg = payload.peso_kg
         freight.valor_nota = payload.valor_nota
+        freight.tipo_caminhao = (
+            payload.tipo_caminhao
+            if transport_fields["codigo_fonte_tarifa"] == "PAULO_CRUZ"
+            else None
+        )
+        freight.codigo_zona_jit = (
+            payload.codigo_zona_jit
+            if transport_fields["codigo_fonte_tarifa"] == "JUST_IN_TIME"
+            else None
+        )
+        freight.adicionais_jit = (
+            payload.adicionais_jit
+            if transport_fields["codigo_fonte_tarifa"] == "JUST_IN_TIME"
+            else []
+        )
         freight.valor_frete_bruto = payload.valor_frete_bruto
         freight.valor_avaria = payload.valor_avaria
         freight.quantidade_avarias = (
@@ -2052,6 +2167,11 @@ def update_historical_freight(
             "status": status_calculation,
             "metodo_calculo": "VALOR_HISTORICO_IMPORTADO",
             "fonte_tarifa": transport_fields["codigo_fonte_tarifa"],
+            "carro_apoio": (
+                payload.carro_apoio
+                if transport_fields["codigo_fonte_tarifa"] == "PAULO_CRUZ"
+                else None
+            ),
             "percentual_frete": str(ratio) if ratio is not None else None,
             "motivo": pending_reason,
             "importacao_planilha": import_source,
@@ -2279,6 +2399,249 @@ def get_freight_history_filter_options(
         raise
     except SQLAlchemyError as exc:
         raise _database_unavailable(db, exc) from exc
+
+
+def export_freight_history(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    data_de: date | None,
+    data_ate: date | None,
+    tipo_transporte: TransportType | None,
+    status_calculo: str | None,
+    id_motorista: int | None,
+    rota_cidade: str | None,
+    codigo_transportadora: str | None,
+) -> bytes:
+    """Gera uma planilha completa para todos os registros que atendem aos filtros."""
+    try:
+        sector_id = _transport_access(db, access)
+        if data_de is not None and data_ate is not None and data_de > data_ate:
+            raise ConflictError("A data inicial deve ser anterior à data final.")
+        if codigo_transportadora is not None and tipo_transporte != "TRANSPORTADORA":
+            raise ConflictError(
+                "Selecione Transportadora independente antes de filtrar por empresa."
+            )
+
+        records: list[Frete] = []
+        offset = 0
+        total = 0
+        page_size = 500
+        while offset == 0 or offset < total:
+            page, total = repository.list_freights(
+                db,
+                id_setor=sector_id,
+                data_de=data_de,
+                data_ate=data_ate,
+                tipo_transporte=tipo_transporte,
+                status_calculo=status_calculo,
+                id_motorista=id_motorista,
+                rota_cidade=rota_cidade,
+                codigo_transportadora=codigo_transportadora,
+                limit=page_size,
+                offset=offset,
+            )
+            records.extend(page)
+            offset += len(page)
+            if not page:
+                break
+        cancellations = repository.list_freight_cancellations(
+            db,
+            freight_ids=[freight.id_frete for freight in records],
+        )
+    except (ConflictError, PermissionDeniedError, NotFoundError):
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Histórico"
+    worksheet.sheet_view.showGridLines = False
+    worksheet.sheet_view.zoomScale = 85
+    workbook.properties.creator = "Portal de Logística"
+    workbook.properties.title = "Histórico de Fretes"
+    workbook.properties.subject = "Exportação dos lançamentos filtrados no histórico"
+
+    headers = (
+        "Data do serviço",
+        "Modalidade",
+        "Responsável",
+        "Motorista da transportadora",
+        "Rota / cidade",
+        "Entregas",
+        "Peso (kg)",
+        "KM inicial",
+        "KM final",
+        "KM rodado",
+        "Valor da nota (R$)",
+        "Tipo de caminhão",
+        "Carro de apoio",
+        "Zona JUST IN TIME",
+        "Adicionais JIT",
+        "Quantidade de avarias",
+        "Valor da avaria (R$)",
+        "Frete bruto (R$)",
+        "Percentual do frete",
+        "Total líquido (R$)",
+        "Situação do cálculo",
+        "Motivo / pendência",
+        "Situação do registro",
+        "Justificativa de cancelamento",
+        "Arquivo de origem",
+        "Aba de origem",
+        "Linha da planilha",
+        "Criado em",
+    )
+    worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    title = worksheet.cell(row=1, column=1, value="Histórico de fretes")
+    title.font = Font(name="Calibri", size=20, bold=True, color="FFFFFFFF")
+    title.fill = PatternFill("solid", fgColor="FF17324D")
+    title.alignment = Alignment(vertical="center")
+    worksheet.row_dimensions[1].height = 34
+
+    if data_de is not None and data_ate is not None:
+        date_description = f"Período: {data_de:%d/%m/%Y} a {data_ate:%d/%m/%Y}"
+    elif data_de is not None:
+        date_description = f"Período: a partir de {data_de:%d/%m/%Y}"
+    elif data_ate is not None:
+        date_description = f"Período: até {data_ate:%d/%m/%Y}"
+    else:
+        date_description = "Período: todas as datas"
+    filter_description = " · ".join(
+        value
+        for value in (
+            date_description,
+            f"Tipo: {tipo_transporte or 'todos'}",
+            f"Status: {status_calculo or 'todos'}",
+            f"Motorista ID: {id_motorista if id_motorista is not None else 'todos'}",
+            f"Rota: {rota_cidade or 'todas'}",
+            f"Transportadora: {codigo_transportadora or 'todas'}",
+            f"Registros: {len(records)}",
+        )
+    )
+    worksheet.merge_cells(start_row=2, start_column=1, end_row=2, end_column=len(headers))
+    subtitle = worksheet.cell(row=2, column=1, value=filter_description)
+    subtitle.font = Font(name="Calibri", size=10, color="FF536477", italic=True)
+    subtitle.alignment = Alignment(vertical="center", wrap_text=True)
+    worksheet.row_dimensions[2].height = 28
+
+    header_fill = PatternFill("solid", fgColor="FF254B6E")
+    white_bold = Font(name="Calibri", size=10, bold=True, color="FFFFFFFF")
+    header_border = Border(bottom=Side(style="medium", color="FF17324D"))
+    for column, label in enumerate(headers, start=1):
+        cell = worksheet.cell(row=3, column=column, value=label)
+        cell.font = white_bold
+        cell.fill = header_fill
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = header_border
+    worksheet.row_dimensions[3].height = 34
+    worksheet.freeze_panes = "A4"
+    worksheet.auto_filter.ref = f"A3:{worksheet.cell(row=3, column=len(headers)).coordinate}{max(3, len(records) + 3)}"
+
+    widths = (
+        15, 20, 28, 30, 30, 12, 14, 14, 14, 14, 19, 20, 18, 21,
+        30, 18, 20, 20, 18, 20, 24, 55, 19, 45, 32, 20, 15, 22,
+    )
+    for column, width in enumerate(widths, start=1):
+        worksheet.column_dimensions[worksheet.cell(row=3, column=column).column_letter].width = width
+
+    currency_columns = {11, 17, 18, 20}
+    decimal_columns = {7, 8, 9, 10}
+    center_columns = {1, 2, 6, 8, 9, 10, 12, 13, 14, 16, 19, 21, 23, 27, 28}
+    for row_index, freight in enumerate(records, start=4):
+        cancellation = cancellations.get(freight.id_frete)
+        source_status, source_reason = effective_status(freight)
+        type_label = {
+            "AGREGADO": "Agregado",
+            "TRANSPORTADORA": "Transportadora independente",
+            "PROPRIO": "Frota própria",
+        }.get(freight.tipo_transporte, freight.tipo_transporte)
+        truck_label = {
+            "SAVEIRO": "Saveiro",
+            "KIA_BONGO": "Kia Bongo",
+            "CAMINHAO_3_4": "Caminhão 3/4",
+            "CAMINHAO_TOCO": "Caminhão toco",
+        }.get(freight.tipo_caminhao or "", "")
+        support_label = {
+            "SAVEIRO": "Saveiro",
+            "KIA_BONGO": "Bongo",
+        }.get(str(freight.detalhe_calculo.get("carro_apoio") or ""), "")
+        payment_amount = _payment_amount(freight)
+        reason = source_reason or ""
+        import_source = freight.detalhe_calculo.get("importacao_planilha")
+        import_source = import_source if isinstance(import_source, dict) else {}
+        values: tuple[object, ...] = (
+            freight.data_servico,
+            type_label,
+            freight.nome_transportador,
+            freight.nome_motorista_transportadora,
+            freight.rota_cidade,
+            freight.quantidade_entregas,
+            freight.peso_kg,
+            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_inicial,
+            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_final,
+            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_rodado,
+            freight.valor_nota,
+            truck_label,
+            support_label,
+            freight.codigo_zona_jit,
+            ", ".join(freight.adicionais_jit or []),
+            freight.quantidade_avarias,
+            freight.valor_avaria,
+            freight.valor_frete_bruto,
+            freight.percentual_frete,
+            payment_amount,
+            "Calculado" if source_status == "CALCULADO" else "Pendente de conferência",
+            reason,
+            "Cancelado" if cancellation else "Ativo",
+            cancellation.detalhes.get("justificativa") if cancellation else None,
+            import_source.get("arquivo"),
+            import_source.get("aba"),
+            import_source.get("linha"),
+            freight.criado_em,
+        )
+        fill = PatternFill(
+            "solid",
+            fgColor="FFF5F8FB" if row_index % 2 == 0 else "FFFFFFFF",
+        )
+        for column, value in enumerate(values, start=1):
+            cell = worksheet.cell(row=row_index, column=column, value=value)
+            cell.fill = fill
+            cell.font = Font(name="Calibri", size=10, color="FF24364B")
+            cell.alignment = Alignment(
+                horizontal="center" if column in center_columns else "left",
+                vertical="center",
+                wrap_text=column in {3, 4, 5, 14, 15, 22, 24, 25},
+            )
+            if column in currency_columns:
+                cell.number_format = '"R$" #,##0.00;[Red]-"R$" #,##0.00'
+            elif column in decimal_columns:
+                cell.number_format = "#,##0.000"
+            elif column == 1:
+                cell.number_format = "dd/mm/yyyy"
+            elif column == 19:
+                cell.number_format = "0.000%"
+            elif column == 28:
+                cell.number_format = "dd/mm/yyyy hh:mm"
+            if column == 21 and source_status != "CALCULADO":
+                cell.font = Font(name="Calibri", size=10, bold=True, color="FF99610E")
+            if column == 23 and cancellation:
+                cell.font = Font(name="Calibri", size=10, bold=True, color="FF9D413B")
+        worksheet.row_dimensions[row_index].height = 24
+
+    worksheet.sheet_properties.pageSetUpPr.fitToPage = True
+    worksheet.page_setup.orientation = "landscape"
+    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A3
+    worksheet.page_setup.fitToWidth = 1
+    worksheet.page_setup.fitToHeight = 0
+    worksheet.page_margins = PageMargins(
+        left=0.25, right=0.25, top=0.5, bottom=0.5, header=0.2, footer=0.2
+    )
+
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
 
 
 def build_payment_report(
@@ -2524,6 +2887,7 @@ def _payment_report_from_records(
 ) -> FreightPaymentReport:
     """Soma lançamentos já filtrados e registra os critérios no resultado."""
     pending_items: list[FreightPaymentPending] = []
+    warning_items: list[FreightPaymentWarning] = []
     gross_total = Decimal("0")
     damage_total = Decimal("0")
     net_total = Decimal("0")
@@ -2531,7 +2895,20 @@ def _payment_report_from_records(
     for freight in records:
         status, reason = effective_status(freight)
         payment_amount = _payment_amount(freight)
-        if status != "CALCULADO" or payment_amount is None:
+        imported_source = _historical_import_source(freight)
+        imported_responsible_is_clear = (
+            imported_source is not None
+            and bool((freight.nome_transportador or "").strip())
+            and imported_source.get("tipo_transporte_identificado") is not False
+            and not (
+                freight.tipo_transporte == "AGREGADO"
+                and imported_source.get("vinculo_responsavel_status") == "AMBIGUO"
+            )
+        )
+        payment_is_ready = payment_amount is not None and (
+            status == "CALCULADO" or imported_responsible_is_clear
+        )
+        if not payment_is_ready:
             pending_items.append(FreightPaymentPending(
                 codigo_frete=UUID(freight.codigo_frete),
                 data_servico=freight.data_servico,
@@ -2546,6 +2923,10 @@ def _payment_report_from_records(
                 ),
             ))
             continue
+
+        warning = _historical_payment_warning(freight)
+        if warning is not None:
+            warning_items.append(warning)
 
         gross = freight.valor_frete_bruto or Decimal("0")
         damage = freight.valor_avaria
@@ -2563,6 +2944,7 @@ def _payment_report_from_records(
         quantidade_fretes=len(records),
         quantidade_pendentes=len(pending_items),
         pendencias=pending_items,
+        avisos=warning_items,
         valor_frete_bruto=gross_total,
         valor_avarias=damage_total,
         valor_a_pagar=net_total,
@@ -2620,7 +3002,7 @@ def export_payment_report(
     for freight in records:
         # Pendências são bloqueadas acima; mantenha a proteção caso a regra mude.
         payment_amount = _payment_amount(freight)
-        if effective_status(freight)[0] != "CALCULADO" or payment_amount is None:
+        if payment_amount is None:
             continue
         responsible = freight.nome_transportador or "Sem identificação"
         row = grouped.setdefault(

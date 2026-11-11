@@ -3,6 +3,12 @@
 .heading-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .filter-panel { display: grid; min-width: 0; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: end; gap: 11px; padding: 14px; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
 .filter-panel label { min-width: 0; }
+.all-history-control { display: flex; min-height: 40px; align-items: center; gap: 9px; padding: 7px 10px; border: 1px solid #d7e1d5; border-radius: 8px; background: #f5f9f3; cursor: pointer; }
+.all-history-control input { width: 16px; height: 16px; margin: 0; accent-color: var(--primary); }
+.all-history-control strong, .all-history-control small { display: block; }
+.all-history-control strong { color: var(--brand-navy); font-size: 11px; }
+.all-history-control small { margin-top: 3px; color: #78877c; font-size: 10px; }
+.all-history-control:has(input:checked) { border-color: var(--primary); background: #eef6ea; }
 .result-count { grid-column: 1 / -1; justify-self: end; margin: 1px 2px 0; color: #748176; font-size: 11px; white-space: nowrap; }
 .table-card { min-width: 0; overflow: hidden; border: 1px solid var(--freight-border); border-radius: var(--freight-radius-card); background: #fff; box-shadow: var(--freight-card-shadow); }
 .history-table-scroll.history-table-scroll { max-height: none; }
