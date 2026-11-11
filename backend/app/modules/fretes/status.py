@@ -5,6 +5,7 @@ from sqlalchemy import and_, func
 from .models import Frete
 
 ROUTE_REASON = "Rota/cidade não vinculada de forma única ao catálogo do portal."
+AVARIA_ABOVE_GROSS_REASON = "R$ AVARIA maior que R$ FRETE; confira o valor líquido histórico."
 
 
 def route_only_pending_filter():
@@ -15,11 +16,26 @@ def route_only_pending_filter():
     )
 
 
+def avaria_only_pending_filter():
+    """Identifica registros antigos cujo único bloqueio era a avaria maior que o bruto."""
+    return and_(
+        Frete.status_calculo == "PENDENTE_CONFERENCIA",
+        func.coalesce(Frete.motivo_pendencia, "") == AVARIA_ABOVE_GROSS_REASON,
+    )
+
+
 def effective_status(freight: Frete) -> tuple[str, str | None]:
     reason = freight.motivo_pendencia
     source = freight.detalhe_calculo or {}
-    if reason and (reason == ROUTE_REASON or source.get("metodo_calculo") == "VALOR_HISTORICO_IMPORTADO"):
-        reason = reason.replace(ROUTE_REASON, "").strip() or None
+    if reason and (
+        reason in {ROUTE_REASON, AVARIA_ABOVE_GROSS_REASON}
+        or source.get("metodo_calculo") == "VALOR_HISTORICO_IMPORTADO"
+    ):
+        reason = " ".join(
+            reason.replace(ROUTE_REASON, "")
+            .replace(AVARIA_ABOVE_GROSS_REASON, "")
+            .split()
+        ) or None
         if reason and freight.valor_frete_bruto is None:
             missing: list[str] = []
             tariff_source = freight.codigo_fonte_tarifa or source.get("fonte_tarifa")

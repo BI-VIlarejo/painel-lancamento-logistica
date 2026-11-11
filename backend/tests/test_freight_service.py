@@ -295,11 +295,50 @@ class FreightServiceTests(TestCase):
             ],
         )
 
-    def test_damage_above_gross_rolls_back_without_event(self):
-        with self.assertRaises(ConflictError):
-            self.create(valor_avaria="497")
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 0)
-        self.assertEqual(self.db.scalar(select(func.count()).select_from(FreteEvento)), 0)
+    def test_damage_above_gross_is_accepted_and_exports_negative_net(self):
+        freight = self.create(valor_avaria="497")
+        self.assertEqual(freight.status_calculo, "CALCULADO")
+        self.assertEqual(freight.valor_frete_bruto, Decimal("493.00"))
+        self.assertEqual(freight.valor_frete_pago, Decimal("-4.00"))
+        self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 1)
+        self.assertEqual(self.db.scalar(select(func.count()).select_from(FreteEvento)), 1)
+
+        stored = self.db.scalar(select(Frete).where(Frete.id_frete == freight.id_frete))
+        stored.status_calculo = "PENDENTE_CONFERENCIA"
+        stored.motivo_pendencia = "R$ AVARIA maior que R$ FRETE; confira o valor líquido histórico."
+        stored.detalhe_calculo = {
+            **stored.detalhe_calculo,
+            "metodo_calculo": "VALOR_HISTORICO_IMPORTADO",
+            "importacao_planilha": {"tipo_transporte_identificado": True},
+        }
+        self.db.commit()
+
+        calculated = service.list_freights(
+            self.db,
+            access=access(),
+            data_de=self.period["data_de"],
+            data_ate=self.period["data_ate"],
+            tipo_transporte=None,
+            status_calculo="CALCULADO",
+            id_motorista=None,
+            rota_cidade=None,
+            codigo_transportadora=None,
+            limit=10,
+            offset=0,
+        )
+        self.assertEqual(calculated.total, 1)
+        self.assertEqual(calculated.items[0].status_calculo, "CALCULADO")
+
+        report = service.build_payment_report(
+            self.db,
+            access=access(),
+            tipo_transporte="AGREGADO",
+            nome_transportador="Motorista Agregado Teste",
+            sem_identificacao=False,
+            **self.period,
+        )
+        self.assertEqual(report.quantidade_pendentes, 0)
+        self.assertEqual(report.valor_a_pagar, Decimal("-4.00"))
 
     def test_report_filters_by_service_date_modality_and_responsible(self):
         self.create()

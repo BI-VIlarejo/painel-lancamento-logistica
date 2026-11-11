@@ -185,25 +185,40 @@ function isFreight(value: unknown): value is FreightResponse {
 }
 
 function readFreights(): FreightResponse[] {
-  return readArray(FREIGHTS_KEY, isFreight).map((item) => ({
-    ...item,
-    tipo_transporte: item.tipo_transporte ?? "AGREGADO",
-    id_motorista_agregado: item.id_motorista_agregado ?? null,
-    id_motorista_transportadora: item.id_motorista_transportadora ?? null,
-    nome_motorista_transportadora: item.nome_motorista_transportadora ?? null,
-    rota_cidade: item.rota_cidade ?? null,
-    quantidade_entregas: item.quantidade_entregas ?? null,
-    peso_kg: item.peso_kg ?? null,
-    quantidade_avarias: item.quantidade_avarias ?? 0,
-    cancelado: item.cancelado ?? false,
-    cancelado_em: item.cancelado_em ?? null,
-    cancelado_por: item.cancelado_por ?? null,
-    justificativa_cancelamento: item.justificativa_cancelamento ?? null,
-    nome_transportador: item.nome_transportador === "Agregados" && item.tipo_transporte === "AGREGADO"
-      ? null
-      : item.nome_transportador ?? null,
-    codigo_fonte_tarifa: item.tipo_transporte === "PROPRIO" ? null : item.codigo_fonte_tarifa ?? "AGREGADOS_CD",
-  }));
+  return readArray(FREIGHTS_KEY, isFreight).map((item) => {
+    const reason = (item.motivo_pendencia ?? "")
+      .replace("R$ AVARIA maior que R$ FRETE; confira o valor líquido histórico.", " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const legacyAvariaOnly = item.status_calculo === "PENDENTE_CONFERENCIA"
+      && Boolean(item.motivo_pendencia)
+      && !reason;
+    const status = legacyAvariaOnly ? "CALCULADO" : item.status_calculo;
+    return {
+      ...item,
+      tipo_transporte: item.tipo_transporte ?? "AGREGADO",
+      id_motorista_agregado: item.id_motorista_agregado ?? null,
+      id_motorista_transportadora: item.id_motorista_transportadora ?? null,
+      nome_motorista_transportadora: item.nome_motorista_transportadora ?? null,
+      rota_cidade: item.rota_cidade ?? null,
+      quantidade_entregas: item.quantidade_entregas ?? null,
+      peso_kg: item.peso_kg ?? null,
+      quantidade_avarias: item.quantidade_avarias ?? 0,
+      cancelado: item.cancelado ?? false,
+      cancelado_em: item.cancelado_em ?? null,
+      cancelado_por: item.cancelado_por ?? null,
+      justificativa_cancelamento: item.justificativa_cancelamento ?? null,
+      nome_transportador: item.nome_transportador === "Agregados" && item.tipo_transporte === "AGREGADO"
+        ? null
+        : item.nome_transportador ?? null,
+      codigo_fonte_tarifa: item.tipo_transporte === "PROPRIO" ? null : item.codigo_fonte_tarifa ?? "AGREGADOS_CD",
+      status_calculo: status,
+      motivo_pendencia: reason || null,
+      detalhe_calculo: legacyAvariaOnly
+        ? { ...item.detalhe_calculo, status, motivo: null }
+        : item.detalhe_calculo,
+    };
+  });
 }
 
 function saveFreights(items: FreightResponse[]): void {
@@ -536,7 +551,7 @@ function demoPaymentAmount(item: FreightResponse): number | null {
   if (importedNet !== null) return importedNet;
   const gross = numeric(item.valor_frete_bruto);
   const damage = numeric(item.valor_avaria) ?? 0;
-  return gross === null || damage > gross ? null : gross - damage;
+  return gross === null ? null : gross - damage;
 }
 
 function demoPaymentReady(item: FreightResponse): boolean {
@@ -640,10 +655,6 @@ export const freightsDemoApi = {
     const quote = calculateQuote(payload);
     const gross = numeric(quote.valor_frete_bruto);
     const damage = numeric(payload.valor_avaria) ?? 0;
-    if (gross !== null && damage > gross) {
-      throw new Error("O valor da avaria não pode superar o frete calculado.");
-    }
-
     const kmInitial = numeric(payload.km_inicial);
     const kmFinal = numeric(payload.km_final);
     const kmRun = odometerDistance(payload);
@@ -750,7 +761,6 @@ export const freightsDemoApi = {
       const paid = numeric(imported.valor_frete_pago) ?? (gross !== null ? gross - damage : null);
       const pendingReasons = [
         ...(gross === null ? ["Valor do frete bruto ausente na planilha importada."] : []),
-        ...(gross !== null && damage > gross ? ["R$ AVARIA maior que R$ FRETE; confira o valor líquido histórico."] : []),
         ...(!isLinked ? ["Responsável não encontrado no cadastro de demonstração."] : []),
       ];
       const source: Record<string, unknown> = {
@@ -847,9 +857,6 @@ export const freightsDemoApi = {
     const quote = calculateQuote(payload);
     const gross = numeric(quote.valor_frete_bruto);
     const damage = numeric(payload.valor_avaria) ?? 0;
-    if (gross !== null && damage > gross) {
-      throw new Error("O valor da avaria não pode superar o frete calculado.");
-    }
     const kmRun = odometerDistance(payload);
     const updated: FreightResponse = {
       ...existing,
@@ -1042,7 +1049,6 @@ export const freightsDemoApi = {
       : null;
     const reasons = [
       ...(gross === null ? ["Valor do frete bruto ausente."] : []),
-      ...(gross !== null && damage > gross ? ["R$ AVARIA maior que R$ FRETE."] : []),
       ...(!linked ? ["Motorista sem vínculo único no cadastro de demonstração."] : []),
     ];
     const nextSource = {

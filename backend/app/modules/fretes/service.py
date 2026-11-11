@@ -610,8 +610,6 @@ def _payment_amount(freight: Frete) -> Decimal | None:
     gross = freight.valor_frete_bruto
     if gross is None:
         return None
-    if freight.valor_avaria > gross:
-        return None
     return gross - freight.valor_avaria
 
 
@@ -1086,8 +1084,6 @@ def create_freight(
         gross = calculation.valor_frete_bruto
         paid: Decimal | None = None
         if gross is not None:
-            if prepared_payload.valor_avaria > gross:
-                raise ConflictError("O valor da avaria não pode superar o frete calculado.")
             paid = gross - prepared_payload.valor_avaria
 
         now = _utc_now()
@@ -1284,10 +1280,6 @@ def import_historical_freights(
             pending_reasons: list[str] = []
             if gross is None:
                 pending_reasons.append("Valor do frete bruto ausente na planilha importada.")
-            elif damage > gross:
-                pending_reasons.append(
-                    "R$ AVARIA maior que R$ FRETE; confira o valor líquido histórico."
-                )
             if match.status == "AMBIGUO":
                 if match.carrier_code is not None:
                     pending_reasons.append(
@@ -1311,7 +1303,6 @@ def import_historical_freights(
                 "CALCULADO"
                 if (
                     gross is not None
-                    and damage <= gross
                     and match.status == "VINCULADO"
                 )
                 else "PENDENTE_CONFERENCIA"
@@ -1654,8 +1645,6 @@ def update_freight(
         gross = calculation.valor_frete_bruto
         paid: Decimal | None = None
         if gross is not None:
-            if prepared_payload.valor_avaria > gross:
-                raise ConflictError("O valor da avaria não pode superar o frete calculado.")
             paid = gross - prepared_payload.valor_avaria
 
         before = _freight_response(freight).model_dump(mode="json")
@@ -2015,8 +2004,6 @@ def update_historical_freight(
         pending_reasons: list[str] = []
         if payload.valor_frete_bruto is None:
             pending_reasons.append("Valor do frete bruto ausente.")
-        elif payload.valor_avaria > payload.valor_frete_bruto:
-            pending_reasons.append("R$ AVARIA maior que R$ FRETE; confira o valor líquido histórico.")
         if match.status == "AMBIGUO":
             if match.carrier_code is not None:
                 pending_reasons.append(
@@ -2040,7 +2027,6 @@ def update_historical_freight(
             "CALCULADO"
             if (
                 payload.valor_frete_bruto is not None
-                and payload.valor_avaria <= payload.valor_frete_bruto
                 and match.status == "VINCULADO"
             )
             else "PENDENTE_CONFERENCIA"

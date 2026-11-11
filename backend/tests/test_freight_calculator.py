@@ -101,11 +101,21 @@ class FreightCalculatorTests(TestCase):
         self.assertEqual(result.valor_frete_bruto, Decimal("120.00"))
         self.assertEqual(result.percentual_frete, Decimal("0.012000"))
 
-    def test_jit_catalog_only_exposes_rio_and_serrana_and_keeps_tariff_subzones(self):
+    def test_jit_catalog_exposes_all_regions_and_keeps_tariff_subzones(self):
         regions = tariff_options()["zonas_just_in_time"]
         self.assertEqual(
             [region["nome"] for region in regions],
-            ["Rio de Janeiro", "Região Serrana"],
+            [
+                "Rio de Janeiro",
+                "Região Serrana",
+                "Baixada Fluminense",
+                "Norte Fluminense",
+                "Noroeste Fluminense",
+                "Niterói e região",
+                "Região dos Lagos",
+                "Costa Verde",
+                "Vale do Paraíba",
+            ],
         )
         self.assertEqual(
             [zone["codigo"] for zone in regions[0]["subzonas"]],
@@ -115,9 +125,20 @@ class FreightCalculatorTests(TestCase):
             [zone["codigo"] for zone in regions[1]["subzonas"]],
             ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"],
         )
+        niteroi = next(region for region in regions if region["nome"] == "Niterói e região")
+        self.assertEqual(
+            [zone["codigo"] for zone in niteroi["subzonas"]],
+            ["NITEROI_1", "NITEROI_2"],
+        )
 
-    def test_jit_rejects_tariff_zones_outside_rio_and_serrana(self):
-        result = calculate_freight(self.jit(codigo_zona_jit="NORTE_FLUMINENSE"))
+    def test_jit_calculates_niteroi_zone_and_rejects_unknown_zone(self):
+        result = calculate_freight(
+            self.jit(codigo_zona_jit="NITEROI_1", peso_kg="5604")
+        )
+        self.assertEqual(result.status, "CALCULADO")
+        self.assertEqual(result.valor_frete_bruto, Decimal("1216.17"))
+
+        result = calculate_freight(self.jit(codigo_zona_jit="NAO_EXISTE"))
         self.assertEqual(result.status, "PENDENTE_CONFERENCIA")
         self.assertIsNone(result.valor_frete_bruto)
 

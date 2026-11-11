@@ -28,7 +28,7 @@ function paymentAmount(item: FreightResponse): number | null {
   if (net !== null) return net;
   const gross = numberValue(item.valor_frete_bruto);
   const damage = numberValue(item.valor_avaria) ?? 0;
-  return gross === null || damage > gross ? null : gross - damage;
+  return gross === null ? null : gross - damage;
 }
 
 function sourceOf(item: FreightResponse): Record<string, unknown> {
