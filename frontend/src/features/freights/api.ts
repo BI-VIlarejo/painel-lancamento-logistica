@@ -30,30 +30,20 @@ type TariffOptionsResponse = Omit<FreightTariffOptions, "zonas_just_in_time"> & 
 const jitRegionGroups: Array<[string, string, string[]]> = [
   ["RIO_DE_JANEIRO", "Rio de Janeiro", ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"]],
   ["REGIAO_SERRANA", "Região Serrana", ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"]],
-  ["BAIXADA_FLUMINENSE", "Baixada Fluminense", ["BAIXADA_FLUMINENSE"]],
-  ["NORTE_FLUMINENSE", "Norte Fluminense", ["NORTE_FLUMINENSE"]],
-  ["NOROESTE_FLUMINENSE", "Noroeste Fluminense", ["NOROESTE_FLUMINENSE"]],
-  ["NITEROI", "Niterói e região", ["NITEROI_1", "NITEROI_2"]],
-  ["REGIAO_DOS_LAGOS", "Região dos Lagos", ["REGI_O_DOS_LAGOS_1", "REGI_O_DOS_LAGOS_2"]],
-  ["COSTA_VERDE", "Costa Verde", ["COSTA_VERDE_1", "COSTA_VERDE_2"]],
-  ["VALE_DO_PARAIBA", "Vale do Paraíba", ["VALE_DO_PARAIBA1", "VALE_DO_PARAIBA_2"]],
 ];
 
-/** Agrupa a resposta antiga da API enquanto o backend de staging é atualizado. */
+/** Agrupa zonas planas e restringe respostas agrupadas ao catálogo JIT aprovado. */
 function normalizeTariffOptions(options: TariffOptionsResponse): FreightTariffOptions {
-  const firstZone = options.zonas_just_in_time[0];
-  if (!firstZone || "subzonas" in firstZone) {
-    return options as FreightTariffOptions;
-  }
-
-  const flatZones = options.zonas_just_in_time as JustInTimeZoneOption[];
+  const availableZones = options.zonas_just_in_time.flatMap((item) =>
+    "subzonas" in item ? item.subzonas : [item],
+  );
   return {
     ...options,
     zonas_just_in_time: jitRegionGroups.map(([codigo, nome, zoneCodes]) => ({
       codigo,
       nome,
       subzonas: zoneCodes.flatMap((zoneCode) => {
-        const zone = flatZones.find((item) => item.codigo === zoneCode);
+        const zone = availableZones.find((item) => item.codigo === zoneCode);
         return zone ? [zone] : [];
       }),
     })),

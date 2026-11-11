@@ -444,10 +444,14 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
       {hint && <small>{hint}</small>}
     </label>
   );
-  const inferredZoneName = freight.codigo_fonte_tarifa === "JUST_IN_TIME" && deliverySummary
+  const inferredZoneCode = freight.codigo_fonte_tarifa === "JUST_IN_TIME" && deliverySummary
+    ? inferJustInTimeZone(deliverySummary.cidades, options)
+    : null;
+  const inferredZoneName = inferredZoneCode
     ? options.zonas_just_in_time.flatMap((region) => region.subzonas)
-      .find((zone) => zone.codigo === values.codigo_zona_jit)?.nome
+      .find((zone) => zone.codigo === inferredZoneCode)?.nome
     : undefined;
+  const selectedAdditions = values.adicionais_jit.split(",").filter(Boolean);
 
   return (
     <form className={cx(formStyles, "freight-form")} onSubmit={(event) => void submit(event)}>
@@ -552,16 +556,40 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
             <label className={cx(formStyles, "field")}>Zona JUST IN TIME
               <select value={values.codigo_zona_jit} onChange={(event) => update("codigo_zona_jit", event.target.value)} disabled={busy}>
                 <option value="">Selecione a zona tarifária</option>
-                {options.zonas_just_in_time.flatMap((region) => region.subzonas).map((zone) => <option key={zone.codigo} value={zone.codigo}>{zone.nome}</option>)}
+                {options.zonas_just_in_time.map((region) => <optgroup key={region.codigo} label={region.nome}>
+                  {region.subzonas.map((zone) => <option key={zone.codigo} value={zone.codigo}>{zone.nome}</option>)}
+                </optgroup>)}
               </select>
-              <small>{inferredZoneName ? `Zona ${inferredZoneName} identificada pelas Entregas; será usada para calcular o bruto ao salvar. KM não se aplica.` : "Necessária para calcular o bruto pela tarifa JUST IN TIME; KM não se aplica."}</small>
+              <small>{inferredZoneName
+                ? `Área ${inferredZoneName} sugerida pelas Entregas; será usada ao salvar. Só há tarifas para Rio de Janeiro e Região Serrana. KM não se aplica.`
+                : deliverySummary?.cidades.length
+                  ? "As Entregas não identificam uma única área tarifária válida de Rio de Janeiro ou Região Serrana. Selecione a área após conferência."
+                  : "Selecione uma área tarifária de Rio de Janeiro ou Região Serrana. KM não se aplica."}</small>
             </label>
-            <label className={cx(formStyles, "field")}>Adicionais JUST IN TIME (opcional)
-              <select multiple value={values.adicionais_jit ? values.adicionais_jit.split(",") : []} onChange={(event) => update("adicionais_jit", [...event.currentTarget.selectedOptions].map((option) => option.value).join(","))} disabled={busy}>
-                {options.adicionais_just_in_time.map((addition) => <option key={addition.codigo} value={addition.codigo}>{addition.nome}</option>)}
-              </select>
-              <small>Selecione no máximo um adicional para a tarifa.</small>
-            </label>
+            <fieldset className={cx(formStyles, "jit-additions-card")}>
+              <legend>Adicionais JUST IN TIME (opcional)</legend>
+              <p className={cx(formStyles, "checkbox-help")}>Marque os adicionais que se aplicam a este frete.</p>
+              <div className={cx(formStyles, "checkbox-list")}>
+                {options.adicionais_just_in_time.map((addition) => {
+                  const checked = selectedAdditions.includes(addition.codigo);
+                  return <label className={cx(formStyles, `checkbox-option${checked ? " checkbox-option-selected" : ""}`)} key={addition.codigo}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      disabled={busy}
+                      onChange={(event) => {
+                        const next = event.target.checked
+                          ? [...new Set([...selectedAdditions, addition.codigo])]
+                          : selectedAdditions.filter((code) => code !== addition.codigo);
+                        update("adicionais_jit", next.join(","));
+                      }}
+                    />
+                    <span>{addition.nome}</span>
+                  </label>;
+                })}
+              </div>
+              {selectedAdditions.length > 1 && <small className={cx(formStyles, "jit-review-note")}>Mais de um adicional exige conferência antes do cálculo.</small>}
+            </fieldset>
           </>}
           {freight.codigo_fonte_tarifa === "PAULO_CRUZ" && <>
             <label className={cx(formStyles, "field")}>Tipo de caminhão

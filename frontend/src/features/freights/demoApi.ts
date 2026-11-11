@@ -66,33 +66,15 @@ const jitZones: JustInTimeZoneOption[] = [
   { codigo: "ZONA_OESTE_1", nome: "ZONA OESTE 1", areas: "Recreio dos Bandeirantes, Garnenia, Azul, Anil, Barra da Tijuca, Joá, Itanhangá, Jacarépagua, Freguesia, Taquara, Tanque, Praça Seca, Camorim, Jardim Sulacap, Vila Valqueire" },
   { codigo: "ZONA_OESTE_2", nome: "ZONA OESTE 2", areas: "Guaratiba, Pedra de Guaratiba, Campo Grande, Santa Cruz, Barra de Guarariba, Vargem Grande" },
   { codigo: "ZONA_SUL", nome: "ZONA SUL", areas: "Flamengo, Botafogo, Cosme Velho, Glória, Humaitá, Santa Teresa, Catete, Copacabana, Ipanema, Leblon, Jardim Botânico, Lagoa, São Conrado, Leme, Gávea" },
-  { codigo: "BAIXADA_FLUMINENSE", nome: "BAIXADA FLUMINENSE", areas: "Caxias, Nova Iguaçu, Belford Roxo, Mesquita, Queimados, Eng Pedreira, Japeri, Nilopólis" },
   { codigo: "ZONA_NORTE_1", nome: "ZONA NORTE 1", areas: "Cachambi, Pilares, Piedade, Cascadura, Madureira, Todos os Santos, Bonsucesso, Ramos, Penha, Engenho de Dentro, Ilha do Governador" },
   { codigo: "ZONA_NORTE_2", nome: "ZONA NORTE 2", areas: "Macaranã, Tijuca, Vila Isabel, Grajaú, Andaraí, Alto da Boa Vista, Caju, Centro" },
-  { codigo: "NORTE_FLUMINENSE", nome: "NORTE FLUMINENSE", areas: "Conceição de Macabu, Quisamã, Campos, São João da Barra" },
-  { codigo: "NOROESTE_FLUMINENSE", nome: "NOROESTE FLUMINENSE", areas: "Cordeiro, Santo Antônio de Padua, Piratininga, Latoca, Aperibé, Miracema, Laje do Muriaé, Natividade, Muriaé, Itaperuna, Macuco, Cantagalo" },
   { codigo: "REGI_O_SERRANA_1", nome: "REGIÃO SERRANA 1", areas: "Petropólis, Itaipava, Três Rios, Areal" },
   { codigo: "REGI_O_SERRANA_2", nome: "REGIÃO SERRANA 2", areas: "Teresopólis, Cachoeira de Macacu, Friburgo, Bom Jardim, Nova Friburgo" },
-  { codigo: "NITEROI_1", nome: "NITEROI 1", areas: "Niteroi, Centro, Icarai, Santa Rosa, Pendotiba, Piratininga, Itaipu, Camboinhas, São Francisco, Charitas" },
-  { codigo: "NITEROI_2", nome: "NITEROI 2", areas: "São Gonçalo, Itaborai, Rio Bonito, Tanga" },
-  { codigo: "REGI_O_DOS_LAGOS_1", nome: "REGIÃO DOS LAGOS 1", areas: "Marica, Araruama, Saquarema, Iguaba, Cabo Frio, Arraial do cano, Búzios, São Pedro da Aldeia" },
-  { codigo: "REGI_O_DOS_LAGOS_2", nome: "REGIÃO DOS LAGOS 2", areas: "Cassimiro de Abreu, Rios das Ostras, Macaé, Silva Jardim" },
-  { codigo: "COSTA_VERDE_1", nome: "COSTA VERDE 1", areas: "Iataguai, Itacuruça, Coroa Grande, Muriqui, Conceição de Jacarei, Mangaratiba" },
-  { codigo: "COSTA_VERDE_2", nome: "COSTA VERDE 2", areas: "Angra dos Reis, Paraty, Rio Claro, Lídice" },
-  { codigo: "VALE_DO_PARAIBA1", nome: "VALE DO PARAIBA1", areas: "Parai, Barra do Parai, Volta Redonda, Rio das Flore, Itatiaia, Porto Real, Quatis, Barra Mansa, Resende, Valença, Pinheiral" },
-  { codigo: "VALE_DO_PARAIBA_2", nome: "VALE DO PARAIBA 2", areas: "Miguel Pereira, Paty Alferes, Mendes, Paraiba do Sul, Vassouras, Avelar" },
 ];
 
 const jitRegionGroups: Array<[string, string, string[]]> = [
   ["RIO_DE_JANEIRO", "Rio de Janeiro", ["ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"]],
   ["REGIAO_SERRANA", "Região Serrana", ["REGI_O_SERRANA_1", "REGI_O_SERRANA_2"]],
-  ["BAIXADA_FLUMINENSE", "Baixada Fluminense", ["BAIXADA_FLUMINENSE"]],
-  ["NORTE_FLUMINENSE", "Norte Fluminense", ["NORTE_FLUMINENSE"]],
-  ["NOROESTE_FLUMINENSE", "Noroeste Fluminense", ["NOROESTE_FLUMINENSE"]],
-  ["NITEROI", "Niterói e região", ["NITEROI_1", "NITEROI_2"]],
-  ["REGIAO_DOS_LAGOS", "Região dos Lagos", ["REGI_O_DOS_LAGOS_1", "REGI_O_DOS_LAGOS_2"]],
-  ["COSTA_VERDE", "Costa Verde", ["COSTA_VERDE_1", "COSTA_VERDE_2"]],
-  ["VALE_DO_PARAIBA", "Vale do Paraíba", ["VALE_DO_PARAIBA1", "VALE_DO_PARAIBA_2"]],
 ];
 const jitRegions: JustInTimeRegionOption[] = jitRegionGroups.map(([codigo, nome, zoneCodes]) => ({
   codigo,
