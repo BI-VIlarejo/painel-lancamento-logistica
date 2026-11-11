@@ -98,7 +98,7 @@ function PortalApp() {
           : path === "/fretes/historico" && canViewFreights
           ? <FreightHistoryPage onNavigate={navigate} canCreate={canCreateFreights} canViewPayments={canViewAggregatePayments} />
           : path === "/fretes/pagamentos" && canViewAggregatePayments
-          ? <AggregatePaymentsPage canExport={canExportAggregatePayments} canViewFreights={canViewFreights} onNavigate={navigate} />
+          ? <AggregatePaymentsPage canExport={canExportAggregatePayments} canViewFreights={canViewFreights} canEditFreights={canCreateFreights && canViewFreights} onNavigate={navigate} />
           : path === "/cadastros" && (canManageCatalogs || canManageAccess)
           ? <RegistriesPage permissions={permissions} currentUserId={user.id_usuario} />
           : path === "/historico" && canView

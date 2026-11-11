@@ -87,3 +87,7 @@
   .heading-actions button { width: 100%; flex-basis: auto; }
   .detail-fields { grid-template-columns: minmax(0, 1fr); }
 }
+
+.pending-label { display: block; margin-top: 5px; color: #9a6120; font-weight: 700; }
+.pending-reason { margin-bottom: 8px; padding: 8px; border-radius: 6px; color: #744c16; background: #fff5e5; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.pending-reason strong, .pending-reason span { display: block; }

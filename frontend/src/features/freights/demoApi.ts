@@ -1089,6 +1089,13 @@ export const freightsDemoApi = {
       sem_identificacao: Boolean(filters.sem_identificacao),
       quantidade_fretes: records.length,
       quantidade_pendentes: pendingTotal,
+      pendencias: records.filter((item) => item.status_calculo !== "CALCULADO" || item.valor_frete_pago === null).map((item) => ({
+        codigo_frete: item.codigo_frete, data_servico: item.data_servico,
+        nome_transportador: item.nome_transportador, rota_cidade: item.rota_cidade,
+        valor_frete_bruto: item.valor_frete_bruto, valor_avaria: item.valor_avaria,
+        valor_frete_pago: item.valor_frete_pago,
+        motivo_pendencia: item.motivo_pendencia || (item.valor_frete_pago === null ? "Valor líquido do frete não informado." : "Frete aguardando conferência."),
+      })),
       valor_frete_bruto: moneyText(grossTotal),
       valor_avarias: moneyText(damageTotal),
       valor_a_pagar: moneyText(netTotal),

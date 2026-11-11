@@ -243,6 +243,16 @@ export type FreightPaymentReport = {
   sem_identificacao: boolean;
   quantidade_fretes: number;
   quantidade_pendentes: number;
+  pendencias?: Array<{
+    codigo_frete: string;
+    data_servico: string;
+    nome_transportador: string | null;
+    rota_cidade: string | null;
+    valor_frete_bruto: DecimalValue | null;
+    valor_avaria: DecimalValue;
+    valor_frete_pago: DecimalValue | null;
+    motivo_pendencia: string;
+  }>;
   valor_frete_bruto: DecimalValue;
   valor_avarias: DecimalValue;
   valor_a_pagar: DecimalValue;

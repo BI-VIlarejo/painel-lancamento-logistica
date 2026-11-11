@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { freightsApi } from "../api";
-import { firstDayOfCurrentMonth, formatMoney, localDateValue } from "../format";
+import { firstDayOfCurrentMonth, formatDate, formatMoney, localDateValue } from "../format";
 import { messageFromApiError } from "../../../shared/api/apiError";
 import { cx } from "../../../shared/styles/classNames";
 import commonStyles from "../../../shared/styles/common.module.css";
@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import styles from "./AggregatePaymentsPage.module.css";
 
-type Props = { canExport: boolean; canViewFreights: boolean; onNavigate: (path: string) => void };
+type Props = { canExport: boolean; canViewFreights: boolean; canEditFreights: boolean; onNavigate: (path: string) => void };
 const UNIDENTIFIED = "__SEM_IDENTIFICACAO__";
 
 function compactDate(value: string): string {
@@ -43,7 +43,7 @@ function responsibleLabel(
 }
 
 /** Consolida pagamentos de agregados ou transportadoras pelo responsável selecionado. */
-export function AggregatePaymentsPage({ canExport, canViewFreights, onNavigate }: Props) {
+export function AggregatePaymentsPage({ canExport, canViewFreights, canEditFreights, onNavigate }: Props) {
   const [fromDate, setFromDate] = useState(firstDayOfCurrentMonth());
   const [toDate, setToDate] = useState(localDateValue());
   const [transportType, setTransportType] = useState<FreightPaymentTransportType>("AGREGADO");
@@ -183,6 +183,22 @@ export function AggregatePaymentsPage({ canExport, canViewFreights, onNavigate }
       {error && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert"><span>{error}</span>{fromDate && toDate && fromDate <= toDate && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setReloadVersion((version) => version + 1)}>Tentar novamente</button>}</div>}
       {exportError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{exportError}</div>}
       {hasPending && <div className={cx(styles, commonStyles, "notice notice-warning")} role="status">Resolva os {report?.quantidade_pendentes.toLocaleString("pt-BR")} fretes pendentes antes de exportar o pagamento. Os valores mostrados não incluem esses fretes.</div>}
+      {hasPending && report?.pendencias && <section className={cx(styles, "pending-card")} aria-labelledby="payment-pending-heading">
+        <h2 id="payment-pending-heading">Fretes que precisam de correção</h2>
+        <p>Confira o motivo e os valores de cada lançamento antes de exportar.</p>
+        <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Detalhes dos fretes pendentes" tabIndex={0}>
+          <table className={cx(styles, commonStyles, "data-table", "pending-table")}>
+            <thead><tr><th>Data</th><th>Responsável / rota</th><th>Motivo da pendência</th><th>Valores do frete</th>{canEditFreights && <th>Ação</th>}</tr></thead>
+            <tbody>{report.pendencias.map((item) => <tr key={item.codigo_frete}>
+              <td>{formatDate(item.data_servico)}</td>
+              <td><strong>{item.nome_transportador || "Sem identificação"}</strong><small>{item.rota_cidade || "Rota não informada"}</small></td>
+              <td>{item.motivo_pendencia}</td>
+              <td><small>Bruto: {item.valor_frete_bruto === null ? "Não informado" : formatMoney(item.valor_frete_bruto)}</small><small>Avaria: {formatMoney(item.valor_avaria)}</small><small>Líquido: {item.valor_frete_pago === null ? "Não informado" : formatMoney(item.valor_frete_pago)}</small></td>
+              {canEditFreights && <td><button type="button" className={cx(styles, commonStyles, "table-action")} onClick={() => onNavigate(`/fretes/${encodeURIComponent(item.codigo_frete)}`)}>Corrigir</button></td>}
+            </tr>)}</tbody>
+          </table>
+        </div>
+      </section>}
       {loading ? <div className={cx(styles, commonStyles, "loading-card")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Calculando o relatório...</div>
         : report && !error && <>
           <section className={cx(styles, "summary-grid")} aria-label="Resumo do período">

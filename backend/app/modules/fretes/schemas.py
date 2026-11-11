@@ -438,6 +438,19 @@ class FreightHistoryFilterOptions(BaseModel):
     possui_sem_motorista: bool
 
 
+class FreightPaymentPending(BaseModel):
+    """Lançamento que impede a exportação e motivo para correção."""
+
+    codigo_frete: UUID
+    data_servico: date
+    nome_transportador: str | None
+    rota_cidade: str | None
+    valor_frete_bruto: Decimal | None
+    valor_avaria: Decimal
+    valor_frete_pago: Decimal | None
+    motivo_pendencia: str
+
+
 class FreightPaymentReport(BaseModel):
     """Resumo de pagamento filtrado por modalidade e responsável."""
 
@@ -448,6 +461,7 @@ class FreightPaymentReport(BaseModel):
     sem_identificacao: bool
     quantidade_fretes: int
     quantidade_pendentes: int
+    pendencias: list[FreightPaymentPending]
     valor_frete_bruto: Decimal
     valor_avarias: Decimal
     valor_a_pagar: Decimal

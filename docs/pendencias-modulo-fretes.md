@@ -28,6 +28,10 @@ Faça nesta ordem:
 
 **Ainda fora desta publicação:** a tela administrativa para reajustar tarifas não foi implementada; regras financeiras que seguem pendentes estão listadas abaixo. Não liberar produção até o aceite do staging.
 
+## Detalhamento de pendências no pagamento
+
+O histórico exibe a situação e o motivo junto ao lançamento pendente. No fechamento de pagamentos, a lista identifica data, responsável, rota, motivo e valores bruto, de avaria e líquido; usuários com acesso à edição podem abrir o frete para corrigi-lo. A lista respeita os mesmos filtros e exclusão de cancelados do relatório. A exportação continua bloqueada enquanto houver pendências.
+
 ## Preenchimento de frete sem Entregas — 11/11/2026
 
 A tabela de Cabo Frio também atende Armação dos Búzios e São Pedro da Aldeia.

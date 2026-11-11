@@ -43,6 +43,7 @@ from .schemas import (
     FreightInput,
     FreightPage,
     FreightPaymentOptions,
+    FreightPaymentPending,
     FreightPaymentReport,
     FreightQuoteResponse,
     FreightResponse,
@@ -2328,14 +2329,27 @@ def _payment_report_from_records(
     sem_identificacao: bool,
 ) -> FreightPaymentReport:
     """Soma lançamentos já filtrados e registra os critérios no resultado."""
-    pending_freights = 0
+    pending_items: list[FreightPaymentPending] = []
     gross_total = Decimal("0")
     damage_total = Decimal("0")
     net_total = Decimal("0")
 
     for freight in records:
-        if effective_status(freight)[0] != "CALCULADO" or freight.valor_frete_pago is None:
-            pending_freights += 1
+        status, reason = effective_status(freight)
+        if status != "CALCULADO" or freight.valor_frete_pago is None:
+            pending_items.append(FreightPaymentPending(
+                codigo_frete=UUID(freight.codigo_frete),
+                data_servico=freight.data_servico,
+                nome_transportador=freight.nome_transportador,
+                rota_cidade=freight.rota_cidade,
+                valor_frete_bruto=freight.valor_frete_bruto,
+                valor_avaria=freight.valor_avaria,
+                valor_frete_pago=freight.valor_frete_pago,
+                motivo_pendencia=reason or (
+                    "Valor líquido do frete não informado." if freight.valor_frete_pago is None
+                    else "Frete aguardando conferência."
+                ),
+            ))
             continue
 
         gross = freight.valor_frete_bruto or Decimal("0")
@@ -2352,7 +2366,8 @@ def _payment_report_from_records(
         nome_transportador=nome_transportador,
         sem_identificacao=sem_identificacao,
         quantidade_fretes=len(records),
-        quantidade_pendentes=pending_freights,
+        quantidade_pendentes=len(pending_items),
+        pendencias=pending_items,
         valor_frete_bruto=gross_total,
         valor_avarias=damage_total,
         valor_a_pagar=net_total,

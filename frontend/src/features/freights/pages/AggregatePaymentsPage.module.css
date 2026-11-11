@@ -55,3 +55,11 @@
   .heading-actions { flex-direction: column; }
   .heading-actions .button { width: 100%; flex-basis: auto; }
 }
+
+.pending-card { min-width: 0; padding: 16px; border: 1px solid #e8cb94; border-radius: var(--freight-radius-card); background: #fffaf1; }
+.pending-card h2 { margin: 0; color: #694b1d; font-size: 16px; }
+.pending-card > p { margin: 6px 0 12px; color: #775f3b; font-size: 12px; }
+.pending-table { min-width: 760px; }
+.pending-table td { vertical-align: top; }
+.pending-table td small { display: block; margin-top: 4px; }
+.pending-table td:nth-child(3) { min-width: 220px; white-space: normal; }
