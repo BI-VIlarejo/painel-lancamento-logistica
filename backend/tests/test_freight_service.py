@@ -307,11 +307,11 @@ class FreightServiceTests(TestCase):
         self.assertEqual(worksheet["E24"].value, "=SUM(E4:E23)")
 
     def test_pending_freights_are_counted_and_block_payment_export(self):
-        pending = self.create_transporter(tipo_caminhao="SAVEIRO")
+        pending = self.create(rota_cidade="Rota sem tarifa")
         filters = {
             **self.period,
-            "tipo_transporte": "TRANSPORTADORA",
-            "nome_transportador": "Paulo Cruz",
+            "tipo_transporte": "AGREGADO",
+            "nome_transportador": "Motorista Agregado Teste",
             "sem_identificacao": False,
         }
         report = service.build_payment_report(self.db, access=access(), **filters)
@@ -319,7 +319,7 @@ class FreightServiceTests(TestCase):
         self.assertEqual(report.valor_a_pagar, 0)
         self.assertEqual(len(report.pendencias), 1)
         self.assertEqual(report.pendencias[0].codigo_frete, pending.codigo_frete)
-        self.assertEqual(report.pendencias[0].nome_transportador, "Paulo Cruz")
+        self.assertEqual(report.pendencias[0].nome_transportador, "Motorista Agregado Teste")
         self.assertEqual(report.pendencias[0].motivo_pendencia, pending.motivo_pendencia)
         self.assertIsNone(report.pendencias[0].valor_frete_pago)
         with self.assertRaises(ConflictError):

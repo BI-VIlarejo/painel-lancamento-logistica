@@ -425,7 +425,7 @@ function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
   };
 }
 
-/** Seleciona o valor fixo Paulo Cruz e aplica somente os limites publicados. */
+/** Seleciona o valor fixo por veículo Paulo Cruz e o eventual carro de apoio. */
 function quotePauloCruz(payload: FreightInput): FreightQuoteResponse {
   const vehicles: Record<string, { name: string; price: number; bounds: [number, number] | null; label: string }> = {
     SAVEIRO: { name: "Saveiro", price: 300, bounds: null, label: "Carro de apoio" },
@@ -435,26 +435,6 @@ function quotePauloCruz(payload: FreightInput): FreightQuoteResponse {
   };
   const vehicle = payload.tipo_caminhao ? vehicles[payload.tipo_caminhao] : undefined;
   if (!vehicle) return pendingQuote("Selecione um tipo de caminhão da tabela Paulo Cruz.", {});
-
-  if (!vehicle.bounds) {
-    return pendingQuote("Os limites de peso deste veículo Paulo Cruz ainda precisam de confirmação.", {
-      tipo_caminhao: payload.tipo_caminhao,
-      carro_apoio: payload.carro_apoio ?? null,
-      faixa_de_peso: vehicle.label,
-      fonte_tarifa: "PAULO_CRUZ",
-    });
-  }
-
-  const weight = numeric(payload.peso_kg) ?? 0;
-  if (vehicle.bounds && (weight < vehicle.bounds[0] || weight > vehicle.bounds[1])) {
-    return pendingQuote("O peso não se enquadra na faixa definida para o caminhão Paulo Cruz.", {
-      tipo_caminhao: payload.tipo_caminhao,
-      carro_apoio: payload.carro_apoio ?? null,
-      faixa_de_peso: vehicle.label,
-      peso_kg: String(payload.peso_kg),
-      fonte_tarifa: "PAULO_CRUZ",
-    });
-  }
 
   const supportPrice = payload.carro_apoio === "SAVEIRO" ? 300 : payload.carro_apoio === "KIA_BONGO" ? 500 : 0;
   return {

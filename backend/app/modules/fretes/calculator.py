@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, replace
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -257,7 +256,7 @@ def _calculate_paulo_cruz(
     data: dict[str, Any],
     base_detail: dict[str, object],
 ) -> FreightCalculation:
-    """Aplica o valor fixo por veículo e confere limites de peso declarados."""
+    """Aplica o valor fixo do veículo, independentemente da rota e do peso."""
     vehicle_names = {
         "SAVEIRO": "Saveiro",
         "KIA_BONGO": "Kia Bongo",
@@ -275,26 +274,6 @@ def _calculate_paulo_cruz(
     )
     if vehicle is None or selected_name is None:
         return _pending("Selecione um tipo de caminhão da tabela Paulo Cruz.", base_detail)
-    bounds = _weight_bounds(vehicle["weight_label"])
-    if bounds is None:
-        return _pending(
-            "Os limites de peso deste veículo Paulo Cruz ainda precisam de confirmação.",
-            {
-                **base_detail,
-                "tipo_caminhao": payload.tipo_caminhao,
-                "faixa_de_peso": vehicle["weight_label"],
-            },
-        )
-    if not (bounds[0] <= payload.peso_kg <= bounds[1]):
-        return _pending(
-            ("O peso não se enquadra na faixa definida para o caminhão Paulo Cruz."),
-            {
-                **base_detail,
-                "tipo_caminhao": payload.tipo_caminhao,
-                "faixa_de_peso": vehicle["weight_label"],
-                "peso_kg": str(payload.peso_kg),
-            },
-        )
     base_value = _decimal(vehicle["price"])
     support_name = {"SAVEIRO": "Saveiro", "KIA_BONGO": "Kia Bongo"}.get(payload.carro_apoio)
     support = next((item for item in data["paulo_cruz"] if item["vehicle"] == support_name), None)
@@ -310,20 +289,3 @@ def _calculate_paulo_cruz(
         "valor_carro_apoio": str(_money(support_value)),
     }
     return FreightCalculation("CALCULADO", gross, None, None, detail)
-
-
-def _weight_bounds(label: str) -> tuple[Decimal, Decimal] | None:
-    """Extrai limites numéricos do rótulo; descrições sem faixa retornam None."""
-    values = re.findall(r"\d[\d.,]*", label)
-    if len(values) < 2:
-        return None
-
-    def to_decimal(value: str) -> Decimal:
-        """Interpreta separadores de milhar dos limites escritos na planilha."""
-        if "." in value and "," not in value:
-            value = value.replace(".", "")
-        else:
-            value = value.replace(".", "").replace(",", ".")
-        return Decimal(value)
-
-    return to_decimal(values[0]), to_decimal(values[1])

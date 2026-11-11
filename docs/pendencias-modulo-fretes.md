@@ -30,7 +30,7 @@ Faça nesta ordem:
 
 ## Carro de apoio Paulo Cruz
 
-No lançamento de transportadora independente Paulo Cruz, o carro de apoio é opcional: Saveiro acrescenta R$ 300,00 e Bongo acrescenta R$ 500,00 ao frete do caminhão principal. A escolha e o valor ficam na memória de cálculo e são recuperados na edição. A regra não altera outras transportadoras.
+A partir da orientação de 11/11/2026, o frete Paulo Cruz usa os valores fixos dos veículos, independentemente de rota e peso; a rota é informativa. No lançamento de transportadora independente Paulo Cruz, o carro de apoio é opcional: Saveiro acrescenta R$ 300,00 e Bongo acrescenta R$ 500,00 ao frete do caminhão principal. A escolha e o valor ficam na memória de cálculo e são recuperados na edição. A regra não altera outras transportadoras.
 
 ## Detalhamento de pendências no pagamento
 

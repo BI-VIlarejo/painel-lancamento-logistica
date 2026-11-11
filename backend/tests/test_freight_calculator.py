@@ -57,30 +57,18 @@ class FreightCalculatorTests(TestCase):
                 nome_transportador="Veículo de teste",
             )
 
-    def test_paulo_cruz_requires_confirmed_weight_bounds(self):
-        cases = [
-            ("SAVEIRO", "500", None),
-            ("KIA_BONGO", "1000", None),
-            ("CAMINHAO_3_4", "1500", "950.00"),
-            ("CAMINHAO_3_4", "4000", "950.00"),
-            ("CAMINHAO_3_4", "4000.001", None),
-            ("CAMINHAO_TOCO", "4001", "1100.00"),
-            ("CAMINHAO_TOCO", "9000", "1100.00"),
-            ("CAMINHAO_TOCO", "9000.001", None),
-        ]
-        for truck, weight, expected in cases:
-            with self.subTest(truck=truck, weight=weight):
-                result = calculate_freight(
-                    payload(
-                        tipo_transporte="TRANSPORTADORA",
-                        nome_transportador="Paulo Cruz",
-                        codigo_fonte_tarifa="PAULO_CRUZ",
-                        tipo_caminhao=truck,
-                        peso_kg=weight,
-                    )
-                )
-                self.assertEqual(result.valor_frete_bruto, Decimal(expected) if expected else None)
-                self.assertEqual(result.status, "CALCULADO" if expected else "PENDENTE_CONFERENCIA")
+    def test_paulo_cruz_uses_fixed_vehicle_price_for_any_route_and_weight(self):
+        for truck, expected in (("SAVEIRO", "300.00"), ("KIA_BONGO", "500.00"),
+                                ("CAMINHAO_3_4", "950.00"), ("CAMINHAO_TOCO", "1100.00")):
+            for route, weight in (("Macaé", "0"), ("Cabo Frio", "12000")):
+                with self.subTest(truck=truck, route=route, weight=weight):
+                    result = calculate_freight(payload(
+                        tipo_transporte="TRANSPORTADORA", nome_transportador="Paulo Cruz",
+                        codigo_fonte_tarifa="PAULO_CRUZ", tipo_caminhao=truck,
+                        peso_kg=weight, rota_cidade=route,
+                    ))
+                    self.assertEqual(result.status, "CALCULADO")
+                    self.assertEqual(result.valor_frete_bruto, Decimal(expected))
 
     def test_paulo_cruz_support_vehicle_is_added_to_truck_freight(self):
         for support, gross, addition in ((None, "950.00", "0.00"), ("SAVEIRO", "1250.00", "300.00"), ("KIA_BONGO", "1450.00", "500.00")):

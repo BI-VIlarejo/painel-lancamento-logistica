@@ -614,7 +614,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <small>O adicional será somado ao valor do caminhão.</small>
           </label>
           <div className={cx(styles, commonStyles, "notice notice-warning", "source-note")}>
-            A tabela Paulo Cruz ainda será conferida. Confira o resultado antes de fechar o pagamento.
+            O valor é definido pelo veículo e pelo carro de apoio. A rota é apenas informativa.
             {selectedTruck && <strong>{selectedTruck.nome} selecionado.</strong>}
           </div>
         </div>}
