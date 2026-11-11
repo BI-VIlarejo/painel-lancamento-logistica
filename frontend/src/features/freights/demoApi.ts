@@ -439,6 +439,7 @@ function quotePauloCruz(payload: FreightInput): FreightQuoteResponse {
   if (!vehicle.bounds) {
     return pendingQuote("Os limites de peso deste veículo Paulo Cruz ainda precisam de confirmação.", {
       tipo_caminhao: payload.tipo_caminhao,
+      carro_apoio: payload.carro_apoio ?? null,
       faixa_de_peso: vehicle.label,
       fonte_tarifa: "PAULO_CRUZ",
     });
@@ -448,22 +449,26 @@ function quotePauloCruz(payload: FreightInput): FreightQuoteResponse {
   if (vehicle.bounds && (weight < vehicle.bounds[0] || weight > vehicle.bounds[1])) {
     return pendingQuote("O peso não se enquadra na faixa definida para o caminhão Paulo Cruz.", {
       tipo_caminhao: payload.tipo_caminhao,
+      carro_apoio: payload.carro_apoio ?? null,
       faixa_de_peso: vehicle.label,
       peso_kg: String(payload.peso_kg),
       fonte_tarifa: "PAULO_CRUZ",
     });
   }
 
+  const supportPrice = payload.carro_apoio === "SAVEIRO" ? 300 : payload.carro_apoio === "KIA_BONGO" ? 500 : 0;
   return {
     status_calculo: "CALCULADO",
-    valor_frete_bruto: moneyText(vehicle.price),
+    valor_frete_bruto: moneyText(vehicle.price + supportPrice),
     percentual_frete: null,
     motivo_pendencia: null,
     detalhe_calculo: {
       fonte_tarifa: "PAULO_CRUZ",
       status: "CALCULADO",
       tipo_caminhao: payload.tipo_caminhao,
-      formula: "frete_fixo_por_tipo_de_caminhao",
+      carro_apoio: payload.carro_apoio ?? null,
+      valor_carro_apoio: moneyText(supportPrice),
+      formula: "frete_fixo_por_tipo_de_caminhao + carro_de_apoio",
       faixa_de_peso: vehicle.label,
       valor_fixo: moneyText(vehicle.price),
     },
@@ -631,6 +636,7 @@ export const freightsDemoApi = {
       peso_kg: String(numeric(payload.peso_kg) ?? 0),
       valor_nota: numeric(payload.valor_nota) === null ? null : String(numeric(payload.valor_nota)),
       tipo_caminhao: payload.tipo_caminhao ?? null,
+      carro_apoio: payload.carro_apoio ?? null,
       codigo_zona_jit: payload.codigo_zona_jit ?? null,
       adicionais_jit: payload.adicionais_jit ?? [],
       valor_frete_bruto: gross === null ? null : moneyText(gross),
@@ -832,6 +838,7 @@ export const freightsDemoApi = {
       peso_kg: String(numeric(payload.peso_kg) ?? 0),
       valor_nota: numeric(payload.valor_nota) === null ? null : String(numeric(payload.valor_nota)),
       tipo_caminhao: payload.tipo_caminhao ?? null,
+      carro_apoio: payload.carro_apoio ?? null,
       codigo_zona_jit: payload.codigo_zona_jit ?? null,
       adicionais_jit: payload.adicionais_jit ?? [],
       valor_frete_bruto: gross === null ? null : moneyText(gross),

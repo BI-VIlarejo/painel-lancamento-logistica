@@ -69,6 +69,7 @@ class FreightInput(BaseModel):
     codigo_zona_jit: str | None = Field(default=None, max_length=60)
     adicionais_jit: list[str] = Field(default_factory=list, max_length=8)
     tipo_caminhao: TruckType = None
+    carro_apoio: Literal["SAVEIRO", "KIA_BONGO"] | None = None
 
     @field_validator("rota_cidade")
     @classmethod
@@ -105,6 +106,8 @@ class FreightInput(BaseModel):
     @model_validator(mode="after")
     def validate_odometer_values(self) -> FreightInput:
         """Valida modalidade, fonte tarifária e leituras do hodômetro."""
+        if self.carro_apoio is not None and self.codigo_fonte_tarifa != "PAULO_CRUZ":
+            raise ValueError("Carro de apoio só se aplica à transportadora Paulo Cruz.")
         odometer_values = (self.km_inicial, self.km_final)
         if self.tipo_transporte == "TRANSPORTADORA":
             if any(value is not None for value in odometer_values) and any(
@@ -382,6 +385,7 @@ class FreightResponse(BaseModel):
     peso_kg: Decimal | None
     valor_nota: Decimal | None
     tipo_caminhao: TruckType
+    carro_apoio: Literal["SAVEIRO", "KIA_BONGO"] | None = None
     codigo_zona_jit: str | None
     adicionais_jit: list[str]
     valor_frete_bruto: Decimal | None

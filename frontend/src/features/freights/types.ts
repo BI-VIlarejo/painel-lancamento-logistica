@@ -101,6 +101,7 @@ export type FreightInput = {
   codigo_zona_jit?: string | null;
   adicionais_jit?: string[];
   tipo_caminhao?: FreightTruckType | null;
+  carro_apoio?: "SAVEIRO" | "KIA_BONGO" | null;
 };
 
 /** Campos editáveis de um frete histórico, sem recálculo de tarifa. */
@@ -188,6 +189,7 @@ export type FreightResponse = {
   peso_kg: DecimalValue | null;
   valor_nota: DecimalValue | null;
   tipo_caminhao: FreightTruckType | null;
+  carro_apoio?: "SAVEIRO" | "KIA_BONGO" | null;
   codigo_zona_jit: string | null;
   adicionais_jit: string[];
   valor_frete_bruto: DecimalValue | null;

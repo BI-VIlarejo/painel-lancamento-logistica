@@ -667,6 +667,9 @@ def _freight_response(
         peso_kg=freight.peso_kg,
         valor_nota=freight.valor_nota,
         tipo_caminhao=_truck_type(freight.tipo_caminhao),
+        carro_apoio=(freight.detalhe_calculo.get("carro_apoio")
+                     if freight.detalhe_calculo.get("carro_apoio") in ("SAVEIRO", "KIA_BONGO")
+                     else None),
         codigo_zona_jit=freight.codigo_zona_jit,
         adicionais_jit=freight.adicionais_jit,
         valor_frete_bruto=freight.valor_frete_bruto,

@@ -82,6 +82,22 @@ class FreightCalculatorTests(TestCase):
                 self.assertEqual(result.valor_frete_bruto, Decimal(expected) if expected else None)
                 self.assertEqual(result.status, "CALCULADO" if expected else "PENDENTE_CONFERENCIA")
 
+    def test_paulo_cruz_support_vehicle_is_added_to_truck_freight(self):
+        for support, gross, addition in ((None, "950.00", "0.00"), ("SAVEIRO", "1250.00", "300.00"), ("KIA_BONGO", "1450.00", "500.00")):
+            with self.subTest(support=support):
+                result = calculate_freight(payload(
+                    tipo_transporte="TRANSPORTADORA", nome_transportador="Paulo Cruz",
+                    codigo_fonte_tarifa="PAULO_CRUZ", tipo_caminhao="CAMINHAO_3_4",
+                    peso_kg="2000", carro_apoio=support,
+                ))
+                self.assertEqual(result.valor_frete_bruto, Decimal(gross))
+                self.assertEqual(result.detalhe["carro_apoio"], support)
+                self.assertEqual(result.detalhe["valor_carro_apoio"], addition)
+
+    def test_support_vehicle_requires_paulo_cruz(self):
+        with self.assertRaises(ValidationError):
+            payload(carro_apoio="SAVEIRO")
+
     def jit(self, **changes):
         values = dict(
             tipo_transporte="TRANSPORTADORA",

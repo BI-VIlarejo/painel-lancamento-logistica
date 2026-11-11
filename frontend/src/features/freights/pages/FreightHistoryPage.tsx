@@ -159,6 +159,7 @@ function FreightDetailsDialog({
         ["Quantidade de entregas", item.quantidade_entregas === null ? "Não informada na planilha" : item.quantidade_entregas.toLocaleString("pt-BR")],
         ["Peso", item.peso_kg === null ? "Não informado na planilha" : `${formatNumber(item.peso_kg)} kg`],
         ["Tipo de caminhão", truckLabel(item.tipo_caminhao)],
+        ...(item.codigo_fonte_tarifa === "PAULO_CRUZ" ? [["Carro de apoio", item.carro_apoio === "SAVEIRO" ? "Saveiro · R$ 300,00" : item.carro_apoio === "KIA_BONGO" ? "Bongo · R$ 500,00" : "Nenhum"] as [string, string]] : []),
         ["Zona JUST IN TIME", item.codigo_zona_jit ?? "Não se aplica"],
         ["Adicionais", item.adicionais_jit.length ? item.adicionais_jit.join(", ") : "Nenhum"],
       ],

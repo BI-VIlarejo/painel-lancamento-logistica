@@ -39,6 +39,7 @@ type FormValues = {
   codigo_zona_jit: string;
   adicionais_jit: string[];
   tipo_caminhao: FreightTruckType | "";
+  carro_apoio: "SAVEIRO" | "KIA_BONGO" | "";
 };
 
 type Props = {
@@ -67,6 +68,7 @@ function emptyValues(options: FreightTariffOptions): FormValues {
     codigo_zona_jit: "",
     adicionais_jit: [],
     tipo_caminhao: "",
+    carro_apoio: "",
   };
 }
 
@@ -89,6 +91,7 @@ function valuesFromFreight(freight: FreightResponse): FormValues {
     codigo_zona_jit: freight.codigo_zona_jit ?? "",
     adicionais_jit: freight.adicionais_jit,
     tipo_caminhao: freight.tipo_caminhao ?? "",
+    carro_apoio: freight.carro_apoio ?? "",
   };
 }
 
@@ -170,6 +173,7 @@ function payloadFromValues(values: FormValues): FreightInput {
     codigo_zona_jit: values.codigo_fonte_tarifa === "JUST_IN_TIME" ? values.codigo_zona_jit : null,
     adicionais_jit: values.codigo_fonte_tarifa === "JUST_IN_TIME" ? values.adicionais_jit : [],
     tipo_caminhao: values.codigo_fonte_tarifa === "PAULO_CRUZ" ? values.tipo_caminhao as FreightTruckType : null,
+    carro_apoio: values.codigo_fonte_tarifa === "PAULO_CRUZ" ? values.carro_apoio || null : null,
   };
 }
 
@@ -194,6 +198,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const regionId = useId();
   const zoneId = useId();
   const truckId = useId();
+  const supportId = useId();
   const [values, setValues] = useState(() => restored?.values ?? (initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options)));
   const [jitRegionCode, setJitRegionCode] = useState(() =>
     restored?.jitRegionCode ?? options.zonas_just_in_time.find((region) =>
@@ -457,7 +462,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <select id={transportTypeId} value={values.tipo_transporte} onChange={(event) => {
               const type = event.target.value as FreightTransportType;
               const source: FreightTariffSource | "" = type === "AGREGADO" ? "AGREGADOS_CD" : "";
-              setValues((current) => ({ ...current, tipo_transporte: type, nome_transportador: "", id_motorista_agregado: "", id_motorista_transportadora: "", codigo_fonte_tarifa: source, rota_cidade: "", quantidade_entregas: "0", peso_kg: "0", quantidade_avarias: "0", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", km_inicial: "", km_final: "" }));
+              setValues((current) => ({ ...current, tipo_transporte: type, nome_transportador: "", id_motorista_agregado: "", id_motorista_transportadora: "", codigo_fonte_tarifa: source, rota_cidade: "", quantidade_entregas: "0", peso_kg: "0", quantidade_avarias: "0", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", carro_apoio: "", km_inicial: "", km_final: "" }));
               setJitRegionCode("");
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
@@ -491,6 +496,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
                 codigo_zona_jit: "",
                 adicionais_jit: [],
                 tipo_caminhao: "",
+                carro_apoio: "",
               }));
               setJitRegionCode("");
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
@@ -519,7 +525,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
           </div> : <label className={cx(styles, "field")} htmlFor={sourceId}>Fonte tarifária
             <select id={sourceId} value={values.codigo_fonte_tarifa} onChange={(event) => {
               const source = event.target.value as FreightTariffSource;
-              setValues((current) => ({ ...current, codigo_fonte_tarifa: source, rota_cidade: "", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "" }));
+              setValues((current) => ({ ...current, codigo_fonte_tarifa: source, rota_cidade: "", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", carro_apoio: "" }));
               setJitRegionCode("");
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
@@ -598,6 +604,14 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               <option value="">Selecione o veículo</option>
               {options.tipos_caminhao_paulo_cruz.map((truck) => <option value={truck.codigo} key={truck.codigo}>{truck.nome}</option>)}
             </select>
+          </label>
+          <label className={cx(styles, "field", "field-compact")} htmlFor={supportId}>Carro de apoio
+            <select id={supportId} value={values.carro_apoio || ""} onChange={(event) => update("carro_apoio", event.target.value as FormValues["carro_apoio"])} disabled={busy}>
+              <option value="">Sem carro de apoio</option>
+              <option value="SAVEIRO">Saveiro · adicional de R$ 300,00</option>
+              <option value="KIA_BONGO">Bongo · adicional de R$ 500,00</option>
+            </select>
+            <small>O adicional será somado ao valor do caminhão.</small>
           </label>
           <div className={cx(styles, commonStyles, "notice notice-warning", "source-note")}>
             A tabela Paulo Cruz ainda será conferida. Confira o resultado antes de fechar o pagamento.

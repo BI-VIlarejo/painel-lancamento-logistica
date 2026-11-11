@@ -56,6 +56,9 @@ def calculate_freight(payload: FreightInput) -> FreightCalculation:
         "tipo_transporte": payload.tipo_transporte,
     }
 
+    if payload.codigo_fonte_tarifa == "PAULO_CRUZ":
+        base_detail["carro_apoio"] = payload.carro_apoio
+
     if payload.codigo_fonte_tarifa == "AGREGADOS_CD":
         calculation = _calculate_aggregados_cd(payload, data, base_detail)
     elif payload.codigo_fonte_tarifa == "JUST_IN_TIME":
@@ -292,14 +295,19 @@ def _calculate_paulo_cruz(
                 "peso_kg": str(payload.peso_kg),
             },
         )
-    gross = _money(_decimal(vehicle["price"]))
+    base_value = _decimal(vehicle["price"])
+    support_name = {"SAVEIRO": "Saveiro", "KIA_BONGO": "Kia Bongo"}.get(payload.carro_apoio)
+    support = next((item for item in data["paulo_cruz"] if item["vehicle"] == support_name), None)
+    support_value = _decimal(support["price"]) if support else Decimal("0")
+    gross = _money(base_value + support_value)
     detail: dict[str, object] = {
         **base_detail,
         "status": "CALCULADO",
         "tipo_caminhao": payload.tipo_caminhao,
-        "formula": "frete_fixo_por_tipo_de_caminhao",
+        "formula": "frete_fixo_por_tipo_de_caminhao + carro_de_apoio",
         "faixa_de_peso": vehicle["weight_label"],
-        "valor_fixo": str(gross),
+        "valor_fixo": str(_money(base_value)),
+        "valor_carro_apoio": str(_money(support_value)),
     }
     return FreightCalculation("CALCULADO", gross, None, None, detail)
 

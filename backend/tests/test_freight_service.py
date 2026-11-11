@@ -217,6 +217,35 @@ class FreightServiceTests(TestCase):
         self.assertEqual((saved.rota_cidade, saved.quantidade_entregas, saved.quantidade_avarias, saved.peso_kg),
                          ("Cabo Frio", 7, 3, Decimal("1500")))
 
+    def test_same_driver_can_launch_two_freights_with_different_routes_on_same_day(self):
+        first = self.create(rota_cidade="Macaé", quantidade_entregas=6, peso_kg="2275")
+        second = self.create(rota_cidade="Cabo Frio", quantidade_entregas=4, peso_kg="1800")
+        self.assertNotEqual(first.codigo_frete, second.codigo_frete)
+        self.assertEqual(first.id_motorista_agregado, second.id_motorista_agregado)
+        self.assertEqual(first.data_servico, second.data_servico)
+        self.assertEqual((first.rota_cidade, first.quantidade_entregas, first.peso_kg),
+                         ("Macaé", 6, Decimal("2275")))
+        self.assertEqual((second.rota_cidade, second.quantidade_entregas, second.peso_kg),
+                         ("Cabo Frio", 4, Decimal("1800")))
+
+    def test_support_vehicle_is_preserved_and_included_in_payment(self):
+        freight = self.create_transporter(carro_apoio="KIA_BONGO")
+        self.assertEqual(freight.carro_apoio, "KIA_BONGO")
+        self.assertEqual(freight.valor_frete_bruto, Decimal("1450.00"))
+        self.assertEqual(freight.valor_frete_pago, Decimal("1434.00"))
+        self.db.expire_all()
+        stored = self.db.scalar(select(Frete).where(Frete.codigo_frete == str(freight.codigo_frete)))
+        self.assertEqual(service._freight_response(stored).carro_apoio, "KIA_BONGO")
+        self.assertEqual(stored.detalhe_calculo["valor_carro_apoio"], "500.00")
+        update = payload(tipo_transporte="TRANSPORTADORA", id_motorista_agregado=None,
+                         nome_transportador="Paulo Cruz", codigo_fonte_tarifa="PAULO_CRUZ",
+                         km_inicial=None, km_final=None, tipo_caminhao="CAMINHAO_3_4",
+                         peso_kg="2000", carro_apoio="SAVEIRO")
+        updated = service.update_freight(self.db, codigo_frete=freight.codigo_frete,
+                                         payload=update, idempotency_key=uuid4(), access=access())
+        self.assertEqual(updated.carro_apoio, "SAVEIRO")
+        self.assertEqual(updated.valor_frete_bruto, Decimal("1250.00"))
+
     def test_carrier_driver_options_include_one_named_driver_per_company(self):
         options = service.get_carrier_drivers(
             self.db, data_servico=date(2026, 11, 3), access=access()
