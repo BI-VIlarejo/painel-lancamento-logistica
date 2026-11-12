@@ -53,6 +53,9 @@ def calculate_freight(payload: FreightInput) -> FreightCalculation:
         "arquivos_origem": data["sources"],
         "fonte_tarifa": payload.codigo_fonte_tarifa,
         "tipo_transporte": payload.tipo_transporte,
+        "nome_cliente": payload.nome_cliente,
+        "codigo_cliente": payload.codigo_cliente,
+        "observacao": payload.observacao,
     }
 
     if payload.codigo_fonte_tarifa == "PAULO_CRUZ":
@@ -69,6 +72,34 @@ def calculate_freight(payload: FreightInput) -> FreightCalculation:
             "Selecione uma fonte tarifária para este transporte terceirizado.",
             base_detail,
         )
+
+    manual_gross = payload.valor_frete_bruto
+    if manual_gross is not None:
+        manual_gross = _money(manual_gross)
+        if (
+            calculation.status != "CALCULADO"
+            or calculation.valor_frete_bruto != manual_gross
+        ):
+            original_reason = calculation.motivo_pendencia
+            detail = {
+                **calculation.detalhe,
+                "status": "CALCULADO",
+                "motivo": None,
+                "valor_frete_bruto_informado_manualmente": True,
+                "valor_frete_bruto_tarifado": (
+                    str(calculation.valor_frete_bruto)
+                    if calculation.valor_frete_bruto is not None
+                    else None
+                ),
+                "motivo_calculo_tarifario": original_reason,
+            }
+            calculation = FreightCalculation(
+                status="CALCULADO",
+                valor_frete_bruto=manual_gross,
+                percentual_frete=None,
+                motivo_pendencia=None,
+                detalhe=detail,
+            )
 
     if (
         calculation.status == "CALCULADO"
@@ -164,31 +195,44 @@ def _calculate_just_in_time(
     data: dict[str, Any],
     base_detail: dict[str, object],
 ) -> FreightCalculation:
-    """Resolve a zona e faixa JIT; só calcula quando há uma única tarifa aplicável."""
+    """Resolve as zonas e a faixa JIT; múltiplas zonas exigem conferência."""
     jit = data["just_in_time"]
-    zone = next(
-        (
-            item
-            for item in jit["zones"]
-            if item["code"] == payload.codigo_zona_jit
-            and item["code"] in just_in_time_zone_codes()
-        ),
-        None,
+    zone_codes = payload.codigos_zonas_jit or (
+        [payload.codigo_zona_jit] if payload.codigo_zona_jit else []
     )
-    if zone is None:
+    allowed_codes = just_in_time_zone_codes()
+    zones = [
+        item
+        for code in zone_codes
+        for item in jit["zones"]
+        if item["code"] == code and item["code"] in allowed_codes
+    ]
+    if not zone_codes or len(zones) != len(zone_codes):
         return _pending("Selecione uma zona válida da tabela JUST IN TIME.", base_detail)
 
-    matches = [
-        tier
-        for tier in zone["tiers"]
-        if _decimal(tier["min_kg"]) <= payload.peso_kg <= _decimal(tier["max_kg"])
+    zone_details = [
+        {"codigo": item["code"], "nome": item["label"], "areas": item["area"]}
+        for item in zones
     ]
     detail: dict[str, object] = {
         **base_detail,
-        "zona": zone["label"],
-        "areas_da_zona": zone["area"],
+        "codigos_zonas_jit": [item["code"] for item in zones],
+        "zonas_jit": zone_details,
+        "zona": zones[0]["label"] if len(zones) == 1 else [item["label"] for item in zones],
         "peso_kg": str(payload.peso_kg),
     }
+    if len(zones) > 1:
+        return _pending(
+            "A tabela JUST IN TIME não define uma tarifa única para múltiplas zonas; confira o valor do frete.",
+            detail,
+        )
+
+    matches = [
+        tier
+        for tier in zones[0]["tiers"]
+        if _decimal(tier["min_kg"]) <= payload.peso_kg <= _decimal(tier["max_kg"])
+    ]
+    detail["areas_da_zona"] = zones[0]["area"]
     if len(matches) != 1:
         return _pending(
             "A faixa de peso não tem um único valor aplicável na tabela JUST IN TIME.",

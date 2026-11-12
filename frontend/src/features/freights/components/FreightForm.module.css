@@ -27,14 +27,12 @@
 .jit-panel-header > div > span { display: block; margin-top: 4px; color: #7b887e; font-size: 11px; line-height: 1.4; }
 .jit-selection-count { flex: 0 0 auto; padding: 6px 9px; border: 1px solid #e1e8e1; border-radius: 99px; color: #647369; background: #fff; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .jit-grid { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 12px; }
-.jit-zone-card, .jit-additions-card { min-width: 0; margin: 0; padding: 14px; border: 1px solid #e2e9e2; border-radius: 10px; background: #fff; }
-.jit-zone-card { justify-content: flex-start; }
-.jit-zone-card > select { flex: 0 0 auto; }
-.jit-zone-areas { display: flex; flex-direction: column; gap: 4px; margin-top: 3px; padding-top: 11px; border-top: 1px solid #eef2ee; }
-.jit-zone-areas strong { color: #718076; font-size: 10px; font-weight: 700; }
-.jit-zone-areas small { color: #617166; font-size: 11px; line-height: 1.45; }
+.jit-additions-card { min-width: 0; margin: 0; padding: 14px; border: 1px solid #e2e9e2; border-radius: 10px; background: #fff; }
 .jit-additions-card legend { padding: 0 5px; color: #526258; font-size: 12px; font-weight: 700; }
 .checkbox-help { margin: 0 0 10px; color: #7b887e; font-size: 11px; font-weight: 400; line-height: 1.45; }
+.jit-zone-groups { display: grid; gap: 15px; }
+.jit-zone-group { min-width: 0; }
+.jit-zone-group-title { margin: 0 0 7px; color: #647369; font-size: 11px; font-weight: 750; }
 .checkbox-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .checkbox-option { display: flex; min-width: 0; min-height: 44px; align-items: center; gap: 9px; padding: 9px 10px; border: 1px solid #e0e7e0; border-radius: 8px; color: #56675c; background: #fff; cursor: pointer; font-size: 11px; font-weight: 550; line-height: 1.4; transition: border-color .16s, background-color .16s, box-shadow .16s; }
 .checkbox-option:hover { border-color: #b9cbb9; background: #fbfdfb; }
@@ -42,7 +40,13 @@
 .checkbox-option input { width: 16px; height: 16px; flex: 0 0 auto; margin: 0; accent-color: var(--primary); }
 .checkbox-option input:focus-visible { outline-offset: 2px; }
 .checkbox-option span { min-width: 0; }
+.checkbox-zone-option { align-items: flex-start; }
+.checkbox-zone-option input { margin-top: 2px; }
+.jit-zone-option-copy { display: flex; flex-direction: column; gap: 3px; }
+.jit-zone-option-copy strong { color: inherit; font-size: 11px; font-weight: 700; }
+.jit-zone-option-copy small { color: #718076; font-size: 10px; font-weight: 400; line-height: 1.4; }
 .jit-review-note { display: block; margin-top: 9px; color: #8b6b38 !important; }
+.jit-required-note { display: block; margin-top: 9px; color: #a55a42 !important; }
 .required-chip { padding: 5px 8px; border-radius: 99px; color: #516f54; background: #eef6ec; font-size: 10px; font-weight: 700; }
 .section-help { margin: -7px 0 14px 43px; color: #748176; font-size: 11px; line-height: 1.5; }
 .distance-result { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 12px 14px; border: 1px solid #dbe9db; border-radius: 9px; background: #f4f8f3; }
@@ -116,3 +120,6 @@
   .checkbox-list { grid-template-columns: 1fr; }
   .jit-panel-header { align-items: flex-start; flex-direction: column; gap: 9px; }
 }
+
+.field-wide { grid-column: 1 / -1; }
+.field textarea { width: 100%; min-width: 0; padding: 10px 11px; border: 1px solid var(--freight-border-strong); border-radius: var(--freight-radius-control); color: var(--brand-navy); font: inherit; resize: vertical; }

@@ -96,9 +96,14 @@ export type FreightInput = {
   quantidade_entregas: number;
   peso_kg: DecimalValue;
   valor_nota?: DecimalValue | null;
+  valor_frete_bruto?: DecimalValue | null;
   valor_avaria?: DecimalValue;
   quantidade_avarias: number;
+  nome_cliente?: string | null;
+  codigo_cliente?: string | null;
+  observacao?: string | null;
   codigo_zona_jit?: string | null;
+  codigos_zonas_jit?: string[];
   adicionais_jit?: string[];
   tipo_caminhao?: FreightTruckType | null;
   carro_apoio?: "SAVEIRO" | "KIA_BONGO" | null;
@@ -194,7 +199,11 @@ export type FreightResponse = {
   valor_nota: DecimalValue | null;
   tipo_caminhao: FreightTruckType | null;
   carro_apoio?: "SAVEIRO" | "KIA_BONGO" | null;
+  nome_cliente?: string | null;
+  codigo_cliente?: string | null;
+  observacao?: string | null;
   codigo_zona_jit: string | null;
+  codigos_zonas_jit?: string[];
   adicionais_jit: string[];
   valor_frete_bruto: DecimalValue | null;
   valor_avaria: DecimalValue;

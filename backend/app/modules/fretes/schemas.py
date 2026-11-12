@@ -58,6 +58,13 @@ class FreightInput(BaseModel):
         decimal_places=2,
         allow_inf_nan=False,
     )
+    valor_frete_bruto: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0"),
+        max_digits=14,
+        decimal_places=2,
+        allow_inf_nan=False,
+    )
     valor_avaria: Decimal = Field(
         default=Decimal("0"),
         ge=Decimal("0"),
@@ -66,7 +73,11 @@ class FreightInput(BaseModel):
         allow_inf_nan=False,
     )
     quantidade_avarias: int = Field(default=0, ge=0, le=2_147_483_647)
+    nome_cliente: str | None = Field(default=None, max_length=160)
+    codigo_cliente: str | None = Field(default=None, max_length=80)
+    observacao: str | None = Field(default=None, max_length=1000)
     codigo_zona_jit: str | None = Field(default=None, max_length=60)
+    codigos_zonas_jit: list[str] = Field(default_factory=list, max_length=12)
     adicionais_jit: list[str] = Field(default_factory=list, max_length=8)
     tipo_caminhao: TruckType = None
     carro_apoio: Literal["SAVEIRO", "KIA_BONGO"] | None = None
@@ -91,8 +102,17 @@ class FreightInput(BaseModel):
     @classmethod
     def normalize_zone(cls, value: str | None) -> str | None:
         """Retira espaços externos do código de zona JUST IN TIME."""
-        normalized = value.strip().upper() if value else ""
+        normalized = normalize_label(value).replace(" ", "_") if value else ""
         return normalized or None
+
+    @field_validator("codigos_zonas_jit")
+    @classmethod
+    def require_unique_zones(cls, values: list[str]) -> list[str]:
+        """Normaliza as zonas marcadas e impede valores repetidos."""
+        normalized = [normalize_label(value).replace(" ", "_") for value in values]
+        if any(not value for value in normalized) or len(normalized) != len(set(normalized)):
+            raise ValueError("As zonas JUST IN TIME devem ser únicas e válidas.")
+        return normalized
 
     @field_validator("adicionais_jit")
     @classmethod
@@ -106,6 +126,17 @@ class FreightInput(BaseModel):
     @model_validator(mode="after")
     def validate_odometer_values(self) -> FreightInput:
         """Valida modalidade, fonte tarifária e leituras do hodômetro."""
+        if self.codigo_fonte_tarifa == "JUST_IN_TIME":
+            selected_zones = self.codigos_zonas_jit or (
+                [self.codigo_zona_jit] if self.codigo_zona_jit else []
+            )
+            if not selected_zones:
+                raise ValueError("Selecione pelo menos uma zona JUST IN TIME.")
+            self.codigos_zonas_jit = selected_zones
+            self.codigo_zona_jit = selected_zones[0]
+        elif self.codigos_zonas_jit or self.codigo_zona_jit:
+            raise ValueError("As zonas JUST IN TIME só se aplicam à fonte JUST IN TIME.")
+
         if self.carro_apoio is not None and self.codigo_fonte_tarifa != "PAULO_CRUZ":
             raise ValueError("Carro de apoio só se aplica à transportadora Paulo Cruz.")
         odometer_values = (self.km_inicial, self.km_final)
@@ -406,7 +437,11 @@ class FreightResponse(BaseModel):
     valor_nota: Decimal | None
     tipo_caminhao: TruckType
     carro_apoio: Literal["SAVEIRO", "KIA_BONGO"] | None = None
+    nome_cliente: str | None = None
+    codigo_cliente: str | None = None
+    observacao: str | None = None
     codigo_zona_jit: str | None
+    codigos_zonas_jit: list[str] = Field(default_factory=list)
     adicionais_jit: list[str]
     valor_frete_bruto: Decimal | None
     valor_avaria: Decimal

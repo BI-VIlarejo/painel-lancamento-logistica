@@ -55,6 +55,18 @@ function supportLabel(item: FreightResponse): string {
   return "";
 }
 
+function jitZoneLabel(item: FreightResponse): string {
+  const zones = item.detalhe_calculo.zonas_jit;
+  if (Array.isArray(zones)) {
+    const names = zones.flatMap((zone) => {
+      if (typeof zone !== "object" || zone === null || !("nome" in zone)) return [];
+      return typeof zone.nome === "string" ? [zone.nome] : [];
+    });
+    if (names.length) return names.join(", ");
+  }
+  return item.codigos_zonas_jit?.join(", ") || item.codigo_zona_jit || "";
+}
+
 function filterDescription(filters: FreightHistoryFilters, count: number): string {
   const period = filters.data_de && filters.data_ate
     ? `${filters.data_de} a ${filters.data_ate}`
@@ -138,7 +150,7 @@ export async function createFreightHistoryWorkbook(
       item.tipo_transporte === "TRANSPORTADORA" ? "Não se aplica" : numberValue(item.km_rodado),
       truckLabel(item),
       support,
-      item.codigo_zona_jit,
+      jitZoneLabel(item),
       item.adicionais_jit.join(", "),
     ];
     const dataRow = worksheet.getRow(row);

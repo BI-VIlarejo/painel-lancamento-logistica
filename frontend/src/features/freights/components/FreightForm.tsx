@@ -34,9 +34,14 @@ type FormValues = {
   quantidade_entregas: string;
   peso_kg: string;
   valor_nota: string;
+  valor_frete_bruto: string;
   valor_avaria: string;
   quantidade_avarias: string;
+  nome_cliente: string;
+  codigo_cliente: string;
+  observacao: string;
   codigo_zona_jit: string;
+  codigos_zonas_jit: string[];
   adicionais_jit: string[];
   tipo_caminhao: FreightTruckType | "";
   carro_apoio: "SAVEIRO" | "KIA_BONGO" | "";
@@ -63,9 +68,14 @@ function emptyValues(options: FreightTariffOptions): FormValues {
     quantidade_entregas: "0",
     peso_kg: "0",
     valor_nota: "",
+    valor_frete_bruto: "",
     valor_avaria: "0",
     quantidade_avarias: "0",
+    nome_cliente: "",
+    codigo_cliente: "",
+    observacao: "",
     codigo_zona_jit: "",
+    codigos_zonas_jit: [],
     adicionais_jit: [],
     tipo_caminhao: "",
     carro_apoio: "",
@@ -86,13 +96,27 @@ function valuesFromFreight(freight: FreightResponse): FormValues {
     quantidade_entregas: freight.quantidade_entregas === null ? "" : String(freight.quantidade_entregas),
     peso_kg: freight.peso_kg === null ? "" : String(freight.peso_kg),
     valor_nota: freight.valor_nota === null ? "" : String(freight.valor_nota),
+    valor_frete_bruto: freight.valor_frete_bruto === null ? "" : String(freight.valor_frete_bruto),
     valor_avaria: String(freight.valor_avaria),
     quantidade_avarias: String(freight.quantidade_avarias),
-    codigo_zona_jit: freight.codigo_zona_jit ?? "",
+    nome_cliente: freight.nome_cliente ?? "",
+    codigo_cliente: freight.codigo_cliente ?? "",
+    observacao: freight.observacao ?? "",
+    codigo_zona_jit: freight.codigo_zona_jit ?? freight.codigos_zonas_jit?.[0] ?? "",
+    codigos_zonas_jit: freight.codigos_zonas_jit?.length
+      ? freight.codigos_zonas_jit
+      : freight.codigo_zona_jit ? [freight.codigo_zona_jit] : [],
     adicionais_jit: freight.adicionais_jit,
     tipo_caminhao: freight.tipo_caminhao ?? "",
     carro_apoio: freight.carro_apoio ?? "",
   };
+}
+
+function valuesFromDraft(values: FormValues, options: FreightTariffOptions): FormValues {
+  const zones = values.codigos_zonas_jit?.length
+    ? values.codigos_zonas_jit
+    : values.codigo_zona_jit ? [values.codigo_zona_jit] : [];
+  return { ...emptyValues(options), ...values, codigos_zonas_jit: zones };
 }
 
 function decimalInput(value: string, label: string, optional = false): number | null {
@@ -107,8 +131,8 @@ function payloadFromValues(values: FormValues): FreightInput {
   if (values.tipo_transporte === "TRANSPORTADORA" && values.codigo_fonte_tarifa !== "JUST_IN_TIME" && values.codigo_fonte_tarifa !== "PAULO_CRUZ") {
     throw new Error("Selecione a transportadora na etapa 01.");
   }
-  if (values.codigo_fonte_tarifa === "JUST_IN_TIME" && !values.codigo_zona_jit) {
-    throw new Error("Selecione a região e a área de atendimento JUST IN TIME.");
+  if (values.codigo_fonte_tarifa === "JUST_IN_TIME" && values.codigos_zonas_jit.length === 0) {
+    throw new Error("Marque pelo menos uma zona de atendimento JUST IN TIME.");
   }
   if (values.codigo_fonte_tarifa !== "JUST_IN_TIME" && values.rota_cidade.trim().length < 2) {
     throw new Error("Informe a rota ou cidade do frete.");
@@ -145,6 +169,7 @@ function payloadFromValues(values: FormValues): FreightInput {
     throw new Error("A quantidade de avarias deve ser um número igual ou maior que zero.");
   }
   const invoice = decimalInput(values.valor_nota, "Valor da nota", true);
+  const gross = decimalInput(values.valor_frete_bruto, "Valor bruto do frete", true);
   if (values.tipo_transporte === "AGREGADO" && values.codigo_fonte_tarifa !== "AGREGADOS_CD") {
     throw new Error("Selecione a tabela de tarifa de agregados.");
   }
@@ -168,9 +193,14 @@ function payloadFromValues(values: FormValues): FreightInput {
     quantidade_entregas: deliveries,
     peso_kg: weight ?? 0,
     valor_nota: invoice,
+    valor_frete_bruto: gross,
     valor_avaria: damage ?? 0,
     quantidade_avarias: values.tipo_transporte === "AGREGADO" ? damageCount : 0,
-    codigo_zona_jit: values.codigo_fonte_tarifa === "JUST_IN_TIME" ? values.codigo_zona_jit : null,
+    nome_cliente: values.nome_cliente.trim() || null,
+    codigo_cliente: values.codigo_cliente.trim() || null,
+    observacao: values.observacao.trim() || null,
+    codigo_zona_jit: values.codigo_fonte_tarifa === "JUST_IN_TIME" ? values.codigos_zonas_jit[0] ?? null : null,
+    codigos_zonas_jit: values.codigo_fonte_tarifa === "JUST_IN_TIME" ? values.codigos_zonas_jit : [],
     adicionais_jit: values.codigo_fonte_tarifa === "JUST_IN_TIME" ? values.adicionais_jit : [],
     tipo_caminhao: values.codigo_fonte_tarifa === "PAULO_CRUZ" ? values.tipo_caminhao as FreightTruckType : null,
     carro_apoio: values.codigo_fonte_tarifa === "PAULO_CRUZ" ? values.carro_apoio || null : null,
@@ -181,7 +211,7 @@ function payloadFromValues(values: FormValues): FreightInput {
 export function FreightForm({ options, onCreated, initialFreight, onUpdated }: Props) {
   const { user } = useAuth();
   const draftKey = `lancamento-logistica:draft:freight:${user?.id_usuario}:${initialFreight?.codigo_frete ?? "new"}`;
-  const [restored] = useState(() => readSessionDraft<{ values: FormValues; jitRegionCode: string; idempotency: { signature: string; key: string } | null }>(draftKey));
+  const [restored] = useState(() => readSessionDraft<{ values: FormValues; idempotency: { signature: string; key: string } | null }>(draftKey));
   const dateId = useId();
   const transportTypeId = useId();
   const aggregateDriverId = useId();
@@ -193,18 +223,14 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const deliveriesId = useId();
   const weightId = useId();
   const invoiceId = useId();
+  const grossId = useId();
   const damageId = useId();
   const damageCountId = useId();
-  const regionId = useId();
-  const zoneId = useId();
   const truckId = useId();
   const supportId = useId();
-  const [values, setValues] = useState(() => restored?.values ?? (initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options)));
-  const [jitRegionCode, setJitRegionCode] = useState(() =>
-    restored?.jitRegionCode ?? options.zonas_just_in_time.find((region) =>
-      region.subzonas.some((zone) => zone.codigo === initialFreight?.codigo_zona_jit),
-    )?.codigo ?? "",
-  );
+  const [values, setValues] = useState(() => restored
+    ? valuesFromDraft(restored.values, options)
+    : initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options));
   const preserveSummaryFor = useRef(restored || initialFreight ? `${values.data_servico}:${values.id_motorista_agregado}` : "");
   const [aggregateDrivers, setAggregateDrivers] = useState<FreightAggregateDriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
@@ -224,8 +250,8 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const idempotency = useRef<{ signature: string; key: string } | null>(restored?.idempotency ?? null);
 
   useEffect(() => {
-    writeSessionDraft(draftKey, { values, jitRegionCode, idempotency: idempotency.current });
-  }, [draftKey, values, jitRegionCode]);
+    writeSessionDraft(draftKey, { values, idempotency: idempotency.current });
+  }, [draftKey, values]);
 
   useEffect(() => {
     if (values.tipo_transporte !== "AGREGADO") {
@@ -314,7 +340,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
         }
         setValues((current) => summary.quantidade_registros > 0 && current.data_servico === summary.data_servico
           && current.id_motorista_agregado === String(summary.id_motorista)
-          ? { ...current, rota_cidade: summary.rota_cidade, quantidade_entregas: String(summary.quantidade_entregas), peso_kg: summary.peso_total_kg === null || Number(summary.peso_total_kg) <= 0 ? current.peso_kg : String(summary.peso_total_kg), quantidade_avarias: String(summary.quantidade_avarias) }
+          ? { ...current, rota_cidade: summary.rota_cidade, quantidade_entregas: String(summary.quantidade_entregas), peso_kg: summary.peso_total_kg === null || Number(summary.peso_total_kg) <= 0 ? current.peso_kg : String(summary.peso_total_kg), quantidade_avarias: String(summary.quantidade_avarias), valor_frete_bruto: "" }
           : current);
       })
       .catch((loadError: unknown) => { if (active) setSummaryError(messageFromApiError(loadError)); })
@@ -323,7 +349,12 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   }, [values.data_servico, values.id_motorista_agregado, values.tipo_transporte]);
 
   const update = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
-    setValues((current) => ({ ...current, [key]: value }));
+    const resetGross = key !== "valor_frete_bruto" && key !== "valor_avaria" && key !== "quantidade_avarias" && key !== "nome_cliente" && key !== "codigo_cliente" && key !== "observacao";
+    setValues((current) => ({
+      ...current,
+      [key]: value,
+      ...(resetGross ? { valor_frete_bruto: "" } : {}),
+    }));
     setQuote(null);
     setQuoteSignature("");
     setPendingSignature("");
@@ -380,9 +411,17 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
     setError("");
     try {
       const result = await freightsApi.quote(input);
-      const signature = JSON.stringify(input);
+      const quotedGross = numericValue(result.valor_frete_bruto);
+      const reviewedInput = input.valor_frete_bruto == null && quotedGross !== null
+        ? { ...input, valor_frete_bruto: quotedGross }
+        : input;
+      if (input.valor_frete_bruto == null && quotedGross !== null) {
+        setValues((current) => ({ ...current, valor_frete_bruto: String(quotedGross) }));
+      }
+      const signature = JSON.stringify(reviewedInput);
       setQuote(result);
       setQuoteSignature(signature);
+      setPendingSignature(quotedGross !== null || input.valor_frete_bruto != null ? signature : "");
     } catch (quoteError: unknown) {
       setError(messageFromApiError(quoteError));
     } finally {
@@ -409,15 +448,27 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
       setError(messageFromApiError(validationError));
       return;
     }
-    const signature = JSON.stringify(payload);
     setBusy(true);
     setBusyAction("submit");
     setError("");
     try {
       const latestQuote = await freightsApi.quote(payload);
+      const quotedGross = numericValue(latestQuote.valor_frete_bruto);
+      const finalPayload = payload.valor_frete_bruto == null && quotedGross !== null
+        ? { ...payload, valor_frete_bruto: quotedGross }
+        : payload;
+      if (payload.valor_frete_bruto == null && quotedGross !== null) {
+        setValues((current) => ({ ...current, valor_frete_bruto: String(quotedGross) }));
+      }
+      const signature = JSON.stringify(finalPayload);
       setQuote(latestQuote);
       setQuoteSignature(signature);
-      if (latestQuote.status_calculo === "PENDENTE_CONFERENCIA" && pendingSignature !== signature) {
+      if (finalPayload.valor_frete_bruto == null) {
+        setPendingSignature("");
+        setError("A tarifa não gerou um valor automaticamente. Informe o valor bruto correto para continuar com o lançamento.");
+        return;
+      }
+      if (pendingSignature !== signature) {
         setPendingSignature(signature);
         return;
       }
@@ -425,13 +476,13 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
       if (!idempotency.current || idempotency.current.signature !== signature) {
         idempotency.current = { signature, key: crypto.randomUUID() };
       }
-      writeSessionDraft(draftKey, { values, jitRegionCode, idempotency: idempotency.current });
+      writeSessionDraft(draftKey, { values, idempotency: idempotency.current });
       const saved = initialFreight
-        ? await freightsApi.update(initialFreight.codigo_frete, payload, idempotency.current.key)
-        : await freightsApi.create(payload, idempotency.current.key);
+        ? await freightsApi.update(initialFreight.codigo_frete, finalPayload, idempotency.current.key)
+        : await freightsApi.create(finalPayload, idempotency.current.key);
       idempotency.current = null;
       clearSessionDraft(draftKey);
-      if (!initialFreight) { setValues(emptyValues(options)); setJitRegionCode(""); }
+      if (!initialFreight) setValues(emptyValues(options));
       if (initialFreight) onUpdated?.(saved);
       else onCreated(saved);
     } catch (submitError: unknown) {
@@ -447,8 +498,10 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   })();
   const liveQuote = quote && quoteSignature === currentSignature ? quote : null;
   const pendingConfirm = currentSignature !== "" && pendingSignature === currentSignature;
-  const selectedRegion = options.zonas_just_in_time.find((region) => region.codigo === jitRegionCode);
-  const selectedZone = selectedRegion?.subzonas.find((zone) => zone.codigo === values.codigo_zona_jit);
+  const jitZoneOptions = options.zonas_just_in_time.flatMap((region) => region.subzonas);
+  const selectedJitZoneNames = jitZoneOptions
+    .filter((zone) => values.codigos_zonas_jit.includes(zone.codigo))
+    .map((zone) => zone.nome);
   const selectedTruck = options.tipos_caminhao_paulo_cruz.find((truck) => truck.codigo === values.tipo_caminhao);
 
   return (
@@ -462,8 +515,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <select id={transportTypeId} value={values.tipo_transporte} onChange={(event) => {
               const type = event.target.value as FreightTransportType;
               const source: FreightTariffSource | "" = type === "AGREGADO" ? "AGREGADOS_CD" : "";
-              setValues((current) => ({ ...current, tipo_transporte: type, nome_transportador: "", id_motorista_agregado: "", id_motorista_transportadora: "", codigo_fonte_tarifa: source, rota_cidade: "", quantidade_entregas: "0", peso_kg: "0", quantidade_avarias: "0", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", carro_apoio: "", km_inicial: "", km_final: "" }));
-              setJitRegionCode("");
+              setValues((current) => ({ ...current, tipo_transporte: type, nome_transportador: "", id_motorista_agregado: "", id_motorista_transportadora: "", codigo_fonte_tarifa: source, rota_cidade: "", quantidade_entregas: "0", peso_kg: "0", quantidade_avarias: "0", codigo_zona_jit: "", codigos_zonas_jit: [], adicionais_jit: [], valor_frete_bruto: "", tipo_caminhao: "", carro_apoio: "", km_inicial: "", km_final: "" }));
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
               <option value="AGREGADO">Agregado</option>
@@ -474,7 +526,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <select id={aggregateDriverId} value={values.id_motorista_agregado} onChange={(event) => {
               const id = event.target.value;
               const driver = aggregateDrivers.find((item) => String(item.id_motorista) === id);
-              setValues((current) => ({ ...current, id_motorista_agregado: id, nome_transportador: driver?.nome_motorista ?? "", rota_cidade: "", quantidade_entregas: "0", peso_kg: "0", quantidade_avarias: "0" }));
+              setValues((current) => ({ ...current, id_motorista_agregado: id, nome_transportador: driver?.nome_motorista ?? "", rota_cidade: "", quantidade_entregas: "0", peso_kg: "0", quantidade_avarias: "0", valor_frete_bruto: "" }));
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} required disabled={busy || driversLoading || Boolean(driversError)}>
               <option value="">{driversLoading ? "Carregando motoristas..." : "Selecione o motorista"}</option>
@@ -494,11 +546,12 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
                 nome_transportador: selected?.nome_transportadora ?? "",
                 rota_cidade: "",
                 codigo_zona_jit: "",
+                codigos_zonas_jit: [],
                 adicionais_jit: [],
+                valor_frete_bruto: "",
                 tipo_caminhao: "",
                 carro_apoio: "",
               }));
-              setJitRegionCode("");
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} required disabled={busy || carrierDriversLoading || Boolean(carrierDriversError)}>
               <option value="">{carrierDriversLoading ? "Carregando motoristas..." : "Selecione o motorista"}</option>
@@ -525,8 +578,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
           </div> : <label className={cx(styles, "field")} htmlFor={sourceId}>Fonte tarifária
             <select id={sourceId} value={values.codigo_fonte_tarifa} onChange={(event) => {
               const source = event.target.value as FreightTariffSource;
-              setValues((current) => ({ ...current, codigo_fonte_tarifa: source, rota_cidade: "", codigo_zona_jit: "", adicionais_jit: [], tipo_caminhao: "", carro_apoio: "" }));
-              setJitRegionCode("");
+              setValues((current) => ({ ...current, codigo_fonte_tarifa: source, rota_cidade: "", codigo_zona_jit: "", codigos_zonas_jit: [], adicionais_jit: [], valor_frete_bruto: "", tipo_caminhao: "", carro_apoio: "" }));
               setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
             }} disabled={busy}>
               {sourceOptions.map((source) => <option key={source.codigo} value={source.codigo}>{source.nome}</option>)}
@@ -544,30 +596,13 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               <small>{deliverySummary?.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Selecione a rota do frete."}</small>
             </label>
           ) : values.codigo_fonte_tarifa === "JUST_IN_TIME" ? (
-            <>
-              <label className={cx(styles, "field")} htmlFor={regionId}>Região
-                <select id={regionId} value={jitRegionCode} onChange={(event) => {
-                  setJitRegionCode(event.target.value);
-                  setValues((current) => ({ ...current, codigo_zona_jit: "", rota_cidade: "" }));
-                  setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
-                }} required disabled={busy}>
-                  <option value="">Selecione a região</option>
-                  {options.zonas_just_in_time.map((region) => <option value={region.codigo} key={region.codigo}>{region.nome}</option>)}
-                </select>
-              </label>
-              {selectedRegion && <label className={cx(styles, "field")} htmlFor={zoneId}>Área de atendimento
-                <select id={zoneId} value={values.codigo_zona_jit} onChange={(event) => {
-                  const zoneCode = event.target.value;
-                  const zone = selectedRegion.subzonas.find((item) => item.codigo === zoneCode);
-                  setValues((current) => ({ ...current, codigo_zona_jit: zoneCode, rota_cidade: zone?.nome ?? "" }));
-                  setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
-                }} required disabled={busy}>
-                  <option value="">Selecione a área de atendimento</option>
-                  {selectedRegion.subzonas.map((zone) => <option value={zone.codigo} key={zone.codigo}>{zone.nome}</option>)}
-                </select>
-                {selectedZone && <span className={cx(styles, "jit-zone-areas")}><strong>Áreas atendidas</strong><small>{selectedZone.areas}</small></span>}
-              </label>}
-            </>
+            <div className={cx(styles, "field")}>
+              <span>Zonas selecionadas</span>
+              <div className={cx(styles, "locked-selection")}>
+                {selectedJitZoneNames.length ? selectedJitZoneNames.join(", ") : "Nenhuma zona selecionada"}
+              </div>
+              <small>Marque abaixo todas as zonas atendidas por este serviço.</small>
+            </div>
           ) : values.codigo_fonte_tarifa === "PAULO_CRUZ" ? (
             <label className={cx(styles, "field")} htmlFor={routeId}>Cidade / rota
               <input id={routeId} value={values.rota_cidade} onChange={(event) => update("rota_cidade", event.target.value)} required minLength={2} maxLength={160} placeholder="Ex.: Macaé — região serrana" disabled={busy} />
@@ -581,10 +616,51 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
         </div>
         {values.codigo_fonte_tarifa === "JUST_IN_TIME" && <section className={cx(styles, "jit-panel")} aria-label="Configuração da tarifa JUST IN TIME">
           <header className={cx(styles, "jit-panel-header")}>
-            <div><p>CONFIGURAÇÃO DA TARIFA</p><h3>JUST IN TIME</h3><span>A tarifa usa a região selecionada acima e a faixa de peso do serviço.</span></div>
-            <span className={cx(styles, "jit-selection-count")}>{values.adicionais_jit.length === 0 ? "Nenhum adicional" : `${values.adicionais_jit.length} ${values.adicionais_jit.length === 1 ? "adicional" : "adicionais"}`}</span>
+            <div><p>CONFIGURAÇÃO DA TARIFA</p><h3>JUST IN TIME</h3><span>Marque as zonas atendidas e os adicionais aplicáveis.</span></div>
+            <span className={cx(styles, "jit-selection-count")}>{values.codigos_zonas_jit.length === 0 ? "Nenhuma zona" : `${values.codigos_zonas_jit.length} ${values.codigos_zonas_jit.length === 1 ? "zona" : "zonas"}`}</span>
           </header>
           <div className={cx(styles, "jit-grid")}>
+            <fieldset className={cx(styles, "jit-additions-card")}>
+              <legend>Zonas atendidas <span aria-hidden="true">*</span></legend>
+              <p className={cx(styles, "checkbox-help")}>Selecione uma ou mais zonas. A região de cada zona e suas áreas atendidas aparecem abaixo.</p>
+              <div className={cx(styles, "jit-zone-groups")}>
+                {options.zonas_just_in_time.map((region) => <section className={cx(styles, "jit-zone-group")} key={region.codigo}>
+                  <h4 className={cx(styles, "jit-zone-group-title")}>{region.nome}</h4>
+                  <div className={cx(styles, "checkbox-list")}>
+                    {region.subzonas.map((zone) => {
+                      const checked = values.codigos_zonas_jit.includes(zone.codigo);
+                      return <label className={cx(styles, `checkbox-option checkbox-zone-option${checked ? " checkbox-option-selected" : ""}`)} key={zone.codigo}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          aria-required="true"
+                          disabled={busy}
+                          onChange={(event) => {
+                            const nextCodes = event.target.checked
+                              ? [...values.codigos_zonas_jit, zone.codigo]
+                              : values.codigos_zonas_jit.filter((code) => code !== zone.codigo);
+                            const nextZones = jitZoneOptions.filter((item) => nextCodes.includes(item.codigo));
+                            setValues((current) => ({
+                              ...current,
+                              codigos_zonas_jit: nextCodes,
+                              codigo_zona_jit: nextCodes[0] ?? "",
+                              valor_frete_bruto: "",
+                              rota_cidade: nextZones.length > 1
+                                ? "JUST IN TIME"
+                                : nextZones[0]?.nome ?? "",
+                            }));
+                            setQuote(null); setQuoteSignature(""); setPendingSignature(""); setError("");
+                          }}
+                        />
+                        <span className={cx(styles, "jit-zone-option-copy")}><strong>{zone.nome}</strong><small>{zone.areas}</small></span>
+                      </label>;
+                    })}
+                  </div>
+                </section>)}
+              </div>
+              {values.codigos_zonas_jit.length === 0 && <small className={cx(styles, "jit-required-note")} role="status">Marque pelo menos uma zona para fazer o lançamento.</small>}
+              {values.codigos_zonas_jit.length > 1 && <small className={cx(styles, "jit-review-note")}>Fretes com várias zonas seguem para conferência do valor, conforme a tabela JIT.</small>}
+            </fieldset>
             <fieldset className={cx(styles, "jit-additions-card")}>
               <legend>Adicionais aplicáveis</legend>
               <p className={cx(styles, "checkbox-help")}>Selecione apenas o que foi realizado neste frete.</p>
@@ -643,6 +719,15 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
           <div><span className={cx(styles, "step-number")}>{values.tipo_transporte === "TRANSPORTADORA" ? "03" : "04"}</span><div><p>DETALHES DO SERVIÇO</p><h2 id="freight-details-heading">Volume e valores</h2></div></div>
         </div>
         <div className={cx(styles, "field-grid", "field-grid-two")}>
+          <label className={cx(styles, "field")}>Nome do cliente (opcional)
+            <input type="text" maxLength={160} value={values.nome_cliente} onChange={(event) => update("nome_cliente", event.target.value)} disabled={busy} />
+          </label>
+          <label className={cx(styles, "field")}>Código do cliente (opcional)
+            <input type="text" maxLength={80} value={values.codigo_cliente} onChange={(event) => update("codigo_cliente", event.target.value)} disabled={busy} />
+          </label>
+          <label className={cx(styles, "field", "field-wide")}>Observação (opcional)
+            <textarea maxLength={1000} rows={3} value={values.observacao} onChange={(event) => update("observacao", event.target.value)} disabled={busy} />
+          </label>
           <label className={cx(styles, "field")} htmlFor={deliveriesId}>Quantidade de entregas
             <input id={deliveriesId} type="number" min="0" step="1" value={values.quantidade_entregas} onChange={(event) => update("quantidade_entregas", event.target.value)} required disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
             {values.tipo_transporte === "AGREGADO" && <small>{deliverySummary?.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Informe a quantidade manualmente."}</small>}
@@ -654,6 +739,15 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
           <label className={cx(styles, "field")} htmlFor={invoiceId}>
             <span className={cx(styles, "field-label-row")}><span>Valor da nota</span>{values.codigo_fonte_tarifa === "AGREGADOS_CD" ? <span className={cx(styles, "required-label")}>Obrigatório</span> : <span className={cx(styles, "optional-label")}>Opcional</span>}</span>
             <input id={invoiceId} inputMode="decimal" type="text" value={values.valor_nota} onChange={(event) => update("valor_nota", event.target.value)} required={values.codigo_fonte_tarifa === "AGREGADOS_CD"} placeholder="R$ 0,00" disabled={busy} />
+          </label>
+          <label className={cx(styles, "field")} htmlFor={grossId}>
+            <span className={cx(styles, "field-label-row")}><span>Valor bruto do frete</span><span className={cx(styles, "required-label")}>Conferir antes de lançar</span></span>
+            <input id={grossId} inputMode="decimal" type="text" value={values.valor_frete_bruto} onChange={(event) => update("valor_frete_bruto", event.target.value)} placeholder="Calculado ao simular" disabled={busy} />
+            <small>{values.valor_frete_bruto
+              ? "Confira o valor calculado e altere se necessário. O valor exibido será registrado no lançamento."
+              : values.codigo_fonte_tarifa === "JUST_IN_TIME" && values.codigos_zonas_jit.length > 1
+                ? "Para várias zonas, informe o valor total acordado; a tabela não define uma soma automática."
+                : "O sistema calcula o valor ao simular. Se não houver tarifa automática, informe o valor correto aqui."}</small>
           </label>
           <label className={cx(styles, "field")} htmlFor={damageCountId}>Quantidade de avarias
             <input id={damageCountId} type="number" min="0" step="1" value={values.quantidade_avarias} onChange={(event) => update("quantidade_avarias", event.target.value)} readOnly={values.tipo_transporte !== "AGREGADO"} disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
@@ -669,17 +763,17 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
 
       {error && <div className={cx(styles, commonStyles, "notice notice-error", "form-message")} role="alert">{error}</div>}
       {liveQuote && <section className={cx(styles, "quote-card", liveQuote.status_calculo === "PENDENTE_CONFERENCIA" ? "quote-pending" : "quote-ready")} aria-live="polite">
-        <div><span className={cx(styles, "quote-icon")}>{liveQuote.status_calculo === "CALCULADO" ? "✓" : "!"}</span><div><p>{liveQuote.status_calculo === "CALCULADO" ? "PRÉVIA DO FRETE" : "CONFERÊNCIA NECESSÁRIA"}</p><h2>{liveQuote.status_calculo === "CALCULADO" ? formatMoney(liveQuote.valor_frete_bruto) : "Valor aguardando conferência"}</h2>{liveQuote.motivo_pendencia && <small>{liveQuote.motivo_pendencia}</small>}</div></div>
+        <div><span className={cx(styles, "quote-icon")}>{liveQuote.status_calculo === "CALCULADO" ? "✓" : "!"}</span><div><p>{liveQuote.status_calculo === "CALCULADO" ? "PRÉVIA DO FRETE" : "CONFERÊNCIA NECESSÁRIA"}</p><h2>{liveQuote.status_calculo === "CALCULADO" ? formatMoney(liveQuote.valor_frete_bruto) : "Valor aguardando conferência"}</h2>{liveQuote.motivo_pendencia && <small>{liveQuote.motivo_pendencia}</small>}{liveQuote.detalhe_calculo.valor_frete_bruto_informado_manualmente === true && <small>Valor informado manualmente; a tarifa de referência foi preservada na memória do cálculo.</small>}</div></div>
         {liveQuote.status_calculo === "CALCULADO" && <span className={cx(styles, "quote-route")}>{values.nome_transportador} · {values.rota_cidade}</span>}
       </section>}
-      {pendingConfirm && <div className={cx(styles, commonStyles, "notice notice-warning", "form-message")} role="status">Este lançamento ficará pendente de conferência e não entrará na exportação de pagamento deste responsável até ser resolvido. Clique em confirmar para {initialFreight ? "salvar as alterações" : "registrar"}.</div>}
+      {pendingConfirm && <div className={cx(styles, commonStyles, "notice notice-warning", "form-message")} role="status">Confira o valor bruto acima. Clique em confirmar para {initialFreight ? "salvar as alterações" : "registrar o frete"} com esse valor.</div>}
 
       <div className={cx(styles, "form-actions")}>
-        <span>Os valores são calculados pelas fontes tarifárias disponíveis.</span>
+        <span>Confira o valor bruto calculado antes de registrar.</span>
         <div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { void simulate(); }} disabled={busy || driversLoading || summaryLoading}>{busyAction === "quote" ? "Calculando..." : "Simular cálculo"}</button>
           <button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={busy || driversLoading || summaryLoading}>
-            {busyAction === "submit" ? (initialFreight ? "Salvando..." : "Registrando...") : pendingConfirm ? "Confirmar lançamento pendente" : initialFreight ? "Salvar alterações" : "Registrar frete"}
+            {busyAction === "submit" ? (initialFreight ? "Salvando..." : "Registrando...") : pendingConfirm ? "Confirmar valor e registrar" : initialFreight ? "Salvar alterações" : "Registrar frete"}
           </button>
         </div>
       </div>

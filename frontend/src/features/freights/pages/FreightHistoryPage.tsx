@@ -64,6 +64,18 @@ function transportName(item: FreightResponse): string {
     : carrier;
 }
 
+function jitZoneLabel(item: FreightResponse): string {
+  const zones = item.detalhe_calculo.zonas_jit;
+  if (Array.isArray(zones)) {
+    const names = zones.flatMap((zone) => {
+      if (typeof zone !== "object" || zone === null || !("nome" in zone)) return [];
+      return typeof zone.nome === "string" ? [zone.nome] : [];
+    });
+    if (names.length) return names.join(", ");
+  }
+  return item.codigos_zonas_jit?.join(", ") || item.codigo_zona_jit || "Não se aplica";
+}
+
 function importSource(item: FreightResponse): Record<string, unknown> | null {
   const value = item.detalhe_calculo.importacao_planilha;
   return typeof value === "object" && value !== null ? value as Record<string, unknown> : null;
@@ -144,6 +156,8 @@ function FreightDetailsDialog({
   }, [onClose]);
 
   const source = importSource(item);
+  const manualGross = item.detalhe_calculo.valor_frete_bruto_informado_manualmente === true;
+  const tariffGross = item.detalhe_calculo.valor_frete_bruto_tarifado;
   const sections: Array<{ title: string; fields: Array<[string, string]> }> = [
     {
       title: "Dados do serviço",
@@ -151,6 +165,9 @@ function FreightDetailsDialog({
         ["Tipo de transporte", transportTypeLabelForItem(item)],
         ["Responsável", transportName(item)],
         ["Rota / cidade", item.rota_cidade || "Não informada na planilha"],
+        ["Cliente", item.nome_cliente || "Não informado"],
+        ["Código do cliente", item.codigo_cliente || "Não informado"],
+        ["Observação", item.observacao || "Nenhuma"],
         ["Fonte tarifária", item.codigo_fonte_tarifa ? tariffSourceLabel(item.codigo_fonte_tarifa) : "Não informada"],
       ],
     },
@@ -161,7 +178,7 @@ function FreightDetailsDialog({
         ["Peso", item.peso_kg === null ? "Não informado na planilha" : `${formatNumber(item.peso_kg)} kg`],
         ["Tipo de caminhão", truckLabel(item.tipo_caminhao)],
         ...(item.codigo_fonte_tarifa === "PAULO_CRUZ" ? [["Carro de apoio", item.carro_apoio === "SAVEIRO" ? "Saveiro · R$ 300,00" : item.carro_apoio === "KIA_BONGO" ? "Bongo · R$ 500,00" : "Nenhum"] as [string, string]] : []),
-        ["Zona JUST IN TIME", item.codigo_zona_jit ?? "Não se aplica"],
+        ["Zona JUST IN TIME", jitZoneLabel(item)],
         ["Adicionais", item.adicionais_jit.length ? item.adicionais_jit.join(", ") : "Nenhum"],
       ],
     },
@@ -180,6 +197,10 @@ function FreightDetailsDialog({
         ["Quantidade de avarias", source?.quantidade_avarias_informada === false ? "Não informada na planilha" : item.quantidade_avarias.toLocaleString("pt-BR")],
         ["Valor da avaria", formatMoney(item.valor_avaria)],
         ["Frete bruto", formatMoney(item.valor_frete_bruto)],
+        ...(manualGross ? [
+          ["Valor bruto informado manualmente", "Sim"] as [string, string],
+          ["Tarifa calculada de referência", formatMoney(typeof tariffGross === "string" || typeof tariffGross === "number" ? tariffGross : null)] as [string, string],
+        ] : []),
         [source?.percentual_frete_planilha !== null && source?.percentual_frete_planilha !== undefined
           ? "Percentual na planilha" : "Percentual calculado", source?.percentual_frete_planilha !== null && source?.percentual_frete_planilha !== undefined
             ? formatSourcePercentage(source.percentual_frete_planilha)
@@ -290,7 +311,7 @@ function FreightRow({
   return <tr>
     <td><strong>{formatDate(item.data_servico)}</strong>{!item.cancelado && item.status_calculo === "PENDENTE_CONFERENCIA" && <small className={cx(styles, "pending-label")}>Pendente de conferência</small>}{item.cancelado && <small className={cx(styles, "cancelled-row-label")}>Cancelado</small>}</td>
     <td><strong>{transportTypeLabelForItem(item)}</strong><small>{transportName(item)}</small></td>
-    <td><strong>{item.rota_cidade || "Rota não informada"}</strong><div className={cx(styles, "freight-row-metrics")}><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar quantidade de entregas">{item.quantidade_entregas === null ? "Entregas não informadas" : `${item.quantidade_entregas.toLocaleString("pt-BR")} entregas`}</button><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar peso">{item.peso_kg === null ? "Peso não informado" : `${formatNumber(item.peso_kg)} kg`}</button></div></td>
+    <td><strong>{item.codigo_fonte_tarifa === "JUST_IN_TIME" ? jitZoneLabel(item) : item.rota_cidade || "Rota não informada"}</strong><div className={cx(styles, "freight-row-metrics")}><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar quantidade de entregas">{item.quantidade_entregas === null ? "Entregas não informadas" : `${item.quantidade_entregas.toLocaleString("pt-BR")} entregas`}</button><button type="button" onClick={() => onMetricDetails("Operação")} aria-label="Detalhar peso">{item.peso_kg === null ? "Peso não informado" : `${formatNumber(item.peso_kg)} kg`}</button></div></td>
     <td>{item.tipo_transporte === "TRANSPORTADORA" ? <span>Não se aplica</span> : <><button className={cx(styles, "freight-row-primary-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar hodômetro rodado">{formatNumber(item.km_rodado)} km</button><small>Inicial <button className={cx(styles, "freight-row-inline-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar KM inicial">{formatNumber(item.km_inicial)}</button> · Final <button className={cx(styles, "freight-row-inline-metric")} type="button" onClick={() => onMetricDetails("Hodômetro")} aria-label="Detalhar KM final">{formatNumber(item.km_final)}</button></small></>}</td>
     <td>{item.valor_frete_bruto === null ? <strong>{formatMoney(item.valor_frete_bruto)}</strong> : <button className={cx(styles, "freight-row-primary-metric")} type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar valor bruto do frete">{formatMoney(item.valor_frete_bruto)}</button>}<div className={cx(styles, "freight-row-metrics freight-row-value-metrics")}><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar quantidade de avarias">{item.quantidade_avarias} avarias</button><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar valor da avaria">Avaria {formatMoney(item.valor_avaria)}</button><button type="button" onClick={() => onMetricDetails("Valores e conferência")} aria-label="Detalhar total líquido">Líquido {formatMoney(item.valor_frete_pago)}</button></div></td>
     <td>{!item.cancelado && item.status_calculo === "PENDENTE_CONFERENCIA" && <div className={cx(styles, "pending-reason")}><strong>Pendência</strong><span>{item.motivo_pendencia || "Aguardando conferência."}</span></div>}<div className={cx(styles, commonStyles, "history-row-actions")}>

@@ -714,6 +714,9 @@ def _freight_response(
     if status != freight.status_calculo or reason != freight.motivo_pendencia:
         calculation_detail.update(status=status, motivo=reason)
     payment_amount = _payment_amount(freight)
+    zone_codes = calculation_detail.get("codigos_zonas_jit")
+    if not isinstance(zone_codes, list):
+        zone_codes = [freight.codigo_zona_jit] if freight.codigo_zona_jit else []
     return FreightResponse(
         id_frete=freight.id_frete,
         codigo_frete=UUID(freight.codigo_frete),
@@ -735,7 +738,11 @@ def _freight_response(
         carro_apoio=(freight.detalhe_calculo.get("carro_apoio")
                      if freight.detalhe_calculo.get("carro_apoio") in ("SAVEIRO", "KIA_BONGO")
                      else None),
+        nome_cliente=calculation_detail.get("nome_cliente"),
+        codigo_cliente=calculation_detail.get("codigo_cliente"),
+        observacao=calculation_detail.get("observacao"),
         codigo_zona_jit=freight.codigo_zona_jit,
+        codigos_zonas_jit=[str(code) for code in zone_codes if isinstance(code, str)],
         adicionais_jit=freight.adicionais_jit,
         valor_frete_bruto=freight.valor_frete_bruto,
         valor_avaria=freight.valor_avaria,
@@ -2560,6 +2567,13 @@ def export_freight_history(
         reason = source_reason or ""
         import_source = freight.detalhe_calculo.get("importacao_planilha")
         import_source = import_source if isinstance(import_source, dict) else {}
+        zone_details = freight.detalhe_calculo.get("zonas_jit")
+        zone_names = [
+            str(zone["nome"])
+            for zone in zone_details
+            if isinstance(zone, dict) and zone.get("nome")
+        ] if isinstance(zone_details, list) else []
+        jit_zone_label = ", ".join(zone_names) or freight.codigo_zona_jit
         values: tuple[object, ...] = (
             freight.data_servico,
             type_label,
@@ -2587,7 +2601,7 @@ def export_freight_history(
             "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_rodado,
             truck_label,
             support_label,
-            freight.codigo_zona_jit,
+            jit_zone_label,
             ", ".join(freight.adicionais_jit or []),
         )
         fill = PatternFill(

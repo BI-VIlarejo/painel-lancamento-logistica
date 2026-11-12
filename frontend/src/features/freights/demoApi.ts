@@ -278,23 +278,39 @@ const additionWeightBands: Array<[number, number]> = [
   [6000, 6500], [7000, 7500], [8000, 8500], [9000, 9500], [10000, 10500], [11000, 11500], [12000, 12000],
 ];
 
-/** Calcula uma tarifa JIT apenas quando a faixa base e o adicional são únicos. */
+/** Calcula a tarifa JIT para uma zona e sinaliza conferência quando há várias. */
 function quoteJustInTime(payload: FreightInput): FreightQuoteResponse {
-  const zoneCode = payload.codigo_zona_jit ?? "";
-  const zone = jitAllowedZoneCodes.has(zoneCode)
-    ? jitZones.find((item) => item.codigo === zoneCode)
-    : undefined;
-  if (!zone) return pendingQuote("Selecione uma zona válida da tabela JUST IN TIME.", {});
+  const zoneCodes = payload.codigos_zonas_jit?.length
+    ? payload.codigos_zonas_jit
+    : payload.codigo_zona_jit ? [payload.codigo_zona_jit] : [];
+  const selectedZones = zoneCodes.map((code) => jitZones.find((item) =>
+    item.codigo === code && jitAllowedZoneCodes.has(item.codigo),
+  ));
+  if (!zoneCodes.length || selectedZones.some((zone) => !zone)) {
+    return pendingQuote("Selecione pelo menos uma zona válida da tabela JUST IN TIME.", {});
+  }
 
-  const weight = numeric(payload.peso_kg) ?? 0;
-  const tiers = jitTiers(zone.codigo);
-  const matches = tiers.filter((tier) => tier.min <= weight && weight <= tier.max);
+  const zones = selectedZones.filter((zone): zone is JustInTimeZoneOption => Boolean(zone));
+  const zoneDetails = zones.map((zone) => ({ codigo: zone.codigo, nome: zone.nome, areas: zone.areas }));
   const detail: Record<string, unknown> = {
-    zona: zone.nome,
-    areas_da_zona: zone.areas,
+    zona: zones.length === 1 ? zones[0].nome : zones.map((zone) => zone.nome),
+    codigos_zonas_jit: zones.map((zone) => zone.codigo),
+    zonas_jit: zoneDetails,
     peso_kg: String(payload.peso_kg),
     fonte_tarifa: "JUST_IN_TIME",
+    ...(zones.length === 1 ? { areas_da_zona: zones[0].areas } : {}),
   };
+  if (zones.length > 1) {
+    return pendingQuote(
+      "A tabela JUST IN TIME não define uma tarifa única para múltiplas zonas; confira o valor do frete.",
+      detail,
+    );
+  }
+
+  const weight = numeric(payload.peso_kg) ?? 0;
+  const zone = zones[0];
+  const tiers = jitTiers(zone.codigo);
+  const matches = tiers.filter((tier) => tier.min <= weight && weight <= tier.max);
   if (matches.length !== 1) {
     return pendingQuote(
       "A faixa de peso não tem um único valor aplicável na tabela JUST IN TIME.",
@@ -479,6 +495,28 @@ function calculateQuote(payload: FreightInput): FreightQuoteResponse {
       ? quoteJustInTime(payload)
       : quotePauloCruz(payload);
 
+  const manualGross = numeric(payload.valor_frete_bruto);
+  if (manualGross !== null) {
+    const tariffGross = numeric(quote.valor_frete_bruto);
+    if (quote.status_calculo !== "CALCULADO" || tariffGross === null || money(tariffGross) !== money(manualGross)) {
+      quote = {
+        status_calculo: "CALCULADO",
+        valor_frete_bruto: moneyText(manualGross),
+        percentual_frete: null,
+        motivo_pendencia: null,
+        detalhe_calculo: {
+          ...quote.detalhe_calculo,
+          status: "CALCULADO",
+          motivo: null,
+          formula: "valor_bruto_conferido_e_informado_pelo_gestor",
+          valor_frete_bruto_informado_manualmente: true,
+          valor_frete_bruto_tarifado: tariffGross === null ? null : moneyText(tariffGross),
+          motivo_calculo_tarifario: quote.motivo_pendencia,
+        },
+      };
+    }
+  }
+
   const invoice = numeric(payload.valor_nota);
   const gross = numeric(quote.valor_frete_bruto);
   if (quote.status_calculo === "CALCULADO" && quote.percentual_frete === null && invoice && gross !== null) {
@@ -489,6 +527,7 @@ function calculateQuote(payload: FreightInput): FreightQuoteResponse {
       detalhe_calculo: { ...quote.detalhe_calculo, percentual_frete: ratio },
     };
   }
+  quote = { ...quote, detalhe_calculo: { ...quote.detalhe_calculo, nome_cliente: payload.nome_cliente ?? null, codigo_cliente: payload.codigo_cliente ?? null, observacao: payload.observacao ?? null } };
   return quote;
 }
 
@@ -566,7 +605,7 @@ function demoPaymentWarning(item: FreightResponse) {
     if (item.valor_nota === null) missing.push("valor da nota");
     if (item.km_rodado === null) missing.push("KM rodado");
   } else if (item.codigo_fonte_tarifa === "JUST_IN_TIME") {
-    if (!item.codigo_zona_jit) missing.push("zona JUST IN TIME");
+    if (!item.codigo_zona_jit && !item.codigos_zonas_jit?.length) missing.push("zona JUST IN TIME");
     if (item.peso_kg === null) missing.push("peso");
   } else if (item.codigo_fonte_tarifa === "PAULO_CRUZ" && !item.tipo_caminhao) {
     missing.push("tipo de caminhão");
@@ -668,7 +707,11 @@ export const freightsDemoApi = {
       valor_nota: numeric(payload.valor_nota) === null ? null : String(numeric(payload.valor_nota)),
       tipo_caminhao: payload.tipo_caminhao ?? null,
       carro_apoio: payload.carro_apoio ?? null,
-      codigo_zona_jit: payload.codigo_zona_jit ?? null,
+      nome_cliente: payload.nome_cliente ?? null,
+      codigo_cliente: payload.codigo_cliente ?? null,
+      observacao: payload.observacao ?? null,
+      codigo_zona_jit: payload.codigo_zona_jit ?? payload.codigos_zonas_jit?.[0] ?? null,
+      codigos_zonas_jit: payload.codigos_zonas_jit ?? (payload.codigo_zona_jit ? [payload.codigo_zona_jit] : []),
       adicionais_jit: payload.adicionais_jit ?? [],
       valor_frete_bruto: gross === null ? null : moneyText(gross),
       valor_avaria: moneyText(damage),
@@ -793,6 +836,7 @@ export const freightsDemoApi = {
         valor_nota: imported.valor_nota,
         tipo_caminhao: null,
         codigo_zona_jit: null,
+        codigos_zonas_jit: [],
         adicionais_jit: [],
         valor_frete_bruto: gross === null ? null : moneyText(gross),
         valor_avaria: moneyText(damage),
@@ -866,7 +910,11 @@ export const freightsDemoApi = {
       valor_nota: numeric(payload.valor_nota) === null ? null : String(numeric(payload.valor_nota)),
       tipo_caminhao: payload.tipo_caminhao ?? null,
       carro_apoio: payload.carro_apoio ?? null,
-      codigo_zona_jit: payload.codigo_zona_jit ?? null,
+      nome_cliente: payload.nome_cliente ?? null,
+      codigo_cliente: payload.codigo_cliente ?? null,
+      observacao: payload.observacao ?? null,
+      codigo_zona_jit: payload.codigo_zona_jit ?? payload.codigos_zonas_jit?.[0] ?? null,
+      codigos_zonas_jit: payload.codigos_zonas_jit ?? (payload.codigo_zona_jit ? [payload.codigo_zona_jit] : []),
       adicionais_jit: payload.adicionais_jit ?? [],
       valor_frete_bruto: gross === null ? null : moneyText(gross),
       valor_avaria: moneyText(damage),
@@ -996,6 +1044,7 @@ export const freightsDemoApi = {
           valor_avaria: moneyText(damage),
           quantidade_avarias: existing.quantidade_avarias,
           codigo_zona_jit: savedPayload.codigo_zona_jit,
+          codigos_zonas_jit: (savedPayload.codigo_zona_jit ? [savedPayload.codigo_zona_jit] : []),
           adicionais_jit: savedPayload.adicionais_jit,
         });
       } else if (
@@ -1079,6 +1128,9 @@ export const freightsDemoApi = {
       tipo_caminhao: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.tipo_caminhao : null,
       carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
       codigo_zona_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME" ? savedPayload.codigo_zona_jit : null,
+      codigos_zonas_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME"
+        ? (savedPayload.codigo_zona_jit ? [savedPayload.codigo_zona_jit] : [])
+        : [],
       adicionais_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME" ? savedPayload.adicionais_jit : [],
       valor_frete_bruto: gross === null ? null : moneyText(gross),
       valor_avaria: moneyText(damage),
