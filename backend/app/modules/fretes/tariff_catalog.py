@@ -96,7 +96,7 @@ def tariff_options() -> dict[str, object]:
             {"codigo": "SAO PEDRO DA ALDEIA", "nome": "São Pedro da Aldeia"},
             {"codigo": "ARRAIAL DO CABO", "nome": "Arraial do Cabo"},
             {"codigo": "ARARUAMA", "nome": "Araruama"},
-            {"codigo": "CAMPOS", "nome": "Campos"},
+            {"codigo": "CAMPOS DOS GOYTACAZES", "nome": "Campos dos Goytacazes"},
         ],
         "zonas_just_in_time": [
             {

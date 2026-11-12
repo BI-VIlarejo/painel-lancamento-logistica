@@ -59,7 +59,7 @@ const aggregateRoutes = [
   { codigo: "SAO PEDRO DA ALDEIA", nome: "São Pedro da Aldeia" },
   { codigo: "ARRAIAL DO CABO", nome: "Arraial do Cabo" },
   { codigo: "ARARUAMA", nome: "Araruama" },
-  { codigo: "CAMPOS", nome: "Campos" },
+  { codigo: "CAMPOS DOS GOYTACAZES", nome: "Campos dos Goytacazes" },
 ];
 
 const jitZones: JustInTimeZoneOption[] = [
@@ -368,6 +368,7 @@ function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
     "ARRAIAL DO CABO": "CF",
     ARARUAMA: "AR",
     CAMPOS: "CP",
+    "CAMPOS DOS GOYTACAZES": "CP",
   };
   const sheet = routeSheets[route];
   if (!sheet) {

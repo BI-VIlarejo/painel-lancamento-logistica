@@ -294,6 +294,9 @@ def _build_historical_route_indexes(
             continue
         _add_route_alias(tariff_index, str(route.get("nome", "")), canonical)
         _add_route_alias(tariff_index, str(route.get("codigo", "")), canonical)
+        if normalize_label(canonical) == "CAMPOS DOS GOYTACAZES":
+            # A aba CP da planilha chama a rota apenas de "Campos".
+            _add_route_alias(tariff_index, "Campos", canonical)
 
     for region in tariff_options()["zonas_just_in_time"]:
         if not isinstance(region, dict):

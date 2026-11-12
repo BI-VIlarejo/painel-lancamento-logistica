@@ -101,7 +101,10 @@ def _calculate_aggregados_cd(
         "SAO PEDRO DA ALDEIA": "CF",
         "ARRAIAL DO CABO": "CF",
         "ARARUAMA": "AR",
+        # A planilha usa "Campos" no nome da rota, enquanto Entregas e o
+        # cadastro de localidades usam o nome oficial completo.
         "CAMPOS": "CP",
+        "CAMPOS DOS GOYTACAZES": "CP",
     }
     sheet = route_to_sheet.get(city)
     if sheet is None:
