@@ -445,7 +445,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
       <div className={cx(styles, commonStyles, "page-heading-row history-heading-row")}>
         <div><h1>Histórico de entregas</h1><p className={cx(styles, commonStyles, "page-lead")}>Consulte, filtre e exporte os lançamentos.</p></div>
         <div className={cx(styles, commonStyles, "history-heading-actions")}>
-          <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => void exportWorkbook()} disabled={exporting || loading}>{exporting ? "Preparando planilha..." : "Exportar Excel"}</button>
+          <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => void exportWorkbook()} disabled={exporting || loading}>{exporting ? "Preparando histórico..." : "Exportar histórico de entregas"}</button>
           {canCreate && <><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setImportOpen(true)}>Importar CSV</button><button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => onNavigate("/entregas")}><span aria-hidden="true">＋</span> Novo lançamento</button></>}
         </div>
       </div>

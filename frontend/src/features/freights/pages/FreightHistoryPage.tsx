@@ -556,8 +556,8 @@ export function FreightHistoryPage({ onNavigate, canCreate, canViewPayments }: P
         <div><p className={cx(styles, commonStyles, "eyebrow")}>OPERAÇÃO DE TRANSPORTE</p><h1>Histórico de fretes</h1><p className={cx(styles, commonStyles, "page-lead")}>Consulte, edite, cancele ou abra os dados completos dos serviços registrados.</p></div>
         <div className={cx(styles, "heading-actions")}>
           {canViewPayments && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/fretes/pagamentos")}>Pagamentos</button>}
-          <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => void exportHistory()} disabled={loading || total === 0 || exportingHistory}>{exportingHistory ? "Preparando XLSX…" : "Exportar histórico XLSX"}</button>
-          {canCreate && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setImportOpen(true)}>Importar planilha XLSX</button>}
+          <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => void exportHistory()} disabled={loading || total === 0 || exportingHistory}>{exportingHistory ? "Preparando histórico…" : "Exportar histórico"}</button>
+          {canCreate && <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setImportOpen(true)}>Importar planilha</button>}
           {canCreate && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => onNavigate("/fretes")}>+ Lançar frete</button>}
         </div>
       </header>
