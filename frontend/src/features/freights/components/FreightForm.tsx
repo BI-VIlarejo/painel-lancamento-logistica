@@ -719,15 +719,6 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
           <div><span className={cx(styles, "step-number")}>{values.tipo_transporte === "TRANSPORTADORA" ? "03" : "04"}</span><div><p>DETALHES DO SERVIÇO</p><h2 id="freight-details-heading">Volume e valores</h2></div></div>
         </div>
         <div className={cx(styles, "field-grid", "field-grid-two")}>
-          <label className={cx(styles, "field")}>Nome do cliente (opcional)
-            <input type="text" maxLength={160} value={values.nome_cliente} onChange={(event) => update("nome_cliente", event.target.value)} disabled={busy} />
-          </label>
-          <label className={cx(styles, "field")}>Código do cliente (opcional)
-            <input type="text" maxLength={80} value={values.codigo_cliente} onChange={(event) => update("codigo_cliente", event.target.value)} disabled={busy} />
-          </label>
-          <label className={cx(styles, "field", "field-wide")}>Observação (opcional)
-            <textarea maxLength={1000} rows={3} value={values.observacao} onChange={(event) => update("observacao", event.target.value)} disabled={busy} />
-          </label>
           <label className={cx(styles, "field")} htmlFor={deliveriesId}>Quantidade de entregas
             <input id={deliveriesId} type="number" min="0" step="1" value={values.quantidade_entregas} onChange={(event) => update("quantidade_entregas", event.target.value)} required disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
             {values.tipo_transporte === "AGREGADO" && <small>{deliverySummary?.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Informe a quantidade manualmente."}</small>}
@@ -757,6 +748,15 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <span className={cx(styles, "field-label-row")}><span>Valor da Avaria (R$)</span><span className={cx(styles, "optional-label")}>Se houver</span></span>
             <input id={damageId} inputMode="decimal" type="text" value={values.valor_avaria} onChange={(event) => update("valor_avaria", event.target.value)} required disabled={busy} />
             <small>Valor financeiro a descontar do frete, conforme a coluna R$ AVARIA da planilha. A quantidade de avarias é registrada separadamente.</small>
+          </label>
+          <label className={cx(styles, "field")}>Nome do cliente (opcional)
+            <input type="text" maxLength={160} value={values.nome_cliente} onChange={(event) => update("nome_cliente", event.target.value)} disabled={busy} />
+          </label>
+          <label className={cx(styles, "field")}>Código do cliente (opcional)
+            <input type="text" maxLength={80} value={values.codigo_cliente} onChange={(event) => update("codigo_cliente", event.target.value)} disabled={busy} />
+          </label>
+          <label className={cx(styles, "field", "field-wide")}>Observação (opcional)
+            <textarea maxLength={1000} rows={3} value={values.observacao} onChange={(event) => update("observacao", event.target.value)} disabled={busy} />
           </label>
         </div>
       </section>

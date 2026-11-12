@@ -158,6 +158,14 @@ function FreightDetailsDialog({
   const source = importSource(item);
   const manualGross = item.detalhe_calculo.valor_frete_bruto_informado_manualmente === true;
   const tariffGross = item.detalhe_calculo.valor_frete_bruto_tarifado;
+  const tariffReason = item.detalhe_calculo.motivo_calculo_tarifario;
+  const zoneDetails = item.detalhe_calculo.zonas_jit;
+  const zoneAreas: Array<[string, string]> = Array.isArray(zoneDetails)
+    ? zoneDetails.flatMap((zone): Array<[string, string]> => {
+      if (typeof zone !== "object" || zone === null || typeof zone.nome !== "string" || typeof zone.areas !== "string" || !zone.areas.trim()) return [];
+      return [[`Áreas atendidas — ${zone.nome}`, zone.areas]];
+    })
+    : [];
   const sections: Array<{ title: string; fields: Array<[string, string]> }> = [
     {
       title: "Dados do serviço",
@@ -165,9 +173,6 @@ function FreightDetailsDialog({
         ["Tipo de transporte", transportTypeLabelForItem(item)],
         ["Responsável", transportName(item)],
         ["Rota / cidade", item.rota_cidade || "Não informada na planilha"],
-        ["Cliente", item.nome_cliente || "Não informado"],
-        ["Código do cliente", item.codigo_cliente || "Não informado"],
-        ["Observação", item.observacao || "Nenhuma"],
         ["Fonte tarifária", item.codigo_fonte_tarifa ? tariffSourceLabel(item.codigo_fonte_tarifa) : "Não informada"],
       ],
     },
@@ -176,10 +181,16 @@ function FreightDetailsDialog({
       fields: [
         ["Quantidade de entregas", item.quantidade_entregas === null ? "Não informada na planilha" : item.quantidade_entregas.toLocaleString("pt-BR")],
         ["Peso", item.peso_kg === null ? "Não informado na planilha" : `${formatNumber(item.peso_kg)} kg`],
+        ["Cliente", item.nome_cliente || "Não informado"],
+        ["Código do cliente", item.codigo_cliente || "Não informado"],
+        ["Observação", item.observacao || "Nenhuma"],
         ["Tipo de caminhão", truckLabel(item.tipo_caminhao)],
         ...(item.codigo_fonte_tarifa === "PAULO_CRUZ" ? [["Carro de apoio", item.carro_apoio === "SAVEIRO" ? "Saveiro · R$ 300,00" : item.carro_apoio === "KIA_BONGO" ? "Bongo · R$ 500,00" : "Nenhum"] as [string, string]] : []),
-        ["Zona JUST IN TIME", jitZoneLabel(item)],
-        ["Adicionais", item.adicionais_jit.length ? item.adicionais_jit.join(", ") : "Nenhum"],
+        ...(item.codigo_fonte_tarifa === "JUST_IN_TIME" ? [
+          ["Zonas JUST IN TIME", jitZoneLabel(item)] as [string, string],
+          ...zoneAreas,
+          ["Adicionais", item.adicionais_jit.length ? item.adicionais_jit.join(", ").replace(/_/g, " ") : "Nenhum"] as [string, string],
+        ] : []),
       ],
     },
     {
@@ -199,7 +210,8 @@ function FreightDetailsDialog({
         ["Frete bruto", formatMoney(item.valor_frete_bruto)],
         ...(manualGross ? [
           ["Valor bruto informado manualmente", "Sim"] as [string, string],
-          ["Tarifa calculada de referência", formatMoney(typeof tariffGross === "string" || typeof tariffGross === "number" ? tariffGross : null)] as [string, string],
+          ["Tarifa calculada de referência", typeof tariffGross === "string" || typeof tariffGross === "number" ? formatMoney(tariffGross) : "Não disponível"] as [string, string],
+          ...(typeof tariffReason === "string" && tariffReason ? [["Motivo da conferência tarifária", tariffReason] as [string, string]] : []),
         ] : []),
         [source?.percentual_frete_planilha !== null && source?.percentual_frete_planilha !== undefined
           ? "Percentual na planilha" : "Percentual calculado", source?.percentual_frete_planilha !== null && source?.percentual_frete_planilha !== undefined
