@@ -323,6 +323,7 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
   const [reloadVersion, setReloadVersion] = useState(0);
   const [catalogReloadVersion, setCatalogReloadVersion] = useState(0);
   const [localitySort, setLocalitySort] = useState<"taxa" | "alfabetica">("taxa");
+  const [teamSort, setTeamSort] = useState<"taxa-menor" | "taxa-maior" | "realizadas">("taxa-menor");
   const [detailSelection, setDetailSelection] = useState<DashboardDetailSelection | null>(null);
   const [localityDetailDashboard, setLocalityDetailDashboard] = useState<DashboardResponse | null>(null);
   const [localityDetailLoading, setLocalityDetailLoading] = useState(false);
@@ -652,10 +653,14 @@ export function ManagementDashboardPage({ onNavigate }: { onNavigate: (path: str
 
       <div className={cx(styles, commonStyles, "manager-analysis-grid")}>
         <section className={cx(styles, commonStyles, "manager-panel")}>
-          <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Taxa de realização por equipe</h2><p>Resultado coletivo das equipes no recorte</p></div><span>{loading ? "—" : `${data?.por_equipe.length ?? 0} equipes`}</span></div>
+          <div className={cx(styles, commonStyles, "manager-panel-heading")}><div><h2>Taxa de realização por equipe</h2><p>Resultado coletivo das equipes no recorte</p></div><label className={cx(styles, commonStyles, "locality-sort-control")}><span>Ordenar</span><select aria-label="Ordenar equipes" value={teamSort} onChange={(event) => setTeamSort(event.target.value as typeof teamSort)}><option value="taxa-maior">Maior taxa primeiro</option><option value="taxa-menor">Menor taxa primeiro</option><option value="realizadas">Mais realizadas primeiro</option></select></label><span>{loading ? "—" : `${data?.por_equipe.length ?? 0} equipes`}</span></div>
           {loading ? <div className={cx(styles, commonStyles, "manager-empty")}>Carregando equipes...</div> : !data?.por_equipe.length ? <div className={cx(styles, commonStyles, "manager-empty")}>Não há equipes com lançamentos registrados.</div> : <>
-            <p className={cx(styles, commonStyles, "insight-chart-caption")}>Todas as equipes; as menores taxas aparecem primeiro. Volume e OTIF incluem entregas e coletas.</p>
-            <HorizontalBarChart items={[...data.por_equipe].sort((a, b) => (a.taxa_realizacao ?? -1) - (b.taxa_realizacao ?? -1) || b.itens_planejados - a.itens_planejados || a.equipe.localeCompare(b.equipe, "pt-BR")).map((team) => ({ key: team.chave, label: team.equipe, value: team.taxa_realizacao, valueLabel: rateLabel(team.taxa_realizacao), detail: `${countFormat.format(team.realizadas)} realizadas de ${countFormat.format(team.itens_planejados)} entregas e coletas · ${rateLabel(team.otif_percentual)} OTIF` }))} scaleMax={100} valueName="Taxa de realização por equipe" tone="success" onSelect={(bar) => {
+            <p className={cx(styles, commonStyles, "insight-chart-caption")}>{teamSort === "taxa-menor" ? "Menor taxa primeiro" : teamSort === "taxa-maior" ? "Maior taxa primeiro" : "Maior quantidade realizada primeiro"}. Volume e OTIF incluem entregas e coletas.</p>
+            <HorizontalBarChart items={[...data.por_equipe].sort((a, b) => {
+              if (teamSort === "realizadas") return b.realizadas - a.realizadas || a.equipe.localeCompare(b.equipe, "pt-BR");
+              const rateOrder = (a.taxa_realizacao ?? -1) - (b.taxa_realizacao ?? -1);
+              return (teamSort === "taxa-maior" ? -rateOrder : rateOrder) || b.itens_planejados - a.itens_planejados || a.equipe.localeCompare(b.equipe, "pt-BR");
+            }).map((team) => ({ key: team.chave, label: team.equipe, value: team.taxa_realizacao, valueLabel: rateLabel(team.taxa_realizacao), detail: `${countFormat.format(team.realizadas)} realizadas de ${countFormat.format(team.itens_planejados)} entregas e coletas · ${rateLabel(team.otif_percentual)} OTIF` }))} scaleMax={100} valueName="Taxa de realização por equipe" tone="success" onSelect={(bar) => {
               const team = data.por_equipe.find((item) => item.chave === bar.key);
               if (team) setDetailSelection({ kind: "team", title: team.equipe, team });
             }} />
