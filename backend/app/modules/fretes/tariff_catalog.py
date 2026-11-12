@@ -14,12 +14,29 @@ JUST_IN_TIME_ZONE_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     (
         "RIO_DE_JANEIRO",
         "Rio de Janeiro",
-        ("ZONA_OESTE_1", "ZONA_OESTE_2", "ZONA_SUL", "ZONA_NORTE_1", "ZONA_NORTE_2"),
+        (
+            "ZONA_OESTE_1",
+            "ZONA_OESTE_2",
+            "ZONA_SUL",
+            "BAIXADA_FLUMINENSE",
+            "ZONA_NORTE_1",
+            "ZONA_NORTE_2",
+        ),
     ),
     (
         "REGIAO_SERRANA",
         "Região Serrana",
         ("REGI_O_SERRANA_1", "REGI_O_SERRANA_2"),
+    ),
+    (
+        "COSTA_VERDE",
+        "Costa Verde",
+        ("COSTA_VERDE_1", "COSTA_VERDE_2"),
+    ),
+    (
+        "VALE_DO_PARAIBA",
+        "Vale do Paraíba",
+        ("VALE_DO_PARAIBA1", "VALE_DO_PARAIBA_2"),
     ),
 )
 

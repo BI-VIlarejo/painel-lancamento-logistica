@@ -615,7 +615,7 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
               </select>
               <small>{routeJitRegionName
                 ? `A rota “${values.rota_cidade}” corresponde à região ${routeJitRegionName}. Confirme a área atendida para calcular o valor.`
-                : "JUST IN TIME atende somente Rio de Janeiro e Região Serrana. KM não se aplica."}</small>
+                : "Selecione a região e confirme a área atendida. KM não se aplica."}</small>
             </label>
             <label className={cx(formStyles, "field")}>Área tarifária
               <select value={selectedJitZone ? values.codigo_zona_jit : ""} onChange={(event) => update("codigo_zona_jit", event.target.value)} disabled={busy || !selectedJitRegion}>
