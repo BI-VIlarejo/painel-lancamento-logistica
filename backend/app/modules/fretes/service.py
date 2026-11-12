@@ -2457,14 +2457,7 @@ def export_freight_history(
         "Rota / cidade",
         "Entregas",
         "Peso (kg)",
-        "KM inicial",
-        "KM final",
-        "KM rodado",
         "Valor da nota (R$)",
-        "Tipo de caminhão",
-        "Carro de apoio",
-        "Zona JUST IN TIME",
-        "Adicionais JIT",
         "Quantidade de avarias",
         "Valor da avaria (R$)",
         "Frete bruto (R$)",
@@ -2478,6 +2471,13 @@ def export_freight_history(
         "Aba de origem",
         "Linha da planilha",
         "Criado em",
+        "KM inicial",
+        "KM final",
+        "KM rodado",
+        "Tipo de caminhão",
+        "Carro de apoio",
+        "Zona JUST IN TIME",
+        "Adicionais JIT",
     )
     worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     title = worksheet.cell(row=1, column=1, value="Histórico de fretes")
@@ -2526,15 +2526,15 @@ def export_freight_history(
     worksheet.auto_filter.ref = f"A3:{worksheet.cell(row=3, column=len(headers)).coordinate}{max(3, len(records) + 3)}"
 
     widths = (
-        15, 20, 28, 30, 30, 12, 14, 14, 14, 14, 19, 20, 18, 21,
-        30, 18, 20, 20, 18, 20, 24, 55, 19, 45, 32, 20, 15, 22,
+        13, 22, 24, 25, 24, 11, 12, 16, 14, 16, 16, 17, 16, 21,
+        34, 16, 32, 25, 14, 14, 19, 12, 12, 12, 18, 16, 18, 24,
     )
     for column, width in enumerate(widths, start=1):
         worksheet.column_dimensions[worksheet.cell(row=3, column=column).column_letter].width = width
 
-    currency_columns = {11, 17, 18, 20}
-    decimal_columns = {7, 8, 9, 10}
-    center_columns = {1, 2, 6, 8, 9, 10, 12, 13, 14, 16, 19, 21, 23, 27, 28}
+    currency_columns = {8, 10, 11, 13}
+    decimal_columns = {7, 22, 23, 24}
+    center_columns = {1, 2, 6, 9, 12, 14, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27}
     for row_index, freight in enumerate(records, start=4):
         cancellation = cancellations.get(freight.id_frete)
         source_status, source_reason = effective_status(freight)
@@ -2565,14 +2565,7 @@ def export_freight_history(
             freight.rota_cidade,
             freight.quantidade_entregas,
             freight.peso_kg,
-            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_inicial,
-            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_final,
-            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_rodado,
             freight.valor_nota,
-            truck_label,
-            support_label,
-            freight.codigo_zona_jit,
-            ", ".join(freight.adicionais_jit or []),
             freight.quantidade_avarias,
             freight.valor_avaria,
             freight.valor_frete_bruto,
@@ -2586,6 +2579,13 @@ def export_freight_history(
             import_source.get("aba"),
             import_source.get("linha"),
             freight.criado_em,
+            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_inicial,
+            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_final,
+            "Não se aplica" if freight.tipo_transporte == "TRANSPORTADORA" else freight.km_rodado,
+            truck_label,
+            support_label,
+            freight.codigo_zona_jit,
+            ", ".join(freight.adicionais_jit or []),
         )
         fill = PatternFill(
             "solid",
@@ -2598,7 +2598,7 @@ def export_freight_history(
             cell.alignment = Alignment(
                 horizontal="center" if column in center_columns else "left",
                 vertical="center",
-                wrap_text=column in {3, 4, 5, 14, 15, 22, 24, 25},
+                wrap_text=column in {3, 4, 5, 15, 17, 18, 27, 28},
             )
             if column in currency_columns:
                 cell.number_format = '"R$" #,##0.00;[Red]-"R$" #,##0.00'
@@ -2606,13 +2606,13 @@ def export_freight_history(
                 cell.number_format = "#,##0.000"
             elif column == 1:
                 cell.number_format = "dd/mm/yyyy"
-            elif column == 19:
+            elif column == 12:
                 cell.number_format = "0.000%"
-            elif column == 28:
+            elif column == 21:
                 cell.number_format = "dd/mm/yyyy hh:mm"
-            if column == 21 and source_status != "CALCULADO":
+            if column == 14 and source_status != "CALCULADO":
                 cell.font = Font(name="Calibri", size=10, bold=True, color="FF99610E")
-            if column == 23 and cancellation:
+            if column == 16 and cancellation:
                 cell.font = Font(name="Calibri", size=10, bold=True, color="FF9D413B")
         worksheet.row_dimensions[row_index].height = 24
 

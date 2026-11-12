@@ -6,6 +6,7 @@ import { deliveriesApi } from "../api";
 import { catalogsApi } from "../../catalogs/api";
 import { DeliveryCsvImportDialog } from "../components/DeliveryCsvImportDialog";
 import { messageFromApiError } from "../../../shared/api/apiError";
+import { createDeliveryHistoryWorkbook } from "../historyWorkbook";
 import { deliveryTransportLabel, nonDeliveryReasonGroupLabel, nonDeliveryReasonGroups } from "../classifications";
 import type { DeliveryTransportType, NonDeliveryReasonGroup } from "../classifications";
 import type { DeliveryEvent, DeliveryHistoryFilters, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem, NonDeliveryReasonCatalogItem, PersonCatalogItem } from "../types";
@@ -370,7 +371,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
     }
   }
 
-  async function exportCsv() {
+  async function exportWorkbook() {
     setExporting(true);
     setExportError("");
     try {
@@ -402,38 +403,34 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         .filter((delivery) => itemMatchesFilters(delivery, selectedItemFilters))
         .map((delivery) => ({ launch, delivery })));
       const columns: Array<[string, (row: ExportRow) => string | number]> = [
-        ["data", (row) => row.delivery.data_entrega],
-        ["loja", (row) => row.delivery.nome_localidade],
-        ["equipe", (row) => teamDescription(row.delivery)],
-        ["operacao", (row) => operationName(row.delivery)],
-        ["tipo_transporte", (row) => deliveryTypeDescription(row.delivery)],
-        ["entregas_realizadas", (row) => itemQuantities(row.delivery).entregasRealizadas],
-        ["entregas_nao_realizadas", (row) => itemQuantities(row.delivery).entregasNaoRealizadas],
-        ["coletas_realizadas", (row) => itemQuantities(row.delivery).coletasRealizadas],
-        ["coletas_nao_realizadas", (row) => itemQuantities(row.delivery).coletasNaoRealizadas],
-        ["peso_total_kg", (row) => row.delivery.peso_total_kg ?? ""],
-        ["otif_percentual", (row) => { const value = otifValue(row.delivery); return value === null ? "" : rateText(value); }],
-        ["lancamento", (row) => row.launch.codigo_lancamento],
-        ["status", (row) => statusLabels[row.launch.estado]],
-        ["motivos_das_ocorrencias", (row) => reasonDescription(row.delivery)],
-        ["codigos_clientes_das_ocorrencias", (row) => row.delivery.motivos.map((reason) => `${reason.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA"}: ${reason.codigo_cliente ?? "Não informado"}`).join("; ")],
-        ["observacoes_dos_motivos", (row) => reasonObservationDescription(row.delivery)],
-        ["observacao_geral_legada", (row) => row.delivery.observacao ?? ""],
+        ["Data", (row) => row.delivery.data_entrega],
+        ["Loja / localidade", (row) => row.delivery.nome_localidade],
+        ["Equipe", (row) => teamDescription(row.delivery)],
+        ["Operação", (row) => operationName(row.delivery)],
+        ["Tipo de transporte", (row) => deliveryTypeDescription(row.delivery)],
+        ["Entregas realizadas", (row) => itemQuantities(row.delivery).entregasRealizadas],
+        ["Entregas não realizadas", (row) => itemQuantities(row.delivery).entregasNaoRealizadas],
+        ["Coletas realizadas", (row) => itemQuantities(row.delivery).coletasRealizadas],
+        ["Coletas não realizadas", (row) => itemQuantities(row.delivery).coletasNaoRealizadas],
+        ["Peso total (kg)", (row) => row.delivery.peso_total_kg ?? ""],
+        ["OTIF (%)", (row) => { const value = otifValue(row.delivery); return value === null ? "" : rateText(value); }],
+        ["Código do lançamento", (row) => row.launch.codigo_lancamento],
+        ["Situação", (row) => statusLabels[row.launch.estado]],
+        ["Motivos das ocorrências", (row) => reasonDescription(row.delivery)],
+        ["Códigos de clientes das ocorrências", (row) => row.delivery.motivos.map((reason) => `${reason.tipo_operacao === "COLETA" ? "COLETA" : "ENTREGA"}: ${reason.codigo_cliente ?? "Não informado"}`).join("; ")],
+        ["Observações dos motivos", (row) => reasonObservationDescription(row.delivery)],
+        ["Observação geral", (row) => row.delivery.observacao ?? ""],
       ];
-      const csvCell = (value: string | number) => {
-        const text = String(value);
-        const safeText = /^[\t\r\n ]*[=+\-@]/.test(text) ? `'${text}` : text;
-        return `"${safeText.replaceAll('"', '""')}"`;
-      };
-      const csv = [
-        columns.map(([name]) => csvCell(name)).join(";"),
-        ...exportRows.map((row) => columns.map(([, value]) => csvCell(value(row))).join(";")),
-      ].join("\r\n");
-      const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+      const period = fromDate && toDate ? `Período: ${fromDate} a ${toDate}` : fromDate ? `A partir de ${fromDate}` : toDate ? `Até ${toDate}` : "Todos os períodos";
+      const blob = await createDeliveryHistoryWorkbook(
+        columns.map(([name]) => name),
+        exportRows.map((row) => columns.map(([, value]) => value(row))),
+        period,
+      );
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `historico-entregas-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.download = `historico-entregas-${new Date().toISOString().slice(0, 10)}.xlsx`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (exportFailure) {
@@ -448,7 +445,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
       <div className={cx(styles, commonStyles, "page-heading-row history-heading-row")}>
         <div><h1>Histórico de entregas</h1><p className={cx(styles, commonStyles, "page-lead")}>Consulte, filtre e exporte os lançamentos.</p></div>
         <div className={cx(styles, commonStyles, "history-heading-actions")}>
-          <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => void exportCsv()} disabled={exporting || loading}>{exporting ? "Preparando CSV..." : "Exportar CSV"}</button>
+          <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => void exportWorkbook()} disabled={exporting || loading}>{exporting ? "Preparando planilha..." : "Exportar Excel"}</button>
           {canCreate && <><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => setImportOpen(true)}>Importar CSV</button><button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={() => onNavigate("/entregas")}><span aria-hidden="true">＋</span> Novo lançamento</button></>}
         </div>
       </div>

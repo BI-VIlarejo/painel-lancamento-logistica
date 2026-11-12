@@ -6,11 +6,11 @@ const XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadshee
 
 const headers = [
   "Data do serviço", "Modalidade", "Responsável", "Motorista da transportadora", "Rota / cidade",
-  "Entregas", "Peso (kg)", "KM inicial", "KM final", "KM rodado", "Valor da nota (R$)",
-  "Tipo de caminhão", "Carro de apoio", "Zona JUST IN TIME", "Adicionais JIT", "Quantidade de avarias",
-  "Valor da avaria (R$)", "Frete bruto (R$)", "Percentual do frete", "Total líquido (R$)",
+  "Entregas", "Peso (kg)", "Valor da nota (R$)", "Quantidade de avarias", "Valor da avaria (R$)",
+  "Frete bruto (R$)", "Percentual do frete", "Total líquido (R$)",
   "Situação do cálculo", "Motivo / pendência", "Situação do registro", "Justificativa de cancelamento",
-  "Arquivo de origem", "Aba de origem", "Linha da planilha", "Criado em",
+  "Arquivo de origem", "Aba de origem", "Linha da planilha", "Criado em", "KM inicial", "KM final", "KM rodado",
+  "Tipo de caminhão", "Carro de apoio", "Zona JUST IN TIME", "Adicionais JIT",
 ];
 
 function dateValue(value: string): Date {
@@ -82,7 +82,7 @@ export async function createFreightHistoryWorkbook(
     views: [{ state: "frozen", ySplit: 3, showGridLines: false, zoomScale: 85 }],
   });
   worksheet.columns = [
-    15, 20, 28, 30, 30, 12, 14, 14, 14, 14, 19, 20, 18, 21, 30, 18, 20, 20, 18, 20, 24, 55, 19, 45, 32, 20, 15, 22,
+    13, 22, 24, 25, 24, 11, 12, 16, 14, 16, 16, 17, 16, 21, 34, 16, 32, 25, 14, 14, 19, 12, 12, 12, 18, 16, 18, 24,
   ].map((width) => ({ width }));
   worksheet.mergeCells(1, 1, 1, headers.length);
   worksheet.getCell(1, 1).value = "Histórico de fretes";
@@ -119,14 +119,7 @@ export async function createFreightHistoryWorkbook(
       item.rota_cidade,
       item.quantidade_entregas,
       numberValue(item.peso_kg),
-      item.tipo_transporte === "TRANSPORTADORA" ? "Não se aplica" : numberValue(item.km_inicial),
-      item.tipo_transporte === "TRANSPORTADORA" ? "Não se aplica" : numberValue(item.km_final),
-      item.tipo_transporte === "TRANSPORTADORA" ? "Não se aplica" : numberValue(item.km_rodado),
       numberValue(item.valor_nota),
-      truckLabel(item),
-      support,
-      item.codigo_zona_jit,
-      item.adicionais_jit.join(", "),
       item.quantidade_avarias,
       numberValue(item.valor_avaria),
       numberValue(item.valor_frete_bruto),
@@ -140,6 +133,13 @@ export async function createFreightHistoryWorkbook(
       sourceCell(imported.aba),
       sourceCell(imported.linha),
       new Date(item.criado_em),
+      item.tipo_transporte === "TRANSPORTADORA" ? "Não se aplica" : numberValue(item.km_inicial),
+      item.tipo_transporte === "TRANSPORTADORA" ? "Não se aplica" : numberValue(item.km_final),
+      item.tipo_transporte === "TRANSPORTADORA" ? "Não se aplica" : numberValue(item.km_rodado),
+      truckLabel(item),
+      support,
+      item.codigo_zona_jit,
+      item.adicionais_jit.join(", "),
     ];
     const dataRow = worksheet.getRow(row);
     dataRow.values = [undefined, ...values];
@@ -148,19 +148,19 @@ export async function createFreightHistoryWorkbook(
       cell.font = { name: "Calibri", size: 10, color: { argb: "FF24364B" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: row % 2 === 0 ? "FFF5F8FB" : "FFFFFFFF" } };
       cell.alignment = {
-        horizontal: [1, 2, 6, 8, 9, 10, 12, 13, 14, 16, 19, 21, 23, 27, 28].includes(column) ? "center" : "left",
+        horizontal: [1, 2, 6, 9, 12, 14, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27].includes(column) ? "center" : "left",
         vertical: "middle",
-        wrapText: [3, 4, 5, 14, 15, 22, 24, 25].includes(column),
+        wrapText: [3, 4, 5, 15, 17, 18, 27, 28].includes(column),
       };
-      if ([11, 17, 18, 20].includes(column)) cell.numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
-      else if ([7, 8, 9, 10].includes(column)) cell.numFmt = "#,##0.000";
+      if ([8, 10, 11, 13].includes(column)) cell.numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
+      else if ([7, 22, 23, 24].includes(column)) cell.numFmt = "#,##0.000";
       else if (column === 1) cell.numFmt = "dd/mm/yyyy";
-      else if (column === 19) cell.numFmt = "0.000%";
-      else if (column === 28) cell.numFmt = "dd/mm/yyyy hh:mm";
-      if (column === 21 && item.status_calculo !== "CALCULADO") {
+      else if (column === 12) cell.numFmt = "0.000%";
+      else if (column === 21) cell.numFmt = "dd/mm/yyyy hh:mm";
+      if (column === 14 && item.status_calculo !== "CALCULADO") {
         cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FF99610E" } };
       }
-      if (column === 23 && item.cancelado) {
+      if (column === 16 && item.cancelado) {
         cell.font = { name: "Calibri", size: 10, bold: true, color: { argb: "FF9D413B" } };
       }
     });
