@@ -73,8 +73,8 @@ const jitZones: JustInTimeZoneOption[] = [
   { codigo: "REGI_O_SERRANA_2", nome: "REGIÃO SERRANA 2", areas: "Teresopólis, Cachoeira de Macacu, Friburgo, Bom Jardim, Nova Friburgo" },
   { codigo: "COSTA_VERDE_1", nome: "COSTA VERDE 1", areas: "Iataguai, Itacuruça, Coroa Grande, Muriqui, Conceição de Jacarei, Mangaratiba" },
   { codigo: "COSTA_VERDE_2", nome: "COSTA VERDE 2", areas: "Angra dos Reis, Paraty, Rio Claro, Lídice" },
-  { codigo: "VALE_DO_PARAIBA1", nome: "VALE DO PARAIBA1", areas: "Parai, Barra do Parai, Volta Redonda, Rio das Flore, Itatiaia, Porto Real, Quatis, Barra Mansa, Resende, Valença, Pinheiral" },
-  { codigo: "VALE_DO_PARAIBA_2", nome: "VALE DO PARAIBA 2", areas: "Miguel Pereira, Paty Alferes, Mendes, Paraiba do Sul, Vassouras, Avelar" },
+  { codigo: "VALE_DO_PARAIBA1", nome: "VALE DO PARAÍBA 1", areas: "Parai, Barra do Parai, Volta Redonda, Rio das Flore, Itatiaia, Porto Real, Quatis, Barra Mansa, Resende, Valença, Pinheiral" },
+  { codigo: "VALE_DO_PARAIBA_2", nome: "VALE DO PARAÍBA 2", areas: "Miguel Pereira, Paty Alferes, Mendes, Paraiba do Sul, Vassouras, Avelar" },
 ];
 
 const jitRegionGroups: Array<[string, string, string[]]> = [

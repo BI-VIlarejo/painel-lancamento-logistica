@@ -39,6 +39,10 @@ JUST_IN_TIME_ZONE_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
         ("VALE_DO_PARAIBA1", "VALE_DO_PARAIBA_2"),
     ),
 )
+JUST_IN_TIME_ZONE_LABELS = {
+    "VALE_DO_PARAIBA1": "VALE DO PARAÍBA 1",
+    "VALE_DO_PARAIBA_2": "VALE DO PARAÍBA 2",
+}
 
 
 @lru_cache(maxsize=1)
@@ -101,7 +105,9 @@ def tariff_options() -> dict[str, object]:
                 "subzonas": [
                     {
                         "codigo": zones_by_code[zone_code]["code"],
-                        "nome": zones_by_code[zone_code]["label"],
+                        "nome": JUST_IN_TIME_ZONE_LABELS.get(
+                            zone_code, zones_by_code[zone_code]["label"]
+                        ),
                         "areas": zones_by_code[zone_code]["area"],
                     }
                     for zone_code in zone_codes

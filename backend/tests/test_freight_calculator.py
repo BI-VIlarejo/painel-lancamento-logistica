@@ -123,6 +123,10 @@ class FreightCalculatorTests(TestCase):
             [zone["codigo"] for zone in regions[3]["subzonas"]],
             ["VALE_DO_PARAIBA1", "VALE_DO_PARAIBA_2"],
         )
+        self.assertEqual(
+            [zone["nome"] for zone in regions[3]["subzonas"]],
+            ["VALE DO PARAÍBA 1", "VALE DO PARAÍBA 2"],
+        )
 
     def test_jit_rejects_tariff_zones_outside_vilarejo_coverage(self):
         result = calculate_freight(self.jit(codigo_zona_jit="NITEROI_1"))
