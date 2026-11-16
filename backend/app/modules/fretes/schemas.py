@@ -411,6 +411,7 @@ class FreightQuoteResponse(BaseModel):
 
     status_calculo: FreightStatus
     valor_frete_bruto: Decimal | None
+    valor_frete_pago: Decimal | None
     percentual_frete: Decimal | None
     motivo_pendencia: str | None
     detalhe_calculo: dict[str, object]

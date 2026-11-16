@@ -178,6 +178,7 @@ class FreightServiceTests(TestCase):
             self.db, payload=payload(), access=access(scope="SETOR", sector_id=10)
         )
         self.assertEqual(result.status_calculo, "CALCULADO")
+        self.assertEqual(result.valor_frete_pago, Decimal("477.00"))
         self.assertEqual(self.db.scalar(select(func.count()).select_from(Frete)), 0)
 
     def test_aggregate_without_deliveries_uses_manual_values(self):
@@ -296,6 +297,14 @@ class FreightServiceTests(TestCase):
         )
 
     def test_damage_above_gross_is_accepted_and_exports_negative_net(self):
+        quote = service.quote_freight(
+            self.db,
+            payload=payload(valor_avaria="497"),
+            access=access(),
+        )
+        self.assertEqual(quote.valor_frete_bruto, Decimal("493.00"))
+        self.assertEqual(quote.valor_frete_pago, Decimal("-4.00"))
+
         freight = self.create(valor_avaria="497")
         self.assertEqual(freight.status_calculo, "CALCULADO")
         self.assertEqual(freight.valor_frete_bruto, Decimal("493.00"))

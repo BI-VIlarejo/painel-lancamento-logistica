@@ -174,6 +174,7 @@ export type HistoricalFreightImportResponse = {
 export type FreightQuoteResponse = {
   status_calculo: FreightStatus;
   valor_frete_bruto: DecimalValue | null;
+  valor_frete_pago: DecimalValue | null;
   percentual_frete: DecimalValue | null;
   motivo_pendencia: string | null;
   detalhe_calculo: Record<string, unknown>;

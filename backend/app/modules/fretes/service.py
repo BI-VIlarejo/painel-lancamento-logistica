@@ -582,11 +582,16 @@ def _transport_access(
     return sector.id_setor
 
 
-def _quote_response(calculation: FreightCalculation) -> FreightQuoteResponse:
+def _quote_response(
+    calculation: FreightCalculation,
+    valor_avaria: Decimal,
+) -> FreightQuoteResponse:
     """Converte o resultado interno da calculadora no contrato da API."""
+    gross = calculation.valor_frete_bruto
     return FreightQuoteResponse(
         status_calculo=calculation.status,
-        valor_frete_bruto=calculation.valor_frete_bruto,
+        valor_frete_bruto=gross,
+        valor_frete_pago=gross - valor_avaria if gross is not None else None,
         percentual_frete=calculation.percentual_frete,
         motivo_pendencia=calculation.motivo_pendencia,
         detalhe_calculo=calculation.detalhe,
@@ -1043,12 +1048,12 @@ def quote_freight(
     """Simula um lançamento sem persistir dados ou gerar evento de auditoria."""
     try:
         _transport_access(db, access)
-        _, calculation = _freight_calculation(
+        prepared_payload, calculation = _freight_calculation(
             db,
             payload,
             require_delivery_data=True,
         )
-        return _quote_response(calculation)
+        return _quote_response(calculation, prepared_payload.valor_avaria)
     except ConflictError, PermissionDeniedError, NotFoundError:
         raise
     except SQLAlchemyError as exc:

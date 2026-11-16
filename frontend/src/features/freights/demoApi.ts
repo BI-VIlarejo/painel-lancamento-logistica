@@ -215,7 +215,9 @@ function saveFreights(items: FreightResponse[]): void {
 }
 
 /** Cria uma resposta pendente sem inventar preço quando a regra não resolve a tarifa. */
-function pendingQuote(reason: string, detail: Record<string, unknown>): FreightQuoteResponse {
+type FreightTariffQuote = Omit<FreightQuoteResponse, "valor_frete_pago">;
+
+function pendingQuote(reason: string, detail: Record<string, unknown>): FreightTariffQuote {
   return {
     status_calculo: "PENDENTE_CONFERENCIA",
     valor_frete_bruto: null,
@@ -279,7 +281,7 @@ const additionWeightBands: Array<[number, number]> = [
 ];
 
 /** Calcula a tarifa JIT para uma zona e sinaliza conferência quando há várias. */
-function quoteJustInTime(payload: FreightInput): FreightQuoteResponse {
+function quoteJustInTime(payload: FreightInput): FreightTariffQuote {
   const zoneCodes = payload.codigos_zonas_jit?.length
     ? payload.codigos_zonas_jit
     : payload.codigo_zona_jit ? [payload.codigo_zona_jit] : [];
@@ -370,7 +372,7 @@ function quoteJustInTime(payload: FreightInput): FreightQuoteResponse {
 }
 
 /** Calcula a fórmula percentual, por quilo e por quilômetro dos Agregados CD. */
-function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
+function quoteAggregates(payload: FreightInput): FreightTariffQuote {
   const route = normalizeLabel(payload.rota_cidade);
   const routeSheets: Record<string, string> = {
     "RIO DAS OSTRAS": "RO",
@@ -451,7 +453,7 @@ function quoteAggregates(payload: FreightInput): FreightQuoteResponse {
 }
 
 /** Seleciona o valor fixo por veículo Paulo Cruz e o eventual carro de apoio. */
-function quotePauloCruz(payload: FreightInput): FreightQuoteResponse {
+function quotePauloCruz(payload: FreightInput): FreightTariffQuote {
   const vehicles: Record<string, { name: string; price: number; bounds: [number, number] | null; label: string }> = {
     SAVEIRO: { name: "Saveiro", price: 300, bounds: null, label: "Carro de apoio" },
     KIA_BONGO: { name: "Kia Bongo", price: 500, bounds: null, label: "Carro de apoio" },
@@ -485,9 +487,9 @@ function calculateQuote(payload: FreightInput): FreightQuoteResponse {
   // Somente transporte independente dispensa leituras do hodômetro.
   if (payload.tipo_transporte !== "TRANSPORTADORA") odometerDistance(payload);
   if (!payload.codigo_fonte_tarifa) {
-    return pendingQuote("Selecione uma fonte tarifária para este transporte terceirizado.", {
+    return { ...pendingQuote("Selecione uma fonte tarifária para este transporte terceirizado.", {
       tipo_transporte: payload.tipo_transporte,
-    });
+    }), valor_frete_pago: null };
   }
   let quote = payload.codigo_fonte_tarifa === "AGREGADOS_CD"
     ? quoteAggregates(payload)
@@ -528,7 +530,13 @@ function calculateQuote(payload: FreightInput): FreightQuoteResponse {
     };
   }
   quote = { ...quote, detalhe_calculo: { ...quote.detalhe_calculo, nome_cliente: payload.nome_cliente ?? null, codigo_cliente: payload.codigo_cliente ?? null, observacao: payload.observacao ?? null } };
-  return quote;
+  const finalGross = numeric(quote.valor_frete_bruto);
+  const damage = numeric(payload.valor_avaria) ?? 0;
+  const net = finalGross === null ? null : money(finalGross - damage);
+  return {
+    ...quote,
+    valor_frete_pago: net === null ? null : moneyText(net),
+  };
 }
 
 /** Cria valores coerentes com as datas textuais enviadas pela API. */
