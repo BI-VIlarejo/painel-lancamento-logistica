@@ -27,7 +27,6 @@ type Props = {
 };
 
 const numberFormat = new Intl.NumberFormat("pt-BR");
-const weightFormat = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
 const percentFormat = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 2 });
 const pageSize = 10;
 

@@ -229,7 +229,6 @@ export function TransportDashboardPage({ onNavigate, canViewPayments }: Props) {
   const deliveryGroups = carrierGroups.map((group) => ({ group, ...deliveryTotals(group.deliveries) }))
     .filter((entry) => entry.group.deliveries.length)
     .sort((a, b) => b.planned - a.planned || a.group.label.localeCompare(b.group.label, "pt-BR"));
-  const maxDeliveries = Math.max(1, ...deliveryGroups.map((entry) => entry.planned));
 
   const kmGroups = carrierGroups.map((group) => ({ group, ...sumKnown(group.freights, transportKilometers) }))
     .filter((entry) => entry.known)
