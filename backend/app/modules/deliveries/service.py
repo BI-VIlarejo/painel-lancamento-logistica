@@ -45,6 +45,7 @@ from app.modules.deliveries.schemas import (
     DeliveryParticipantResponse,
     DeliveryReasonResponse,
 )
+from app.modules.feedback import service as feedback_service
 
 
 def _utc_now() -> datetime:
@@ -164,6 +165,13 @@ def _build_details(
     revision_ids = {revision.id_lancamento_revisao for _, revision, _ in launch_rows}
     item_rows = repository.list_delivery_rows(db, id_revisoes=revision_ids)
     delivery_ids = {delivery.id_entrega_diaria for delivery, _ in item_rows}
+    feedback_counts = feedback_service.feedback_counts_by_items(
+        db,
+        item_keys={
+            (delivery.codigo_item_lancamento, delivery.id_localidade)
+            for delivery, _ in item_rows
+        },
+    )
     participants_by_item: dict[int, list[DeliveryParticipantResponse]] = defaultdict(list)
     for participant, person in repository.list_participant_rows(
         db,
@@ -214,6 +222,12 @@ def _build_details(
                 quantidade_coleta_nao_realizada=delivery.quantidade_coleta_nao_realizada,
                 peso_total_kg=delivery.peso_total_kg,
                 observacao=delivery.observacao,
+                quantidade_reclamacoes=feedback_counts.get(
+                    (delivery.codigo_item_lancamento, delivery.id_localidade), {}
+                ).get("RECLAMACAO", 0),
+                quantidade_elogios=feedback_counts.get(
+                    (delivery.codigo_item_lancamento, delivery.id_localidade), {}
+                ).get("ELOGIO", 0),
                 participantes=participants_by_item[delivery.id_entrega_diaria],
                 motivos=reasons_by_item[delivery.id_entrega_diaria],
             )

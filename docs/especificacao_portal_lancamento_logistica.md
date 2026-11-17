@@ -57,13 +57,12 @@ O formulário solicita:
 
 - data;
 - tipo: reclamação ou elogio;
-- nome do cliente;
-- loja;
-- motorista obrigatório;
-- até dois ajudantes opcionais;
+- código do cliente;
+- loja, data da entrega e motorista;
+- lote de entregas confirmado compatível com a loja, data e motorista; se houver mais de um lote compatível, o usuário escolhe qual deles relacionar;
 - descrição do ocorrido.
 
-O protótipo atribui `+1` por elogio e `-1` por reclamação a cada pessoa informada. A decisão de produto de 21/10 mantém o nome do cliente no feedback; não se coletam telefone, documento ou outros identificadores. Todos os perfis do piloto podem consultar e exportar dentro dos escopos; OPERADOR também pode registrar/importar. O prazo e a ação de retenção precisam ser definidos antes de usar dados reais.
+O Portal vincula a manifestação ao lote confirmado depois que loja, data e motorista são informados; o usuário não precisa selecionar ajudantes. A equipe completa continua associada pelo registro da entrega. A solicitação de 17/11/2026 substitui a decisão de 21/10: no lançamento e nas novas exportações, o nome do cliente dá lugar ao código do cliente. O campo legado `nome_cliente` permanece somente para leitura/importação de registros antigos. Não se coletam telefone ou documento. Todos os perfis do piloto podem consultar e exportar dentro dos escopos; OPERADOR também pode registrar/importar. O prazo e a ação de retenção precisam ser definidos antes de usar dados reais.
 
 ### 2.4 Cadastros e filtros
 
@@ -167,7 +166,7 @@ O deploy da API será feito em uma EC2 na VPC aprovada. Não configurar VPC peer
 
 ### 5.1 Separar lançamento operacional de fato analítica
 
-O banco analítico atual possui 15 dimensões/fatos mensais. Ele não guarda rascunhos, versões, participantes, motivo por linha ou histórico operacional. Além disso, `fato_entregas_mensais` é mensal por localidade e tipo de transporte; não possui data diária, equipe/pessoa nem contagem separada de não realizadas. `fato_retornos_ocorrencias` também é mensal e não é o lugar para guardar nome do cliente e descrição do feedback.
+O banco analítico atual possui 15 dimensões/fatos mensais. Ele não guarda rascunhos, versões, participantes, motivo por linha ou histórico operacional. Além disso, `fato_entregas_mensais` é mensal por localidade e tipo de transporte; não possui data diária, equipe/pessoa nem contagem separada de não realizadas. `fato_retornos_ocorrencias` também é mensal e não é o lugar para guardar nome/código do cliente e descrição do feedback.
 
 Por isso, o site grava primeiro em tabelas operacionais e não diretamente nas tabelas fato mensais. Uma rotina controlada transforma somente revisões confirmadas em medidas analíticas, depois de definir como elas se reconciliam com SEAC, Cobli, CTA e com o ETL das planilhas. Não escrever formulário diretamente em `fato_entregas_mensais` ou `fato_retornos_ocorrencias`.
 
@@ -270,7 +269,7 @@ O DBML do VilarejoBI mantém as 15 tabelas analíticas de baseline e adiciona um
 - `dim_motivo_nao_entrega` e `dim_tipo_feedback` normalizam categorias usadas nos formulários.
 - `fato_entregas_diarias` tem grão de uma linha de resumo diária/localidade/equipe por revisão publicada. Deve carregar as quantidades realizadas e não realizadas, que permitem calcular o OTIF aprovado. A chave de idempotência é formada por sistema, UUID do lançamento, UUID da revisão e UUID estável do item. Reprocessar a mesma revisão não duplica linhas; uma nova revisão preserva a versão anterior e atualiza `eh_revisao_atual` na mesma transação de publicação.
 - `fato_entregas_nao_realizadas_motivo` tem grão de uma linha de resumo por motivo e revisão, e guarda a quantidade não realizada daquele motivo. O ETL valida que a soma por linha coincide com o resumo diário.
-- `fato_feedback` tem grão de um evento por revisão e guarda somente contagem, tipo, data e localidade. Nome e relato permanecem no banco operacional e não são publicados nos fatos; o Portal coleta o nome do cliente, mas não telefone, documento ou outros identificadores.
+- `fato_feedback` tem grão de um evento por revisão e guarda somente contagem, tipo, data e localidade. Código do cliente e relato permanecem no banco operacional e não são publicados nos fatos; o campo legado com nome do cliente não é usado em novos registros. Não se coletam telefone ou documento.
 - `bridge_entrega_pessoa` e `bridge_feedback_pessoa` representam participantes no modelo analítico. O ranking do Portal apresenta a cada pessoa as quantidades coletivas das equipes de que participou; esses volumes não podem ser somados entre pessoas nem interpretados como medidas individuais por pedido.
 - `etl_logistica_execucao` registra a execução técnica e as contagens da carga; seu UUID é o mesmo `codigo_execucao` da publicação operacional. Os catálogos podem ficar em databases separados, portanto essa correlação não depende de FK entre eles.
 
@@ -347,7 +346,7 @@ O fluxo diário não exige cargo de gestão para confirmar um lançamento própr
 - Exigir permissão de criação para confirmar e permissão própria para cancelar, corrigir ou administrar cadastros conforme política definida. Não exigir permissão de aprovador para registrar lançamentos diários.
 - Registrar concessões e revogações de perfil/permissão e usuário/escopo em `op_logistica_autorizacao_evento`, na mesma transação da mudança efetiva; exigir motivo para revogações e restringir `UPDATE`/`DELETE` da trilha.
 - Registrar ator, ação, data/hora e resultado nas transições relevantes.
-- Restringir descrição/nome de cliente, exportação e dados do ranking a perfis autorizados.
+- Restringir descrição/código do cliente, exportação e dados do ranking a perfis autorizados; tratar nomes apenas como dados legados.
 - Proteger operações de escrita contra CSRF.
 - Guardar segredos somente no servidor/gerenciador de segredos. Nenhum segredo de banco pode ir para código ou variável de ambiente enviada ao navegador.
 
@@ -373,7 +372,7 @@ Este contrato é uma proposta de divisão por responsabilidade; nomes e formatos
 | `POST /api/v1/entregas` | Cria um rascunho com cabeçalho, participantes e motivos. | Exigir setor/localidade permitidos; aceitar `Idempotency-Key` para proteger retries. |
 | `PATCH /api/v1/entregas/{id}` | Atualiza o próprio rascunho ou rascunho autorizado. | Revalidar escopo e estado; não aceitar autor, perfil ou localidade alterados pelo cliente sem permissão. |
 | `POST /api/v1/deliveries/{codigo_lancamento}/confirm` | Valida e registra definitivamente o lançamento enviado pelo autor. | Exigir permissão de criação e escopo compatível; confirmação idempotente, sem etapa/tela intermediária de conferência. |
-| `POST /api/v1/feedbacks` e `GET /api/v1/feedbacks` | Registra ou consulta reclamações/elogios. | Aplicar permissões e escopos para nome e relato; exigir nome do cliente, sem coletar outros identificadores. POST exige `Idempotency-Key`, permite vários feedbacks por entrega e valida o motorista/ajudantes selecionados contra a equipe da entrega confirmada. |
+| `POST /api/v1/feedbacks` e `GET /api/v1/feedbacks` | Registra ou consulta reclamações/elogios. | Aplicar permissões e escopos para código do cliente e relato; exigir código do cliente em novos registros, mantendo o nome apenas para importações legadas. POST exige `Idempotency-Key`, permite vários feedbacks por entrega e valida o lote confirmado e o motorista informado contra a equipe da entrega. |
 | `GET /api/v1/indicadores/entregas` | Painel gerencial com filtros. | Indicadores e exportações usam os mesmos escopos e filtros que a listagem. |
 | `POST /api/v1/access/users` | Provisiona funcionários autorizados a entrar no portal com perfil e escopo iniciais. | Exigir `CONTROLE_ACESSO:ADMINISTRAR` global; criar conta e concessão na mesma transação e emitir senha numérica de seis dígitos exibida uma vez. |
 
@@ -426,7 +425,7 @@ As decisões abaixo já orientam a primeira versão funcional:
 3. OTIF é calculado como não realizadas ÷ total registrado, por operação, no geral, por motorista, equipe e loja. A aba **Meta** e o ranking por pessoa foram implementados localmente em 06/11/2026; a configuração inicial da meta é 95% e a migration `e8d4b2a6c901` ainda precisa ser aplicada em staging. A fórmula do OTIF não muda por essa solicitação; faixas de cor continuam adiadas.
 4. O ranking é misto: motoristas e ajudantes recebem os resultados coletivos das equipes em que participaram. A ordem atual usa taxa de realização, score (+1 elogio/−1 reclamação), volume realizado e nome.
 5. OPERADOR pode lançar Entregas, manter catálogos e registrar/importar/consultar/exportar feedback dentro dos escopos; não acessa indicadores, auditoria nem usuários e acessos. Os perfis GESTOR, DIRETORIA e DEV mantêm as permissões já previstas.
-6. O feedback exige nome do cliente. Todos os perfis do piloto podem consultar/exportar dentro dos escopos; OPERADOR também pode registrar/importar. Definir retenção de nome/relato antes de usar dados reais.
+6. Atualização de 17/11/2026: novos feedbacks usam código do cliente e são vinculados ao lote confirmado compatível com loja, data e motorista. `nome_cliente` segue apenas para compatibilidade de dados antigos. Todos os perfis do piloto podem consultar/exportar dentro dos escopos; OPERADOR também pode registrar/importar. Definir retenção de código/relato antes de usar dados reais.
 7. O staging usa `vilarejo_bi_logistica_staging`; EC2 hospedará a API, Vercel o frontend e migrations seguem a cadeia `logistica` mantida pelo VilarejoBI.
 8. Atualização solicitada em 27/10/2026: motivos terão grupo de ocorrência; pessoas terão tipo de entrega própria/terceirizada; cada motivo terá observação; indicadores separarão grupos de motivo e tipo de entrega; a integração automática de entrada do SEAC está prevista antes do lançamento oficial.
 
@@ -578,7 +577,7 @@ Para acesso local ao staging, a API executada diretamente no host pode abrir um 
 
 - Aplicar menor privilégio a usuários, API, Vercel e credenciais SQL; separar usuário de runtime e usuário de migration.
 - Aplicar autorização tanto a consultas quanto a mutações, exportações, cadastros e confirmação/cancelamento de lançamentos.
-- Limitar a exposição de nome de cliente e descrição de feedback; definir retenção/expurgo com a empresa.
+- Limitar a exposição do código do cliente e da descrição de feedback; definir retenção/expurgo com a empresa. Nomes de cliente permanecem apenas em dados legados.
 - Registrar auditoria sem guardar tokens, senha, payload sensível ou conteúdo integral de reclamações nos logs técnicos.
 - Usar validação server-side, consultas parametrizadas/ORM, CSRF se sessão por cookie, proteção contra brute force e rate limiting.
 - Fazer backup e testar restauração do banco operacional; preservar histórico aprovado e evitar exclusões físicas em cadastros usados.

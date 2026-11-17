@@ -19,6 +19,7 @@ import type {
 const DEMO_SESSION_KEY = "lancamento-logistica:demo-session";
 const DEMO_HISTORY_KEY = "lancamento-logistica:demo-history";
 const DEMO_EVENTS_KEY = "lancamento-logistica:demo-events";
+const DEMO_FEEDBACK_KEY = "lancamento-logistica:demo-feedbacks";
 
 export const demoUser: AuthenticatedUser = {
   id_usuario: 7,
@@ -161,6 +162,23 @@ function getEvents(): Record<string, DeliveryEvent[]> {
   }
 }
 
+function feedbackCounts(codigoItem: string, idLocalidade: number): { quantidade_reclamacoes: number; quantidade_elogios: number } {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(DEMO_FEEDBACK_KEY) ?? "[]") as Array<{
+      codigo_item_lancamento?: unknown;
+      id_localidade?: unknown;
+      tipo?: unknown;
+    }>;
+    const matches = stored.filter((item) => item.codigo_item_lancamento === codigoItem && item.id_localidade === idLocalidade);
+    return {
+      quantidade_reclamacoes: matches.filter((item) => item.tipo === "RECLAMACAO").length,
+      quantidade_elogios: matches.filter((item) => item.tipo === "ELOGIO").length,
+    };
+  } catch {
+    return { quantidade_reclamacoes: 0, quantidade_elogios: 0 };
+  }
+}
+
 function addEvent(
   launch: DeliveryLaunchDetail,
   type: string,
@@ -186,7 +204,11 @@ function addEvent(
 }
 
 function summarize(launch: DeliveryLaunchDetail): DeliveryLaunchSummary {
-  const dates = launch.itens.map((item) => item.data_entrega).sort();
+  const items = launch.itens.map((item) => ({
+    ...item,
+    ...feedbackCounts(item.codigo_item_lancamento, item.id_localidade),
+  }));
+  const dates = items.map((item) => item.data_entrega).sort();
   return {
     codigo_lancamento: launch.codigo_lancamento,
     id_setor: launch.id_setor,
@@ -200,14 +222,14 @@ function summarize(launch: DeliveryLaunchDetail): DeliveryLaunchSummary {
     atualizado_em: launch.atualizado_em,
     data_inicial: dates[0] ?? launch.criado_em.slice(0, 10),
     data_final: dates.at(-1) ?? launch.criado_em.slice(0, 10),
-    quantidade_itens: launch.itens.length,
-    quantidade_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_realizada + (item.quantidade_coleta_realizada ?? 0), 0),
-    quantidade_nao_realizada: launch.itens.reduce((sum, item) => sum + item.quantidade_nao_realizada + (item.quantidade_coleta_nao_realizada ?? 0), 0),
-    entregas_realizadas: launch.itens.reduce((sum, item) => sum + (item.tipo_operacao === "COLETA" ? 0 : item.quantidade_realizada), 0),
-    entregas_nao_realizadas: launch.itens.reduce((sum, item) => sum + (item.tipo_operacao === "COLETA" ? 0 : item.quantidade_nao_realizada), 0),
-    coletas_realizadas: launch.itens.reduce((sum, item) => sum + (item.quantidade_coleta_realizada ?? (item.tipo_operacao === "COLETA" ? item.quantidade_realizada : 0)), 0),
-    coletas_nao_realizadas: launch.itens.reduce((sum, item) => sum + (item.quantidade_coleta_nao_realizada ?? (item.tipo_operacao === "COLETA" ? item.quantidade_nao_realizada : 0)), 0),
-    itens: launch.itens,
+    quantidade_itens: items.length,
+    quantidade_realizada: items.reduce((sum, item) => sum + item.quantidade_realizada + (item.quantidade_coleta_realizada ?? 0), 0),
+    quantidade_nao_realizada: items.reduce((sum, item) => sum + item.quantidade_nao_realizada + (item.quantidade_coleta_nao_realizada ?? 0), 0),
+    entregas_realizadas: items.reduce((sum, item) => sum + (item.tipo_operacao === "COLETA" ? 0 : item.quantidade_realizada), 0),
+    entregas_nao_realizadas: items.reduce((sum, item) => sum + (item.tipo_operacao === "COLETA" ? 0 : item.quantidade_nao_realizada), 0),
+    coletas_realizadas: items.reduce((sum, item) => sum + (item.quantidade_coleta_realizada ?? (item.tipo_operacao === "COLETA" ? item.quantidade_realizada : 0)), 0),
+    coletas_nao_realizadas: items.reduce((sum, item) => sum + (item.quantidade_coleta_nao_realizada ?? (item.tipo_operacao === "COLETA" ? item.quantidade_nao_realizada : 0)), 0),
+    itens: items,
   };
 }
 

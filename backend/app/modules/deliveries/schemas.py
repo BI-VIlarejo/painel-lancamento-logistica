@@ -276,6 +276,8 @@ class DeliveryItemResponse(BaseModel):
     quantidade_coleta_nao_realizada: int
     peso_total_kg: Decimal | None
     observacao: str | None
+    quantidade_reclamacoes: int = 0
+    quantidade_elogios: int = 0
     participantes: list[DeliveryParticipantResponse]
     motivos: list[DeliveryReasonResponse]
 

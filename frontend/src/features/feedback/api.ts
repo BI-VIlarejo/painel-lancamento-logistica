@@ -43,6 +43,12 @@ export const feedbackApi = {
     const params = new URLSearchParams({ data_entrega: dataEntrega, id_localidade: String(idLocalidade) });
     return apiRequest<FeedbackDeliveryItem[]>(`/feedbacks/delivery-items?${params}`);
   },
+  forDelivery(codigoLancamento: string, codigoRevisao: string, codigoItem: string): Promise<FeedbackItem[]> {
+    if (isDemoMode) return demoFeedbackApi.forDelivery(codigoItem);
+    return apiRequest<FeedbackItem[]>(
+      `/feedbacks/delivery-items/${encodeURIComponent(codigoLancamento)}/${encodeURIComponent(codigoRevisao)}/${encodeURIComponent(codigoItem)}`,
+    );
+  },
   create(payload: FeedbackCreateInput, idempotencyKey: string): Promise<FeedbackItem> {
     return isDemoMode
       ? demoFeedbackApi.create(payload)

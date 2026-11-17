@@ -87,6 +87,8 @@ export type DeliveryItemResponse = Omit<DeliveryItemInput, "participantes" | "mo
   /** Legacy API responses can omit weight; old records can have no saved weight. */
   peso_total_kg?: number | string | null;
   observacao: string | null;
+  quantidade_reclamacoes?: number;
+  quantidade_elogios?: number;
   participantes: DeliveryParticipantResponse[];
   motivos: DeliveryReasonResponse[];
 };

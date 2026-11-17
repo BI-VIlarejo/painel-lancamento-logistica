@@ -17,6 +17,7 @@ export type FeedbackItem = {
   data_feedback: string;
   data_entrega: string;
   tipo: FeedbackType;
+  identificador_cliente?: string | null;
   nome_cliente?: string | null;
   id_localidade: number;
   nome_localidade: string;
@@ -28,7 +29,9 @@ export type FeedbackItem = {
 export type FeedbackCreateInput = {
   data_feedback: string;
   tipo: FeedbackType;
-  nome_cliente: string;
+  identificador_cliente?: string;
+  /** Aceito apenas para arquivos legados de importação. */
+  nome_cliente?: string;
   codigo_lancamento: string;
   codigo_revisao: string;
   codigo_item_lancamento: string;
@@ -43,7 +46,7 @@ export type FeedbackImportRowInput = {
 
 export type FeedbackImportRequest = { rows: FeedbackImportRowInput[] };
 export type FeedbackImportPreviewRequest = {
-  rows: { line: number; item: Omit<FeedbackCreateInput, "relato" | "nome_cliente"> }[];
+  rows: { line: number; item: Omit<FeedbackCreateInput, "relato" | "identificador_cliente" | "nome_cliente"> }[];
 };
 
 export type FeedbackImportPreviewRow = {

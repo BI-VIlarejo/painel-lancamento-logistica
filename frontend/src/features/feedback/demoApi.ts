@@ -75,7 +75,7 @@ export const demoFeedbackApi = {
         ...participant,
         nome_exibicao: people.find((person) => person.id_pessoa === participant.id_pessoa)?.nome_exibicao ?? participant.nome_exibicao,
       })),
-    })).filter((item) => !filters.q || [item.nome_cliente ?? "", item.relato, item.nome_localidade, ...item.participantes.map((person) => person.nome_exibicao)].join(" ").toLocaleLowerCase("pt-BR").includes(filters.q.toLocaleLowerCase("pt-BR")))
+    })).filter((item) => !filters.q || [item.identificador_cliente ?? "", item.nome_cliente ?? "", item.relato, item.nome_localidade, ...item.participantes.map((person) => person.nome_exibicao)].join(" ").toLocaleLowerCase("pt-BR").includes(filters.q.toLocaleLowerCase("pt-BR")))
       .filter((item) => !filters.tipo || filters.tipo === "TODOS" || item.tipo === filters.tipo)
       .filter((item) => !filters.id_localidade || item.id_localidade === filters.id_localidade)
       .filter((item) => !filters.data_de || item.data_feedback >= filters.data_de)
@@ -96,8 +96,8 @@ export const demoFeedbackApi = {
     if (input.participantes) {
       const selected = input.participantes.map((person) => `${person.id_pessoa}:${person.papel_participante}`).sort();
       const actual = delivery.participantes.map((person) => `${person.id_pessoa}:${person.papel_participante}`).sort();
-      if (selected.length !== actual.length || selected.some((person, index) => person !== actual[index])) {
-        throw new Error("Motorista e ajudantes selecionados devem corresponder à equipe da entrega confirmada.");
+      if (selected.some((person) => !actual.includes(person))) {
+        throw new Error("O motorista selecionado deve corresponder à equipe da entrega confirmada.");
       }
     }
     const currentItems = readItems();
@@ -116,6 +116,11 @@ export const demoFeedbackApi = {
     };
     writeItems([item, ...currentItems]);
     return item;
+  },
+
+  async forDelivery(codigoItem: string): Promise<FeedbackItem[]> {
+    await pause();
+    return readItems().filter((item) => item.codigo_item_lancamento === codigoItem);
   },
 
   async previewImport(payload: FeedbackImportPreviewRequest): Promise<FeedbackImportPreviewResponse> {
@@ -175,11 +180,11 @@ export const demoFeedbackApi = {
       offset += page.limit;
     } while (offset < total);
     const rows = [
-      ["data_manifestacao", "data_entrega", "tipo", "cliente", "loja", "motorista", "entregador_1", "entregador_2", "descricao"],
+      ["data_manifestacao", "data_entrega", "tipo", "codigo_cliente", "loja", "motorista", "entregador_1", "entregador_2", "descricao"],
       ...allItems.map((item) => {
         const driver = item.participantes.find((person) => person.papel_participante === "MOTORISTA")?.nome_exibicao ?? "";
         const helpers = item.participantes.filter((person) => person.papel_participante === "AJUDANTE").map((person) => person.nome_exibicao);
-        return [item.data_feedback, item.data_entrega, item.tipo, item.nome_cliente ?? "", item.nome_localidade, driver, helpers[0] ?? "", helpers[1] ?? "", item.relato];
+        return [item.data_feedback, item.data_entrega, item.tipo, item.identificador_cliente ?? "", item.nome_localidade, driver, helpers[0] ?? "", helpers[1] ?? "", item.relato];
       }),
     ];
     const csv = `\uFEFF${rows.map((row) => row.map((value) => {

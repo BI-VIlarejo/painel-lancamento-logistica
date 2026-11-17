@@ -486,8 +486,8 @@ Table op_logistica_feedback {
   data_feedback date [not null]
   id_localidade bigint [not null]
   id_entrega_diaria bigint [not null]
-  identificador_cliente varchar(120)
-  nome_cliente varchar(160)
+  identificador_cliente varchar(120) [note: 'Código do cliente usado nos novos registros.']
+  nome_cliente varchar(160) [note: 'Campo legado mantido para leitura/importação de registros antigos.']
   relato text [not null]
   criado_por bigint [note: 'Autor do registro; nulo somente para dados legados anteriores à trilha.']
   criado_em datetime [not null]

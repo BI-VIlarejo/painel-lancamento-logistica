@@ -29,7 +29,7 @@ type CsvRecord = { line: number; cells: string[] };
 const templateHeader = [
   "data_feedback",
   "tipo",
-  "nome_cliente",
+  "identificador_cliente",
   "codigo_lancamento",
   "codigo_revisao",
   "codigo_item_lancamento",
@@ -37,7 +37,8 @@ const templateHeader = [
 ];
 
 const headerAliases: Record<string, string> = {
-  cliente: "nome_cliente",
+  cliente: "identificador_cliente",
+  codigo_cliente: "identificador_cliente",
   data_manifestacao: "data_feedback",
   descricao: "relato",
 };
@@ -141,9 +142,10 @@ function parsePreview(text: string): Preview {
   if (records.length < 2) return { rows: [], errors: ["O CSV precisa ter cabeçalho e ao menos uma manifestação."] };
 
   const headers = records[0].cells.map(header);
-  const missing = templateHeader.filter((name) => !headers.includes(name));
+  const missing = templateHeader.filter((name) => !headers.includes(name)
+    && !(name === "identificador_cliente" && headers.includes("nome_cliente")));
   const duplicates = headers.filter((name, index) => headers.indexOf(name) !== index);
-  const unexpected = headers.filter((name) => !templateHeader.includes(name));
+  const unexpected = headers.filter((name) => !templateHeader.includes(name) && name !== "nome_cliente");
   const errors = [
     ...(missing.length ? [`Colunas obrigatórias ausentes: ${missing.join(", ")}.`] : []),
     ...(duplicates.length ? [`Colunas repetidas: ${[...new Set(duplicates)].join(", ")}.`] : []),
@@ -158,7 +160,8 @@ function parsePreview(text: string): Preview {
     const date = normalizeDate(rawDate);
     const rawType = get("tipo");
     const type = normalizeType(rawType);
-    const customerName = get("nome_cliente");
+    const customerCode = get("identificador_cliente");
+    const legacyCustomerName = get("nome_cliente");
     const launch = get("codigo_lancamento");
     const revision = get("codigo_revisao");
     const itemCode = get("codigo_item_lancamento");
@@ -168,18 +171,21 @@ function parsePreview(text: string): Preview {
     if (cells.length !== headers.length) rowErrors.push("linha: quantidade de campos diferente do cabeçalho.");
     if (!date) rowErrors.push("data_feedback: valor inválido; use AAAA-MM-DD ou DD/MM/AAAA.");
     if (!type) rowErrors.push("tipo: informe RECLAMACAO ou ELOGIO.");
-    if (!customerName) rowErrors.push("nome_cliente: informe o nome do cliente.");
-    else if (customerName.length > 160) rowErrors.push("nome_cliente: limite de 160 caracteres excedido.");
+    if (!customerCode && !legacyCustomerName) rowErrors.push("identificador_cliente: informe o código do cliente.");
+    if (customerCode.length > 120) rowErrors.push("identificador_cliente: limite de 120 caracteres excedido.");
+    if (legacyCustomerName.length > 160) rowErrors.push("nome_cliente: limite legado de 160 caracteres excedido.");
     if (!validUuid(launch)) rowErrors.push("codigo_lancamento: informe um UUID válido.");
     if (!validUuid(revision)) rowErrors.push("codigo_revisao: informe um UUID válido.");
     if (!validUuid(itemCode)) rowErrors.push("codigo_item_lancamento: informe um UUID válido.");
     if (report.length < 5 || report.length > 5000) rowErrors.push("relato: informe entre 5 e 5.000 caracteres.");
 
-    const item = date && type && customerName.length > 0 && customerName.length <= 160 && validUuid(launch) && validUuid(revision) && validUuid(itemCode) && report.length >= 5 && report.length <= 5000 && cells.length === headers.length
+    const hasValidCustomer = (customerCode.length > 0 && customerCode.length <= 120)
+      || (legacyCustomerName.length > 0 && legacyCustomerName.length <= 160);
+    const item = date && type && hasValidCustomer && validUuid(launch) && validUuid(revision) && validUuid(itemCode) && report.length >= 5 && report.length <= 5000 && cells.length === headers.length
       ? {
           data_feedback: date,
           tipo: type,
-          nome_cliente: customerName,
+          ...(customerCode ? { identificador_cliente: customerCode } : { nome_cliente: legacyCustomerName }),
           codigo_lancamento: launch,
           codigo_revisao: revision,
           codigo_item_lancamento: itemCode,

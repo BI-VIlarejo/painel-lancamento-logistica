@@ -29,7 +29,9 @@ class FeedbackCreateRequest(BaseModel):
 
     data_feedback: date
     tipo: FeedbackTypeCode
-    nome_cliente: str = Field(min_length=1, max_length=160)
+    identificador_cliente: str | None = Field(default=None, min_length=1, max_length=120)
+    # Mantido para aceitar importações já existentes. O formulário novo usa o código.
+    nome_cliente: str | None = Field(default=None, min_length=1, max_length=160)
     codigo_lancamento: UUID
     codigo_revisao: UUID
     codigo_item_lancamento: UUID
@@ -39,6 +41,12 @@ class FeedbackCreateRequest(BaseModel):
         max_length=3,
     )
     relato: str = Field(min_length=5, max_length=5000)
+
+    @model_validator(mode="after")
+    def validate_customer_identifier(self) -> "FeedbackCreateRequest":
+        if self.identificador_cliente is None and self.nome_cliente is None:
+            raise ValueError("Informe o código do cliente.")
+        return self
 
     @model_validator(mode="after")
     def validate_participants(self) -> "FeedbackCreateRequest":
@@ -63,12 +71,14 @@ class FeedbackCreateRequest(BaseModel):
             raise ValueError("Uma pessoa não pode ocupar mais de um papel.")
         return self
 
-    @field_validator("nome_cliente")
+    @field_validator("identificador_cliente", "nome_cliente")
     @classmethod
-    def normalize_client_name(cls, value: str) -> str:
+    def normalize_customer_identifier(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
         normalized = value.strip()
         if not normalized:
-            raise ValueError("Informe o nome do cliente.")
+            return None
         return normalized
 
     @field_validator("relato")
@@ -169,6 +179,8 @@ class FeedbackItem(BaseModel):
     data_feedback: date
     data_entrega: date
     tipo: FeedbackTypeCode
+    identificador_cliente: str | None
+    # Leitura legada; novos registros do formulário armazenam o código do cliente.
     nome_cliente: str | None
     id_localidade: int
     nome_localidade: str

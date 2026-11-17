@@ -72,6 +72,14 @@ def _participants_by_delivery(
     }
 
 
+def feedback_counts_by_items(
+    db: Session,
+    *,
+    item_keys: set[tuple[str, int]],
+) -> dict[tuple[str, int], dict[str, int]]:
+    return repository.feedback_counts_by_item_keys(db, item_keys=item_keys)
+
+
 def _validate_selected_participants(
     db: Session,
     *,
@@ -89,12 +97,12 @@ def _validate_selected_participants(
         for participant in participants
     }
     actual_pairs = {(id_pessoa, role) for id_pessoa, _name, role in actual}
-    if selected_pairs != actual_pairs:
+    if not selected_pairs.issubset(actual_pairs):
         raise APIError(
             status_code=422,
             code="validation_error",
             message=(
-                "Motorista e ajudantes selecionados devem corresponder à equipe "
+                "O motorista selecionado deve corresponder à equipe "
                 "da entrega confirmada."
             ),
         )
@@ -114,6 +122,7 @@ def _feedback_response(
         data_feedback=feedback.data_feedback,
         data_entrega=delivery.data_entrega,
         tipo=feedback.tipo,
+        identificador_cliente=feedback.identificador_cliente,
         nome_cliente=feedback.nome_cliente,
         id_localidade=locality.id_localidade,
         nome_localidade=locality.nome_localidade,
@@ -153,6 +162,50 @@ def list_delivery_items(
                 participantes=participant_rows.get(delivery.id_entrega_diaria, []),
             )
             for launch, revision, delivery, locality in rows
+        ]
+    except APIError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def list_feedbacks_for_delivery_item(
+    db: Session,
+    *,
+    codigo_lancamento: UUID,
+    codigo_revisao: UUID,
+    codigo_item_lancamento: UUID,
+    access: AuthorizationContext,
+) -> list[FeedbackItem]:
+    try:
+        item_row = repository.get_delivery_item_revision(
+            db,
+            codigo_lancamento=codigo_lancamento,
+            codigo_revisao=codigo_revisao,
+            codigo_item_lancamento=codigo_item_lancamento,
+        )
+        if item_row is None:
+            raise NotFoundError("A entrega confirmada selecionada não foi encontrada.")
+        launch, _revision, delivery, _locality = item_row
+        access_control_service.require_scope(
+            access,
+            id_setor=launch.id_setor,
+            id_localidade=delivery.id_localidade,
+        )
+        rows = repository.list_feedbacks_for_delivery_item(
+            db,
+            codigo_item_lancamento=str(codigo_item_lancamento),
+            id_localidade=delivery.id_localidade,
+        )
+        participants = _participants_by_delivery(
+            db, {row[3].id_entrega_diaria for row in rows}
+        )
+        return [
+            _feedback_response(
+                row,
+                participants=participants.get(row[3].id_entrega_diaria, []),
+            )
+            for row in rows
         ]
     except APIError:
         raise
@@ -248,8 +301,8 @@ def create_feedback(
             data_feedback=payload.data_feedback,
             id_localidade=delivery.id_localidade,
             id_entrega_diaria=delivery.id_entrega_diaria,
+            identificador_cliente=payload.identificador_cliente,
             nome_cliente=payload.nome_cliente,
-            identificador_cliente=None,
             relato=payload.relato,
             criado_por=access.id_usuario,
             criado_em=now,
@@ -333,6 +386,7 @@ def _feedback_matches_request(
         and feedback.data_feedback == payload.data_feedback
         and feedback.id_localidade == id_localidade
         and feedback.id_entrega_diaria == id_entrega_diaria
+        and feedback.identificador_cliente == payload.identificador_cliente
         and feedback.nome_cliente == payload.nome_cliente
         and feedback.relato == payload.relato
     )
@@ -459,8 +513,8 @@ def import_feedbacks(
                     data_feedback=row.item.data_feedback,
                     id_localidade=delivery.id_localidade,
                     id_entrega_diaria=delivery.id_entrega_diaria,
+                    identificador_cliente=row.item.identificador_cliente,
                     nome_cliente=row.item.nome_cliente,
-                    identificador_cliente=None,
                     relato=row.item.relato,
                     criado_por=access.id_usuario,
                     criado_em=now,

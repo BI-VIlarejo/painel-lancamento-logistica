@@ -103,6 +103,79 @@ def list_delivery_items(
     return list(db.execute(statement).all())
 
 
+def feedback_counts_by_item_keys(
+    db: Session,
+    *,
+    item_keys: set[tuple[str, int]],
+) -> dict[tuple[str, int], dict[str, int]]:
+    """Conta manifestações por item lógico e localidade, preservando correções."""
+    if not item_keys:
+        return {}
+    predicates = [
+        and_(
+            Feedback.codigo_item_lancamento == item_code,
+            Feedback.id_localidade == locality_id,
+        )
+        for item_code, locality_id in item_keys
+    ]
+    rows = db.execute(
+        select(
+            Feedback.codigo_item_lancamento,
+            Feedback.id_localidade,
+            Feedback.tipo,
+            func.count(Feedback.id_feedback),
+        )
+        .where(or_(*predicates))
+        .group_by(
+            Feedback.codigo_item_lancamento,
+            Feedback.id_localidade,
+            Feedback.tipo,
+        )
+    ).all()
+    counts: dict[tuple[str, int], dict[str, int]] = {}
+    for item_code, locality_id, feedback_type, quantity in rows:
+        counts.setdefault((item_code, locality_id), {})[feedback_type] = int(quantity)
+    return counts
+
+
+def list_feedbacks_for_delivery_item(
+    db: Session,
+    *,
+    codigo_item_lancamento: str,
+    id_localidade: int,
+) -> list[FeedbackRow]:
+    statement = (
+        select(Feedback, Lancamento, LancamentoRevisao, EntregaDiaria, Localidade)
+        .select_from(Feedback)
+        .join(
+            EntregaDiaria,
+            and_(
+                EntregaDiaria.id_entrega_diaria == Feedback.id_entrega_diaria,
+                EntregaDiaria.id_lancamento_revisao == Feedback.id_lancamento_revisao,
+                EntregaDiaria.codigo_item_lancamento == Feedback.codigo_item_lancamento,
+                EntregaDiaria.id_localidade == Feedback.id_localidade,
+            ),
+        )
+        .join(
+            LancamentoRevisao,
+            LancamentoRevisao.id_lancamento_revisao
+            == Feedback.id_lancamento_revisao,
+        )
+        .join(Lancamento, Lancamento.id_lancamento == LancamentoRevisao.id_lancamento)
+        .join(Localidade, Localidade.id_localidade == Feedback.id_localidade)
+        .where(
+            Feedback.codigo_item_lancamento == codigo_item_lancamento,
+            Feedback.id_localidade == id_localidade,
+        )
+        .order_by(
+            Feedback.data_feedback.desc(),
+            Feedback.criado_em.desc(),
+            Feedback.id_feedback.desc(),
+        )
+    )
+    return [tuple(row) for row in db.execute(statement).all()]
+
+
 def list_localities(
     db: Session,
     *,
@@ -142,6 +215,34 @@ def get_delivery_item(
         LancamentoRevisao.codigo_revisao == str(codigo_revisao),
         EntregaDiaria.codigo_item_lancamento == str(codigo_item_lancamento),
         Localidade.ativo.is_(True),
+    )
+    row = db.execute(statement).one_or_none()
+    return tuple(row) if row is not None else None
+
+
+def get_delivery_item_revision(
+    db: Session,
+    *,
+    codigo_lancamento: UUID,
+    codigo_revisao: UUID,
+    codigo_item_lancamento: UUID,
+) -> DeliveryItemRow | None:
+    """Busca o item da revisão exibida, inclusive se ela for um rascunho de correção."""
+    statement = (
+        select(Lancamento, LancamentoRevisao, EntregaDiaria, Localidade)
+        .select_from(EntregaDiaria)
+        .join(
+            LancamentoRevisao,
+            LancamentoRevisao.id_lancamento_revisao
+            == EntregaDiaria.id_lancamento_revisao,
+        )
+        .join(Lancamento, Lancamento.id_lancamento == LancamentoRevisao.id_lancamento)
+        .join(Localidade, Localidade.id_localidade == EntregaDiaria.id_localidade)
+        .where(
+            Lancamento.codigo_lancamento == str(codigo_lancamento),
+            LancamentoRevisao.codigo_revisao == str(codigo_revisao),
+            EntregaDiaria.codigo_item_lancamento == str(codigo_item_lancamento),
+        )
     )
     row = db.execute(statement).one_or_none()
     return tuple(row) if row is not None else None
@@ -270,6 +371,7 @@ def list_feedbacks(
         conditions.append(
             or_(
                 Feedback.relato.ilike(pattern),
+                Feedback.identificador_cliente.ilike(pattern),
                 Feedback.nome_cliente.ilike(pattern),
                 Localidade.nome_localidade.ilike(pattern),
                 participant_matches,

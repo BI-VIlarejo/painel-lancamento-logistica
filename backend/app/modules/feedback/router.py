@@ -71,6 +71,28 @@ def get_delivery_items_for_feedback(
     )
 
 
+@router.get(
+    "/delivery-items/{codigo_lancamento}/{codigo_revisao}/{codigo_item_lancamento}",
+    response_model=list[FeedbackItem],
+)
+def get_feedbacks_for_delivery_item(
+    codigo_lancamento: UUID,
+    codigo_revisao: UUID,
+    codigo_item_lancamento: UUID,
+    db: DatabaseSession,
+    response: Response,
+    access: AuthorizationContext = Depends(_read_access),
+) -> list[FeedbackItem]:
+    _no_store(response)
+    return service.list_feedbacks_for_delivery_item(
+        db,
+        codigo_lancamento=codigo_lancamento,
+        codigo_revisao=codigo_revisao,
+        codigo_item_lancamento=codigo_item_lancamento,
+        access=access,
+    )
+
+
 @router.get("/localities", response_model=list[FeedbackLocality])
 def get_feedback_localities(
     db: DatabaseSession,
@@ -186,7 +208,7 @@ def export_feedbacks(
                 "data_manifestacao",
                 "data_entrega",
                 "tipo",
-                "cliente",
+                "codigo_cliente",
                 "loja",
                 "motorista",
                 "entregador_1",
@@ -221,7 +243,7 @@ def export_feedbacks(
                     item.data_feedback.isoformat(),
                     item.data_entrega.isoformat(),
                     item.tipo,
-                    item.nome_cliente or "",
+                    item.identificador_cliente or "",
                     item.nome_localidade,
                     driver,
                     helpers[0] if helpers else "",

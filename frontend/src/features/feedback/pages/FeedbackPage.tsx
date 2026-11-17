@@ -14,7 +14,6 @@ import type {
   FeedbackLocality,
   FeedbackListFilters,
   FeedbackParticipant,
-  FeedbackParticipantInput,
   FeedbackType,
 } from "../types";
 
@@ -22,12 +21,10 @@ type Props = { permissions: string[] };
 type FormState = {
   data_feedback: string;
   tipo: FeedbackType | "";
-  nome_cliente: string;
+  identificador_cliente: string;
   id_localidade: string;
   data_entrega: string;
   id_motorista: string;
-  id_ajudante_1: string;
-  id_ajudante_2: string;
   codigo_item_lancamento: string;
   relato: string;
 };
@@ -42,12 +39,10 @@ const today = () => {
 const emptyForm = (): FormState => ({
   data_feedback: today(),
   tipo: "",
-  nome_cliente: "",
+  identificador_cliente: "",
   id_localidade: "",
   data_entrega: "",
   id_motorista: "",
-  id_ajudante_1: "",
-  id_ajudante_2: "",
   codigo_item_lancamento: "",
   relato: "",
 });
@@ -66,25 +61,10 @@ const teamLabel = (item: FeedbackItem | FeedbackDeliveryItem) => item.participan
   .map((person) => `${person.nome_exibicao} · ${person.papel_participante === "MOTORISTA" ? "Motorista" : "Ajudante"}`)
   .join(", ");
 
-function participantsForTeam(driverId: string, helperOneId: string, helperTwoId: string): FeedbackParticipantInput[] {
-  const participants: FeedbackParticipantInput[] = [];
-  if (driverId) {
-    participants.push({ id_pessoa: Number(driverId), papel_participante: "MOTORISTA" });
-  }
-  if (helperOneId) {
-    participants.push({ id_pessoa: Number(helperOneId), papel_participante: "AJUDANTE" });
-  }
-  if (helperTwoId) {
-    participants.push({ id_pessoa: Number(helperTwoId), papel_participante: "AJUDANTE" });
-  }
-  return participants;
-}
-
-function deliveryMatchesTeam(item: FeedbackDeliveryItem, participants: FeedbackParticipantInput[]): boolean {
-  if (!participants.length) return false;
-  const selected = participants.map((person) => `${person.id_pessoa}:${person.papel_participante}`).sort();
-  const actual = item.participantes.map((person) => `${person.id_pessoa}:${person.papel_participante}`).sort();
-  return selected.length === actual.length && selected.every((person, index) => person === actual[index]);
+function deliveryMatchesDriver(item: FeedbackDeliveryItem, driverId: string): boolean {
+  return Boolean(driverId) && item.participantes.some(
+    (person) => person.papel_participante === "MOTORISTA" && person.id_pessoa === Number(driverId),
+  );
 }
 
 function saveBlob(blob: Blob): void {
@@ -118,7 +98,7 @@ function FeedbackDetails({ item, onClose }: { item: FeedbackItem; onClose: () =>
           <FeedbackTypeBadge type={item.tipo} /><span>{dateLabel(item.data_feedback)}</span><strong>{item.nome_localidade}</strong>
         </div>
         <dl className={cx(styles, commonStyles, "detail-facts")}>
-          <div><dt>Cliente</dt><dd>{item.nome_cliente || "Não informado"}</dd></div>
+          <div><dt>Código do cliente</dt><dd>{item.identificador_cliente || "Não informado"}</dd></div>
           <div><dt>Entrega relacionada</dt><dd>{dateLabel(item.data_entrega)}</dd></div>
           <div><dt>Equipe relacionada</dt><dd>{teamLabel(item) || "Não informada"}</dd></div>
         </dl>
@@ -164,34 +144,35 @@ export function FeedbackPage({ permissions }: Props) {
 
   const availablePeople = useMemo(() => {
     const drivers = new Map<number, FeedbackParticipant>();
-    const helpers = new Map<number, FeedbackParticipant>();
     for (const item of deliveryItems) {
       for (const participant of item.participantes) {
         if (participant.papel_participante === "MOTORISTA") drivers.set(participant.id_pessoa, participant);
-        else helpers.set(participant.id_pessoa, participant);
       }
     }
-    return { drivers: Array.from(drivers.values()), helpers: Array.from(helpers.values()) };
+    return Array.from(drivers.values());
   }, [deliveryItems]);
-  const { drivers, helpers } = availablePeople;
+  const drivers = availablePeople;
   const hasDeliverySearchCriteria = Boolean(form.data_entrega && form.id_localidade);
-  const teamFieldsDisabled = catalogsLoading || deliveriesLoading || !hasDeliverySearchCriteria || !deliveryItems.length;
-  const teamFieldsPlaceholder = deliveriesLoading
-    ? "Buscando equipe..."
+  const driverFieldDisabled = catalogsLoading || deliveriesLoading || !hasDeliverySearchCriteria || !deliveryItems.length;
+  const driverFieldPlaceholder = deliveriesLoading
+    ? "Buscando motoristas..."
     : !hasDeliverySearchCriteria
-      ? "Escolha data e loja"
+      ? "Escolha a data e a loja"
       : !deliveryItems.length
         ? "Sem entrega confirmada"
         : "";
   const selectedTeam = useMemo(
-    () => participantsForTeam(form.id_motorista, form.id_ajudante_1, form.id_ajudante_2),
-    [form.id_motorista, form.id_ajudante_1, form.id_ajudante_2],
+    () => form.id_motorista
+      ? [{ id_pessoa: Number(form.id_motorista), papel_participante: "MOTORISTA" as const }]
+      : [],
+    [form.id_motorista],
   );
   const matchingDeliveryItems = useMemo(
-    () => deliveryItems.filter((item) => deliveryMatchesTeam(item, selectedTeam)),
-    [deliveryItems, selectedTeam],
+    () => deliveryItems.filter((item) => deliveryMatchesDriver(item, form.id_motorista)),
+    [deliveryItems, form.id_motorista],
   );
-  const selectedDelivery = matchingDeliveryItems.find((item) => item.codigo_item_lancamento === form.codigo_item_lancamento);
+  const selectedDelivery = matchingDeliveryItems.find((item) => item.codigo_item_lancamento === form.codigo_item_lancamento)
+    ?? (matchingDeliveryItems.length === 1 ? matchingDeliveryItems[0] : undefined);
   const listFilters: FeedbackListFilters = {
     q: search.trim() || undefined,
     tipo: typeFilter,
@@ -255,8 +236,6 @@ export function FeedbackPage({ permissions }: Props) {
     setForm((current) => ({
       ...current,
       id_motorista: "",
-      id_ajudante_1: "",
-      id_ajudante_2: "",
       codigo_item_lancamento: "",
     }));
     void feedbackApi.deliveryItems(form.data_entrega, Number(form.id_localidade))
@@ -287,26 +266,24 @@ export function FeedbackPage({ permissions }: Props) {
       setError("Selecione o motorista.");
       return;
     }
-    if (form.id_ajudante_1 && form.id_ajudante_1 === form.id_ajudante_2) {
-      setError("Selecione pessoas diferentes nos campos de ajudante.");
-      return;
-    }
     if (!selectedDelivery) {
-      setError("Selecione uma entrega confirmada que corresponda à equipe informada.");
+      setError(matchingDeliveryItems.length > 1
+        ? "Escolha o lote correspondente ao motorista, à loja e à data informados."
+        : "Não foi encontrada uma entrega confirmada para o motorista, a loja e a data informados.");
       return;
     }
     if (form.data_feedback < form.data_entrega) {
       setError("A data da manifestação não pode anteceder a data da entrega.");
       return;
     }
-    if (!form.nome_cliente.trim()) {
-      setError("Informe o nome do cliente.");
+    if (!form.identificador_cliente.trim()) {
+      setError("Informe o código do cliente.");
       return;
     }
     const payload: FeedbackCreateInput = {
       data_feedback: form.data_feedback,
       tipo: form.tipo,
-      nome_cliente: form.nome_cliente.trim(),
+      identificador_cliente: form.identificador_cliente.trim(),
       codigo_lancamento: selectedDelivery.codigo_lancamento,
       codigo_revisao: selectedDelivery.codigo_revisao,
       codigo_item_lancamento: selectedDelivery.codigo_item_lancamento,
@@ -374,7 +351,7 @@ export function FeedbackPage({ permissions }: Props) {
       <section className={cx(styles, commonStyles, "feedback-panel")}>
         <div className={cx(styles, commonStyles, "panel-heading")}><div><h2>Histórico de manifestações</h2><p>{loading ? "Carregando registros" : `${firstResult}–${lastResult} de ${total}`}</p></div></div>
         <div className={cx(styles, commonStyles, "feedback-filters")}>
-          <label className={cx(styles, commonStyles, "search-field")}><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => onFilterChange(() => setSearch(event.target.value))} placeholder="Buscar cliente, loja, pessoa ou relato" aria-label="Buscar manifestações" /></label>
+          <label className={cx(styles, commonStyles, "search-field")}><span aria-hidden="true">⌕</span><input value={search} onChange={(event) => onFilterChange(() => setSearch(event.target.value))} placeholder="Buscar código do cliente, loja, pessoa ou relato" aria-label="Buscar manifestações" /></label>
           <label className={cx(styles, commonStyles, "filter-control")}>Tipo<select value={typeFilter} onChange={(event) => onFilterChange(() => setTypeFilter(event.target.value as FeedbackType | "TODOS"))}><option value="TODOS">Todos</option><option value="RECLAMACAO">Reclamação</option><option value="ELOGIO">Elogio</option></select></label>
           <label className={cx(styles, commonStyles, "filter-control")}>Loja<select value={localityFilter} onChange={(event) => onFilterChange(() => setLocalityFilter(event.target.value))}><option value="">Todas as localidades ativas</option>{localities.map((locality) => <option value={locality.id_localidade} key={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
           <label className={cx(styles, commonStyles, "filter-control")}>De<input type="date" max={toDate || undefined} value={fromDate} onChange={(event) => onFilterChange(() => setFromDate(event.target.value))} /></label>
@@ -382,11 +359,11 @@ export function FeedbackPage({ permissions }: Props) {
         </div>
         {error && <div className={cx(styles, commonStyles, "notice notice-error page-notice")} role="alert">{error}</div>}
         {loading ? <div className={cx(styles, commonStyles, "feedback-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} />Carregando manifestações...</div>
-          : items.length ? <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela de manifestações" tabIndex={0}><table className={cx(styles, commonStyles, "data-table feedback-table")}><thead><tr><th>Data</th><th>Tipo</th><th>Cliente</th><th>Loja</th><th>Entrega</th><th>Equipe</th><th>Relato</th><th aria-label="Ações" /></tr></thead><tbody>
+          : items.length ? <div className={cx(styles, commonStyles, "data-table-scroll")} role="region" aria-label="Tabela de manifestações" tabIndex={0}><table className={cx(styles, commonStyles, "data-table feedback-table")}><thead><tr><th>Data</th><th>Tipo</th><th>Código do cliente</th><th>Loja</th><th>Entrega</th><th>Equipe</th><th>Relato</th><th aria-label="Ações" /></tr></thead><tbody>
             {items.map((item) => <tr key={item.id_feedback}>
               <td><time dateTime={item.data_feedback}>{dateLabel(item.data_feedback)}</time></td>
               <td><FeedbackTypeBadge type={item.tipo} /></td>
-              <td><strong>{item.nome_cliente || "—"}</strong></td>
+              <td><strong>{item.identificador_cliente || "—"}</strong></td>
               <td><strong>{item.nome_localidade}</strong></td>
               <td><time dateTime={item.data_entrega}>{dateLabel(item.data_entrega)}</time></td>
               <td><span className={cx(styles, commonStyles, "team-cell")}>{item.participantes.map((person) => person.nome_exibicao).join(", ") || "—"}</span></td>
@@ -395,7 +372,7 @@ export function FeedbackPage({ permissions }: Props) {
             </tr>)}
           </tbody></table></div>
           : <div className={cx(styles, commonStyles, "feedback-empty")}><span aria-hidden="true">✳</span><h3>{total ? "Nenhuma manifestação nesta página" : "Nenhuma manifestação registrada"}</h3><p>{total ? "Altere os filtros ou consulte outra página." : "Quando houver uma reclamação ou elogio vinculado a uma entrega, o registro aparecerá aqui."}</p>{canCreate && !total && <button className={cx(styles, commonStyles, "button button-primary")} type="button" onClick={startCreate}>Registrar primeira manifestação</button>}</div>}
-        <div className={cx(styles, commonStyles, "privacy-note")}><span aria-hidden="true">i</span><p>O nome do cliente é usado para identificar a manifestação. Não registre telefone, documento ou outros identificadores; evite incluir dados pessoais no relato.</p></div>
+        <div className={cx(styles, commonStyles, "privacy-note")}><span aria-hidden="true">i</span><p>Use o código do cliente para identificar a manifestação. Evite incluir dados pessoais no relato.</p></div>
         <footer className={cx(styles, commonStyles, "feedback-filters")}><span>{total} registro{total === 1 ? "" : "s"}</span><div className={cx(styles, commonStyles, "pagination-controls")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset === 0} onClick={() => setOffset((value) => Math.max(0, value - pageSize))}>Anterior</button><span>Página {currentPage} de {pageCount}</span><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={loading || offset + items.length >= total} onClick={() => setOffset((value) => value + pageSize)}>Próxima</button></div></footer>
       </section>
     </>}
@@ -412,27 +389,25 @@ export function FeedbackPage({ permissions }: Props) {
         </div>
         <div className={cx(styles, commonStyles, "form-grid-two")}>
           <label>Data da manifestação<input type="date" required value={form.data_feedback} onChange={(event) => setForm((current) => ({ ...current, data_feedback: event.target.value }))} /></label>
-          <label>Data da entrega relacionada<input type="date" required value={form.data_entrega} max={form.data_feedback} onChange={(event) => setForm((current) => ({ ...current, data_entrega: event.target.value, id_motorista: "", id_ajudante_1: "", id_ajudante_2: "", codigo_item_lancamento: "" }))} /></label>
+          <label>Data da entrega relacionada<input type="date" required value={form.data_entrega} max={form.data_feedback} onChange={(event) => setForm((current) => ({ ...current, data_entrega: event.target.value, id_motorista: "", codigo_item_lancamento: "" }))} /></label>
         </div>
-        <label>Nome do cliente<input type="text" required maxLength={160} autoComplete="off" value={form.nome_cliente} onChange={(event) => setForm((current) => ({ ...current, nome_cliente: event.target.value }))} /></label>
-        <label>Loja<select required value={form.id_localidade} onChange={(event) => setForm((current) => ({ ...current, id_localidade: event.target.value, id_motorista: "", id_ajudante_1: "", id_ajudante_2: "", codigo_item_lancamento: "" }))} disabled={catalogsLoading}><option value="">{catalogsLoading ? "Carregando lojas..." : "Selecione a loja"}</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
+        <label>Código do cliente<input type="text" required maxLength={120} autoComplete="off" value={form.identificador_cliente} onChange={(event) => setForm((current) => ({ ...current, identificador_cliente: event.target.value }))} /></label>
+        <label>Loja<select required value={form.id_localidade} onChange={(event) => setForm((current) => ({ ...current, id_localidade: event.target.value, id_motorista: "", codigo_item_lancamento: "" }))} disabled={catalogsLoading}><option value="">{catalogsLoading ? "Carregando lojas..." : "Selecione a loja"}</option>{localities.map((locality) => <option key={locality.id_localidade} value={locality.id_localidade}>{locality.nome_localidade}</option>)}</select></label>
         <fieldset className={cx(styles, commonStyles, "team-fieldset")}>
-          <legend>Motorista e ajudantes</legend>
+          <legend>Motorista</legend>
           <div className={cx(styles, commonStyles, "team-field-grid")}>
-            <label><span className={cx(styles, "team-field-label")}>Motorista</span><select required value={form.id_motorista} onChange={(event) => setForm((current) => ({ ...current, id_motorista: event.target.value, codigo_item_lancamento: "" }))} disabled={teamFieldsDisabled}><option value="">{teamFieldsPlaceholder || "Selecione o motorista"}</option>{drivers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao}</option>)}</select></label>
-            <label><span className={cx(styles, "team-field-label")}>Ajudante 1 <span className={cx(styles, commonStyles, "optional-label")}>(opcional)</span></span><select value={form.id_ajudante_1} onChange={(event) => setForm((current) => ({ ...current, id_ajudante_1: event.target.value, codigo_item_lancamento: "" }))} disabled={teamFieldsDisabled}><option value="">{teamFieldsPlaceholder || "Sem ajudante 1"}</option>{helpers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa} disabled={String(person.id_pessoa) === form.id_ajudante_2}>{person.nome_exibicao}</option>)}</select></label>
-            <label><span className={cx(styles, "team-field-label")}>Ajudante 2 <span className={cx(styles, commonStyles, "optional-label")}>(opcional)</span></span><select value={form.id_ajudante_2} onChange={(event) => setForm((current) => ({ ...current, id_ajudante_2: event.target.value, codigo_item_lancamento: "" }))} disabled={teamFieldsDisabled}><option value="">{teamFieldsPlaceholder || "Sem ajudante 2"}</option>{helpers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa} disabled={String(person.id_pessoa) === form.id_ajudante_1}>{person.nome_exibicao}</option>)}</select></label>
+            <label><span className={cx(styles, "team-field-label")}>Motorista</span><select required value={form.id_motorista} onChange={(event) => setForm((current) => ({ ...current, id_motorista: event.target.value, codigo_item_lancamento: "" }))} disabled={driverFieldDisabled}><option value="">{driverFieldPlaceholder || "Selecione o motorista"}</option>{drivers.map((person) => <option key={person.id_pessoa} value={person.id_pessoa}>{person.nome_exibicao}</option>)}</select></label>
           </div>
         </fieldset>
-        {!hasDeliverySearchCriteria && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Selecione a data da entrega e a loja para carregar a equipe das entregas confirmadas.</div>}
-        <label className={cx(styles, commonStyles, "form-grid-full")}>Entrega confirmada relacionada<select required value={form.codigo_item_lancamento} onChange={(event) => setForm((current) => ({ ...current, codigo_item_lancamento: event.target.value }))} disabled={!form.data_entrega || !form.id_localidade || !form.id_motorista || deliveriesLoading || !matchingDeliveryItems.length}><option value="">{deliveriesLoading ? "Buscando entregas..." : "Selecione a entrega da equipe"}</option>{matchingDeliveryItems.map((item) => <option key={item.codigo_item_lancamento} value={item.codigo_item_lancamento}>{item.participantes.map((person) => person.nome_exibicao).join(", ") || "Equipe sem nome"} · {item.quantidade_realizada} realizadas / {item.quantidade_nao_realizada} não realizadas</option>)}</select></label>
+        {!hasDeliverySearchCriteria && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Selecione a loja e a data para carregar os motoristas que enviaram entregas.</div>}
+        {matchingDeliveryItems.length > 1 && <label className={cx(styles, commonStyles, "form-grid-full")}>Lote de entregas<select required value={form.codigo_item_lancamento} onChange={(event) => setForm((current) => ({ ...current, codigo_item_lancamento: event.target.value }))}><option value="">Escolha o lote para esta combinação</option>{matchingDeliveryItems.map((item) => <option key={item.codigo_item_lancamento} value={item.codigo_item_lancamento}>{item.participantes.map((person) => person.nome_exibicao).join(", ") || "Equipe sem nome"} · {item.quantidade_realizada} realizadas / {item.quantidade_nao_realizada} não realizadas</option>)}</select></label>}
         {deliveryError && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{deliveryError}</div>}
-        {!deliveriesLoading && hasDeliverySearchCriteria && !deliveryError && !deliveryItems.length && <div className={cx(styles, commonStyles, "notice notice-error")} role="status">Não há entrega confirmada para essa loja e data. Escolha uma combinação que tenha uma entrega confirmada para carregar motorista e ajudantes.</div>}
-        {!deliveriesLoading && form.data_entrega && form.id_localidade && form.id_motorista && deliveryItems.length > 0 && !matchingDeliveryItems.length && <div className={cx(styles, commonStyles, "notice notice-error")} role="status">Não há entrega confirmada para a equipe selecionada nessa loja e data. Confira o motorista e os ajudantes.</div>}
-        {selectedDelivery && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Equipe selecionada: {teamLabel(selectedDelivery)}. A manifestação ficará vinculada a essa equipe e à entrega confirmada.</div>}
+        {!deliveriesLoading && hasDeliverySearchCriteria && !deliveryError && !deliveryItems.length && <div className={cx(styles, commonStyles, "notice notice-error")} role="status">Não há entrega confirmada para essa loja e data. Confira a combinação ou tente outra data.</div>}
+        {!deliveriesLoading && form.id_motorista && deliveryItems.length > 0 && !matchingDeliveryItems.length && <div className={cx(styles, commonStyles, "notice notice-error")} role="status">O motorista selecionado não enviou entrega confirmada nessa loja e data.</div>}
+        {selectedDelivery && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Vínculo automático: {teamLabel(selectedDelivery)} · {selectedDelivery.quantidade_realizada} entregas realizadas e {selectedDelivery.quantidade_nao_realizada} não realizadas.</div>}
         <label className={cx(styles, commonStyles, "form-grid-full")}>Relato<textarea required minLength={5} maxLength={5000} rows={5} value={form.relato} onChange={(event) => setForm((current) => ({ ...current, relato: event.target.value }))} placeholder="Descreva com clareza o que aconteceu ou o que o cliente elogiou." /></label>
         {error && <div className={cx(styles, commonStyles, "notice notice-error")} role="alert">{error}</div>}
-        <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Informe o nome do cliente. Não registre telefone, documento ou outro identificador. Evite incluir dados pessoais no relato livre.</div>
+        <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Informe o código do cliente e evite incluir dados pessoais no relato livre.</div>
         {isDemoMode && <div className={cx(styles, commonStyles, "form-privacy-note")}><span aria-hidden="true">i</span>Na prévia, os registros ficam salvos apenas neste navegador. Não use dados reais de clientes.</div>}
         <div className={cx(styles, commonStyles, "form-actions")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" disabled={saving} onClick={() => setFormOpen(false)}>Cancelar</button><button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={saving || catalogsLoading || deliveriesLoading || !localities.length || !drivers.length}>{saving ? "Salvando..." : "Salvar manifestação"}</button></div>
       </form>
