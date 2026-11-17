@@ -8,7 +8,7 @@ Este registro acompanha a organização da área de Indicadores e as próximas e
 
 - A navegação **Indicadores** agora agrupa suas páginas por setor.
 - **Suporte** contém o Painel Gerencial existente e o Ranking de Pessoas.
-- **Transporte** contém um Painel Gerencial próprio, consultando o histórico de fretes. O painel filtra período e modalidade e resume quantidade de fretes, valores bruto/líquido, avarias, entregas, peso, pendências, evolução mensal e valores por responsável. Fretes cancelados ficam fora dos indicadores.
+- **Transporte** contém um Painel Gerencial com os seis indicadores definidos pela Diretoria: pagamento elegível por transportador; percentual de frete (frete bruto ÷ valor das notas); entregas e ocorrências por transportador; KM rodado por transportador; entregas por cidade/UF; e taxa de acerto por transportador (realizadas ÷ total planejado). Cada linha dos indicadores abre os fretes ou lançamentos de entrega que compõem o número. Os indicadores de frete excluem cancelamentos e os indicadores operacionais consideram lançamentos enviados; a transportadora das entregas vem da classificação do motorista principal no lançamento.
 - No lançamento de reclamações e elogios, o código do cliente substitui o nome. Loja, data e motorista localizam o lote confirmado; se houver mais de um lote compatível, o usuário seleciona o lote correto. A equipe completa continua ligada por meio da entrega.
 - O Histórico de Entregas apresenta contagens separadas de reclamações e elogios. Cada contagem abre os registros daquele tipo com código do cliente e relato, respeitando a permissão de consulta. As colunas também entram na exportação do histórico.
 
