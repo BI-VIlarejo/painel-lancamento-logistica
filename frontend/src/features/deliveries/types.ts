@@ -14,6 +14,8 @@ export type LocalityCatalogItem = {
   codigo_localidade: string;
   nome_localidade: string;
   tipo_localidade: string;
+  cidade?: string | null;
+  uf?: string | null;
 };
 export type PersonCatalogItem = {
   id_pessoa: number;
@@ -69,6 +71,8 @@ export type DeliveryParticipantResponse = DeliveryParticipantInput & {
   nome_exibicao: string;
   ordem: number;
   tipo_transporte_entrega: DeliveryTransportType | null;
+  modalidade_terceirizada?: "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null;
+  codigo_transportadora_independente?: "PAULO_CRUZ" | "JUST_IN_TIME" | null;
 };
 export type DeliveryReasonResponse = Omit<DeliveryReasonInput, "codigo_cliente"> & {
   quantidade: number;
@@ -84,6 +88,8 @@ export type DeliveryItemResponse = Omit<DeliveryItemInput, "participantes" | "mo
   tipo_operacao?: "ENTREGA" | "COLETA";
   nome_localidade: string;
   codigo_localidade: string;
+  cidade?: string | null;
+  uf?: string | null;
   /** Legacy API responses can omit weight; old records can have no saved weight. */
   peso_total_kg?: number | string | null;
   observacao: string | null;

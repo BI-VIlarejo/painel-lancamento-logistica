@@ -185,6 +185,8 @@ def _build_details(
                 papel_participante=participant.papel_participante,
                 ordem=participant.ordem,
                 tipo_transporte_entrega=person.tipo_transporte_entrega,
+                modalidade_terceirizada=person.modalidade_terceirizada,
+                codigo_transportadora_independente=person.codigo_transportadora_independente,
             )
         )
 
@@ -216,6 +218,8 @@ def _build_details(
                 id_localidade=locality.id_localidade,
                 codigo_localidade=locality.codigo_localidade,
                 nome_localidade=locality.nome_localidade,
+                cidade=locality.cidade,
+                uf=locality.uf,
                 quantidade_realizada=delivery.quantidade_realizada,
                 quantidade_nao_realizada=delivery.quantidade_nao_realizada,
                 quantidade_coleta_realizada=delivery.quantidade_coleta_realizada,

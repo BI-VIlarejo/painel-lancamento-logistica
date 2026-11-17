@@ -32,15 +32,15 @@ const sectors: SectorCatalogItem[] = [
   { id_setor: 1, codigo: "SUPORTE", nome: "Suporte" },
 ];
 const localities: LocalityCatalogItem[] = [
-  { id_localidade: 11, codigo_localidade: "MAC", nome_localidade: "Macaé", tipo_localidade: "LOJA" },
-  { id_localidade: 12, codigo_localidade: "CBF", nome_localidade: "Cabo Frio", tipo_localidade: "LOJA" },
-  { id_localidade: 13, codigo_localidade: "CPS", nome_localidade: "Campos dos Goytacazes", tipo_localidade: "LOJA" },
-  { id_localidade: 14, codigo_localidade: "CD", nome_localidade: "Centro de Distribuição", tipo_localidade: "CD" },
+  { id_localidade: 11, codigo_localidade: "MAC", nome_localidade: "Macaé", tipo_localidade: "LOJA", cidade: "Macaé", uf: "RJ" },
+  { id_localidade: 12, codigo_localidade: "CBF", nome_localidade: "Cabo Frio", tipo_localidade: "LOJA", cidade: "Cabo Frio", uf: "RJ" },
+  { id_localidade: 13, codigo_localidade: "CPS", nome_localidade: "Campos dos Goytacazes", tipo_localidade: "LOJA", cidade: "Campos dos Goytacazes", uf: "RJ" },
+  { id_localidade: 14, codigo_localidade: "CD", nome_localidade: "Centro de Distribuição", tipo_localidade: "CD", cidade: "Macaé", uf: "RJ" },
 ];
 const people: PersonCatalogItem[] = [
-  { id_pessoa: 21, nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA" },
-  { id_pessoa: 22, nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "TERCEIRIZADA" },
-  { id_pessoa: 23, nome_exibicao: "Bruno Souza", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA" },
+  { id_pessoa: 21, nome_exibicao: "Rafael Martins", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA", modalidade_terceirizada: null, codigo_transportadora_independente: null },
+  { id_pessoa: 22, nome_exibicao: "Joana Costa", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "TERCEIRIZADA", modalidade_terceirizada: "AGREGADO", codigo_transportadora_independente: null },
+  { id_pessoa: 23, nome_exibicao: "Bruno Souza", tipo_funcao: "MOTORISTA", tipo_transporte_entrega: "PROPRIA", modalidade_terceirizada: null, codigo_transportadora_independente: null },
   { id_pessoa: 31, nome_exibicao: "Marina Alves", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "PROPRIA" },
   { id_pessoa: 32, nome_exibicao: "Pedro Lima", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "TERCEIRIZADA" },
   { id_pessoa: 33, nome_exibicao: "Luiz Fernando", tipo_funcao: "AJUDANTE", tipo_transporte_entrega: "PROPRIA" },
@@ -86,6 +86,8 @@ function makeItem(
     id_localidade: idLocalidade,
     codigo_localidade: locality.codigo_localidade,
     nome_localidade: locality.nome_localidade,
+    cidade: locality.cidade ?? locality.nome_localidade,
+    uf: locality.uf ?? null,
     quantidade_realizada: completed,
     quantidade_nao_realizada: notCompleted,
     quantidade_coleta_realizada: 0,
@@ -93,8 +95,8 @@ function makeItem(
     peso_total_kg: Math.max(1, completed + notCompleted) * 125,
     observacao: null,
     participantes: [
-      { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1, tipo_transporte_entrega: people.find((person) => person.id_pessoa === driverId)?.tipo_transporte_entrega ?? null },
-      { id_pessoa: helperId, codigo_pessoa: uuid(), nome_exibicao: personName(helperId), papel_participante: "AJUDANTE", ordem: 2, tipo_transporte_entrega: people.find((person) => person.id_pessoa === helperId)?.tipo_transporte_entrega ?? null },
+      { id_pessoa: driverId, codigo_pessoa: uuid(), nome_exibicao: personName(driverId), papel_participante: "MOTORISTA", ordem: 1, tipo_transporte_entrega: people.find((person) => person.id_pessoa === driverId)?.tipo_transporte_entrega ?? null, modalidade_terceirizada: people.find((person) => person.id_pessoa === driverId)?.modalidade_terceirizada ?? null, codigo_transportadora_independente: people.find((person) => person.id_pessoa === driverId)?.codigo_transportadora_independente ?? null },
+      { id_pessoa: helperId, codigo_pessoa: uuid(), nome_exibicao: personName(helperId), papel_participante: "AJUDANTE", ordem: 2, tipo_transporte_entrega: people.find((person) => person.id_pessoa === helperId)?.tipo_transporte_entrega ?? null, modalidade_terceirizada: people.find((person) => person.id_pessoa === helperId)?.modalidade_terceirizada ?? null, codigo_transportadora_independente: people.find((person) => person.id_pessoa === helperId)?.codigo_transportadora_independente ?? null },
     ],
     motivos: Array.from({ length: notCompleted }, (_, index) => ({
       id_motivo_nao_entrega: reasonId,
@@ -247,12 +249,16 @@ function toResponseItem(item: DeliveryDraftRequest["itens"][number]): DeliveryIt
     peso_total_kg: item.peso_total_kg,
     codigo_localidade: locality.codigo_localidade,
     nome_localidade: locality.nome_localidade,
+    cidade: locality.cidade ?? locality.nome_localidade,
+    uf: locality.uf ?? null,
     observacao: null,
     participantes: item.participantes.map((participant, index) => ({
       ...participant,
       codigo_pessoa: uuid(),
       nome_exibicao: personName(participant.id_pessoa),
       tipo_transporte_entrega: people.find((person) => person.id_pessoa === participant.id_pessoa)?.tipo_transporte_entrega ?? null,
+      modalidade_terceirizada: people.find((person) => person.id_pessoa === participant.id_pessoa)?.modalidade_terceirizada ?? null,
+      codigo_transportadora_independente: people.find((person) => person.id_pessoa === participant.id_pessoa)?.codigo_transportadora_independente ?? null,
       ordem: index + 1,
     })),
     motivos: item.motivos.map((entry) => {

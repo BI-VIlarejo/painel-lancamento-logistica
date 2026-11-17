@@ -251,6 +251,8 @@ class DeliveryParticipantResponse(BaseModel):
     papel_participante: Literal["MOTORISTA", "AJUDANTE"]
     ordem: int
     tipo_transporte_entrega: str | None
+    modalidade_terceirizada: Literal["AGREGADO", "TRANSPORTADORA_INDEPENDENTE"] | None = None
+    codigo_transportadora_independente: Literal["PAULO_CRUZ", "JUST_IN_TIME"] | None = None
 
 
 class DeliveryReasonResponse(BaseModel):
@@ -270,6 +272,8 @@ class DeliveryItemResponse(BaseModel):
     id_localidade: int
     codigo_localidade: str
     nome_localidade: str
+    cidade: str | None = None
+    uf: str | None = None
     quantidade_realizada: int
     quantidade_nao_realizada: int
     quantidade_coleta_realizada: int
