@@ -57,6 +57,15 @@ function visibleNavigationItems(items: AppNavItem[]): AppNavItem[] {
   });
 }
 
+function filterNavigationBySector(items: AppNavItem[], selectedCodes: string[], enabled: boolean): AppNavItem[] {
+  return items.flatMap((item) => {
+    if (enabled && item.sectorCode && !selectedCodes.includes(item.sectorCode)) return [];
+    const children = item.children ? filterNavigationBySector(item.children, selectedCodes, enabled) : undefined;
+    if (item.children && children?.length === 0) return [];
+    return [{ ...item, ...(children ? { children } : {}) }];
+  });
+}
+
 function isNavigationItemActive(item: AppNavItem, path: string): boolean {
   return item.path === path || Boolean(item.children?.some((child) => isNavigationItemActive(child, path)));
 }
@@ -97,6 +106,12 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
     && hasScopedSectorPermission(supportSectorId, supportSectorPermissionCodes);
   const transportFolderVisible = (canCreateFreights || canViewFreights || canViewAggregatePayments)
     && hasScopedSectorPermission(transportSectorId, transportSectorPermissionCodes);
+  const supportIndicatorsVisible = canViewDashboard
+    && hasScopedSectorPermission(supportSectorId, ["PAINEL_GERENCIAL:ACESSAR"]);
+  const transportIndicatorsVisible = canViewDashboard
+    && canViewFreights
+    && hasScopedSectorPermission(transportSectorId, ["PAINEL_GERENCIAL:ACESSAR"])
+    && hasScopedSectorPermission(transportSectorId, ["FRETES:VER"]);
   const sectorFilterOptions = [
     { code: "SUPORTE", label: "Suporte", visible: supportFolderVisible },
     { code: "TRANSPORTE", label: "Transporte", visible: transportFolderVisible },
@@ -229,21 +244,44 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
     {
       id: "indicators",
       label: "Indicadores",
-      visible: canViewDashboard,
+      visible: supportIndicatorsVisible || transportIndicatorsVisible,
       children: [
         {
-          id: "management-dashboard",
-          path: "/painel",
-          label: "Painel Gerencial",
-          visible: canViewDashboard,
-          icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
+          id: "support-indicators",
+          label: "Suporte",
+          visible: supportIndicatorsVisible,
+          sectorCode: "SUPORTE",
+          children: [
+            {
+              id: "management-dashboard",
+              path: "/painel",
+              label: "Painel Gerencial",
+              visible: supportIndicatorsVisible,
+              icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
+            },
+            {
+              id: "people-indicators",
+              path: "/indicadores/pessoas",
+              label: "Ranking de pessoas",
+              visible: supportIndicatorsVisible,
+              icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
+            },
+          ],
         },
         {
-          id: "people-indicators",
-          path: "/indicadores/pessoas",
-          label: "Ranking de pessoas",
-          visible: canViewDashboard,
-          icon: <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" /><path d="M3.5 19v-1.3A4.7 4.7 0 0 1 8.2 13h1.6a4.7 4.7 0 0 1 4.7 4.7V19M16 5.5a3 3 0 0 1 0 5.8M17 13h.5a3.7 3.7 0 0 1 3.7 3.7V19" /></svg>,
+          id: "transport-indicators",
+          label: "Transporte",
+          visible: transportIndicatorsVisible,
+          sectorCode: "TRANSPORTE",
+          children: [
+            {
+              id: "transport-dashboard",
+              path: "/indicadores/transportes",
+              label: "Painel Gerencial",
+              visible: transportIndicatorsVisible,
+              icon: <svg viewBox="0 0 24 24"><path d="M4 19V5m0 14h16M8 15l3-4 3 2 5-7" /><path d="M16 6h3v3" /></svg>,
+            },
+          ],
         },
       ],
     },
@@ -283,8 +321,10 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
       ],
     },
   ];
-  const sections = visibleNavigationItems(configuredSections).filter((section) =>
-    !canFilterSectors || !section.sectorCode || activeSectorCodes.includes(section.sectorCode),
+  const sections = filterNavigationBySector(
+    visibleNavigationItems(configuredSections),
+    activeSectorCodes,
+    canFilterSectors,
   );
 
   useEffect(() => {
@@ -339,6 +379,8 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
   };
   const pageTitle = path === "/indicadores/pessoas"
     ? "Indicadores por pessoa"
+    : path === "/indicadores/transportes"
+      ? "Painel Gerencial de Transportes"
     : path === "/painel"
       ? "Painel gerencial"
       : path === "/cadastros"
@@ -359,7 +401,9 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
                       ? "Histórico de entregas"
                       : "Lançar entrega";
   const pageSection = path === "/painel" || path === "/indicadores/pessoas"
-    ? "Indicadores"
+    ? "Suporte · Indicadores"
+    : path === "/indicadores/transportes"
+      ? "Transporte · Indicadores"
     : path === "/cadastros" || path === "/auditoria"
       ? "Administração"
       : path === "/feedback"

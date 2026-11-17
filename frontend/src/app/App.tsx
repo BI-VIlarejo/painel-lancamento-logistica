@@ -12,6 +12,7 @@ const DeliveryHistoryPage = lazy(() => import("../features/deliveries/pages/Deli
 const DeliveryLaunchPage = lazy(() => import("../features/deliveries/pages/DeliveryLaunchPage").then((module) => ({ default: module.DeliveryLaunchPage })));
 const ManagementDashboardPage = lazy(() => import("../features/analytics/pages/ManagementDashboardPage").then((module) => ({ default: module.ManagementDashboardPage })));
 const PeopleRankingPage = lazy(() => import("../features/analytics/pages/PeopleRankingPage").then((module) => ({ default: module.PeopleRankingPage })));
+const TransportDashboardPage = lazy(() => import("../features/analytics/pages/TransportDashboardPage").then((module) => ({ default: module.TransportDashboardPage })));
 const RegistriesPage = lazy(() => import("../features/administration/pages/RegistriesPage").then((module) => ({ default: module.RegistriesPage })));
 const ChangePasswordPage = lazy(() => import("../features/auth/pages/ChangePasswordPage").then((module) => ({ default: module.ChangePasswordPage })));
 const ResetPasswordPage = lazy(() => import("../features/auth/pages/ResetPasswordPage").then((module) => ({ default: module.ResetPasswordPage })));
@@ -31,6 +32,7 @@ function PortalApp() {
   const canCancelDelivery = permissions.includes("ENTREGAS_DIARIAS:CANCELAR");
   const canViewDashboard = permissions.includes("PAINEL_GERENCIAL:ACESSAR");
   const canAccessFeedback = permissions.includes("FEEDBACK_CLIENTES:ACESSAR");
+  const canViewFeedback = permissions.includes("FEEDBACK_CLIENTES:VER");
   const canManageCatalogs = permissions.includes("CADASTROS:ADMINISTRAR");
   const canManageAccess = permissions.includes("CONTROLE_ACESSO:ADMINISTRAR");
   const canViewAudit = permissions.includes("AUDITORIA:VER");
@@ -40,7 +42,7 @@ function PortalApp() {
   const canExportAggregatePayments = permissions.includes("AGREGADOS:EXPORTAR");
   const editMatch = path.match(/^\/entregas\/([0-9a-f-]{36})$/i);
   const freightEditMatch = path.match(/^\/fretes\/([0-9a-f-]{36})$/i);
-  const knownPath = ["/", "/login", "/entregas", "/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch) || Boolean(freightEditMatch);
+  const knownPath = ["/", "/login", "/entregas", "/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/indicadores/transportes", "/cadastros", "/auditoria", "/trocar-senha", "/redefinir-senha"].includes(path) || Boolean(editMatch) || Boolean(freightEditMatch);
   const defaultPath = canCreate ? "/entregas" : canView ? "/historico" : canCreateFreights ? "/fretes" : canViewFreights ? "/fretes/historico" : canViewAggregatePayments ? "/fretes/pagamentos" : canAccessFeedback ? "/feedback" : canViewDashboard ? "/painel" : canManageAccess || canManageCatalogs ? "/cadastros" : canViewAudit ? "/auditoria" : "/entregas";
 
   useEffect(() => {
@@ -72,7 +74,7 @@ function PortalApp() {
     </Suspense>;
   }
 
-  const currentPath = freightEditMatch ? "/fretes/historico" : ["/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
+  const currentPath = freightEditMatch ? "/fretes/historico" : ["/historico", "/fretes", "/fretes/historico", "/fretes/pagamentos", "/feedback", "/painel", "/indicadores/pessoas", "/indicadores/transportes", "/cadastros", "/auditoria", "/trocar-senha"].includes(path) ? path : "/entregas";
   return (
     <AppShell
       user={user}
@@ -89,6 +91,8 @@ function PortalApp() {
           ? <ManagementDashboardPage onNavigate={navigate} />
           : path === "/indicadores/pessoas" && canViewDashboard
           ? <PeopleRankingPage />
+          : path === "/indicadores/transportes" && canViewDashboard && canViewFreights
+          ? <TransportDashboardPage onNavigate={navigate} canViewPayments={canViewAggregatePayments} />
           : path === "/auditoria" && canViewAudit
           ? <AuditPage />
           : path === "/feedback" && canAccessFeedback
@@ -102,7 +106,7 @@ function PortalApp() {
           : path === "/cadastros" && (canManageCatalogs || canManageAccess)
           ? <RegistriesPage permissions={permissions} currentUserId={user.id_usuario} />
           : path === "/historico" && canView
-          ? <DeliveryHistoryPage onNavigate={navigate} canCreate={canCreate} canEditDraft={canEditDraft} canCorrect={canCorrect} canCancel={canCancelDelivery} currentUserId={user.id_usuario} />
+          ? <DeliveryHistoryPage onNavigate={navigate} canCreate={canCreate} canEditDraft={canEditDraft} canCorrect={canCorrect} canCancel={canCancelDelivery} canViewFeedback={canViewFeedback} currentUserId={user.id_usuario} />
           : (path === "/entregas" && canCreate) || (editMatch && canEditDraft && canView)
             ? <DeliveryLaunchPage onNavigate={navigate} canLaunch={canCreate} canManageCatalogs={canManageCatalogs} editId={editMatch?.[1]} />
             : (

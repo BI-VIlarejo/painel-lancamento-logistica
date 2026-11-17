@@ -81,3 +81,7 @@ Também será preciso definir quem pode alterar cada tabela, quando uma nova tar
 5. Os cálculos são conferidos com exemplos aprovados pelas pessoas responsáveis pelas planilhas antes do uso operacional.
 6. Uma transportadora autorizada consegue atualizar sua própria tabela e incluir um novo campo ou seção pelo processo definido, sem afetar as tabelas das outras transportadoras nem alterar silenciosamente lançamentos anteriores.
 7. A gestão consegue escolher duas datas e gerar um relatório conferível com cada agregado e o valor devido no período, pronto para encaminhar ao Financeiro.
+
+## Atualização — pastas de Indicadores (17/11/2026)
+
+A área **Indicadores** foi organizada em pastas setoriais: **Suporte** reúne o Painel Gerencial e o Ranking de Pessoas; **Transporte** contém um Painel Gerencial próprio, baseado no histórico de fretes. As pastas e páginas respeitam permissões e escopos de acesso. A inclusão futura de **SAC** está registrada, mas não deve ser implementada até a definição do escopo do setor. As melhorias da área de pagamentos aguardam requisitos detalhados. Consulte [o registro de expansão e pendências](./expansao-setores-indicadores-pendencias.md).
