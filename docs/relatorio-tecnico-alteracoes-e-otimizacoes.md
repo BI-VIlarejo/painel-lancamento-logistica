@@ -226,3 +226,63 @@ A migration `c9b61a2f4d80_allow_user_identity_update_audit.py` já está commita
 Não enviar mudanças para `main` nem fazer deploy de produção. A base de produção ainda não foi provisionada.
 
 **Verificação desta rodada:** não foram executados build, testes ou deploy. As alterações foram revisadas por inspeção do código e do diff; a confirmação de comportamento depende das verificações e publicação descritas acima.
+
+---
+
+## 9. Otimização do Painel Gerencial de Transportes (19/11/2026)
+
+### 9.1 Diagnóstico do gargalo
+
+O Painel Gerencial de Transportes (`/indicadores/transportes`) agregava todos os indicadores no navegador (`TransportDashboardPage.tsx`), disparando loops sequenciais (`limit=100` em `while`) para `/freights` e `/deliveries`:
+
+- **Requisições em série:** cada página esperava a anterior concluir para buscar o próximo `offset`, multiplicando round-trips HTTP e podendo atingir o timeout de `20 s` em períodos maiores.
+- **Consultas pesadas nas listagens gerais:**
+  - `GET /deliveries` executava `COUNT(DISTINCT id_lancamento)` em toda página, subqueries correlacionadas de visibilidade/revisão, trazia todos os itens dos lançamentos (inclusive datas fora do filtro e coletas), todos os ajudantes/motivos e executava `feedback_counts_by_item_keys` com um `OR` de múltiplos `AND` por item — dados que nem eram usados nos gráficos principais.
+  - `GET /freights` repetia `COUNT(*)` em toda página, consultava eventos de cancelamento por página, serializava o JSON completo de `detalhe_calculo` e incluía fretes cancelados que só eram filtrados no navegador.
+- **Índices ausentes:** faltavam índices voltados ao filtro global por `data_entrega` (sem filtro de localidade), verificação de `FRETE_CANCELADO` por `(tipo_evento, id_frete)`, revisão confirmada por `(id_lancamento, estado, numero_revisao)` e ordenação/junção de participantes, motivos e feedback.
+
+### 9.2 Alterações implementadas
+
+#### Backend
+- **Endpoint agregado (`GET /analytics/transport`):** implementado em `backend/app/modules/analytics/transport_service.py` e exposto em `backend/app/modules/analytics/router.py` (`schemas.py`). Calcula os 6 blocos do painel (`pagamentos`, `percentuais_frete`, `entregas_transportadora`, `km_rodado`, `entregas_cidade` e base para `taxa_acerto`) em **duas consultas principais** (uma de fretes ativos escalares no período e uma de entregas confirmadas da última revisão com contagem de ocorrências de entrega já agregada no SQL), sem carregar feedback, ajudantes, coletas ou datas fora do período.
+- **Detalhamento sob demanda paginado (`GET /analytics/transport/details`):** carrega os totais do recorte clicado (transportador ou cidade/UF) e apenas a página atual (`10` registros) de fretes e entregas, consultando participantes, motivos e contagens de reclamações/elogios somente para os itens exibidos na página. Quando `kind=city`, ignora a consulta de fretes.
+- **Autorização:** exige `PAINEL_GERENCIAL:ACESSAR` e `FRETES:VER` com escopo `GLOBAL` ou `SETOR` de `TRANSPORTE`.
+- **Otimizações transversais de consulta:**
+  - `backend/app/modules/feedback/repository.py`: `feedback_counts_by_item_keys` passou a usar `tuple_(Feedback.codigo_item_lancamento, Feedback.id_localidade).in_(...)` em lotes de 400 itens em vez de `or_(*predicates)`.
+  - `backend/app/modules/deliveries/repository.py`: `_all_items_visible_condition` evita a subquery `NOT EXISTS` em `op_logistica_entrega_diaria` quando o usuário tem escopo `GLOBAL` ou de setor completo.
+- **Novos índices nos modelos ORM e no bootstrap local (`local_dev_bootstrap.py`):**
+  - `op_logistica_frete`: `ix_op_logistica_frete_setor_data_id (id_setor, data_servico, id_frete)`
+  - `op_logistica_frete_evento`: `ix_op_logistica_frete_evento_tipo_frete (tipo_evento, id_frete)`
+  - `op_logistica_lancamento_revisao`: `ix_op_logistica_revisao_lancamento_estado_num (id_lancamento, estado, numero_revisao)`
+  - `op_logistica_entrega_diaria`: `ix_op_logistica_entrega_data_revisao (data_entrega, id_lancamento_revisao)`
+  - `op_logistica_entrega_participante`: `ix_op_logistica_entrega_participante_entrega_papel (id_entrega_diaria, papel_participante)`
+  - `op_logistica_entrega_motivo`: `ix_op_logistica_entrega_motivo_entrega_tipo (id_entrega_diaria, tipo_operacao)`
+  - `op_logistica_feedback`: `ix_op_logistica_feedback_item_localidade_tipo (codigo_item_lancamento, id_localidade, tipo)`
+
+#### Frontend
+- `frontend/src/features/analytics/pages/TransportDashboardPage.tsx`: substituídos os loops de `freightsApi.list` e `deliveriesApi.list` por uma chamada única a `analyticsApi.transport` com `AbortController`.
+- `frontend/src/features/analytics/pages/TransportDashboardDetailDialog.tsx`: carregamento sob demanda via `analyticsApi.transportDetails` com paginação no servidor e preservação de estado ao alternar recortes.
+- `frontend/src/shared/api/apiClient.ts`: preservada a propagação de cancelamento quando `requestOptions.signal?.aborted` é verdadeiro (sem confundir aborto do usuário com timeout).
+- `frontend/src/features/analytics/types.ts`, `api.ts` e `demoApi.ts`: contratos tipados e suporte equivalente no modo demonstração (`VITE_DEMO_MODE=true`).
+
+### 9.3 Banco já existente (staging/produção)
+
+Para ambientes MySQL já provisionados sem uso do `local_dev_bootstrap.py`, criar os 7 índices abaixo:
+
+```sql
+CREATE INDEX ix_op_logistica_frete_setor_data_id ON op_logistica_frete (id_setor, data_servico, id_frete);
+CREATE INDEX ix_op_logistica_frete_evento_tipo_frete ON op_logistica_frete_evento (tipo_evento, id_frete);
+CREATE INDEX ix_op_logistica_revisao_lancamento_estado_num ON op_logistica_lancamento_revisao (id_lancamento, estado, numero_revisao);
+CREATE INDEX ix_op_logistica_entrega_data_revisao ON op_logistica_entrega_diaria (data_entrega, id_lancamento_revisao);
+CREATE INDEX ix_op_logistica_entrega_participante_entrega_papel ON op_logistica_entrega_participante (id_entrega_diaria, papel_participante);
+CREATE INDEX ix_op_logistica_entrega_motivo_entrega_tipo ON op_logistica_entrega_motivo (id_entrega_diaria, tipo_operacao);
+CREATE INDEX ix_op_logistica_feedback_item_localidade_tipo ON op_logistica_feedback (codigo_item_lancamento, id_localidade, tipo);
+```
+
+### 9.4 Verificações executadas (19/11/2026)
+
+- **Testes de backend (`python -m unittest discover -s tests -v`):** 72 testes passaram em `4.851s`, incluindo `tests/test_transport_analytics.py` (permissões/escopo, validação de período, paridade dos 6 indicadores, detalhamento paginado e limite `<= 5` queries por requisição).
+- **Compilação Python (`python -m compileall -q app tests scripts`):** concluída sem erros (`exit 0`).
+- **Bootstrap de índices:** `_ensure_performance_indexes` validado em SQLite com remoção e recriação idempotente de índice.
+- **Frontend:** `npm run typecheck`, `npm run build` (produção) e `VITE_DEMO_MODE=true npm run build` (demo) passaram sem erros.
+- **Análise estática (Pyrefly):** corrigidos `bad-unpacking` (acesso direto aos atributos da `Row` SQLAlchemy com `cast(Frete, row)`) e avisos de `unnecessary-type-conversion` em `transport_service.py` e `feedback/repository.py`.

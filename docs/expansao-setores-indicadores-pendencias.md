@@ -25,3 +25,9 @@ A área de pagamentos precisa ser melhorada. A implementação aguarda os requis
 - Definir objetivo, usuários, permissões, indicadores e dados de origem do setor SAC.
 - Receber os requisitos funcionais de pagamentos e então atualizar o escopo antes de alterar essa área.
 - Manter Suporte e Transporte como pastas disponíveis em Indicadores, exibidas conforme as permissões e os escopos do usuário.
+
+## Otimização de desempenho do Painel de Transportes — 19/11/2026
+
+- O Painel Gerencial de Transportes (`/indicadores/transportes`) deixou de baixar todos os registros paginados de `/freights` e `/deliveries` no navegador e passou a consumir o endpoint agregado `GET /analytics/transport` (com `AbortController` na troca de datas).
+- O modal de detalhamento (`TransportDashboardDetailDialog`) passou a carregar totais e páginas de `10` registros sob demanda via `GET /analytics/transport/details` ao clicar em uma barra de transportador ou cidade/UF.
+- A visualização continua exigindo `PAINEL_GERENCIAL:ACESSAR` e `FRETES:VER` com escopo `GLOBAL` ou `SETOR` (`TRANSPORTE`), preservando integralmente os 6 indicadores e as regras de cálculo (detalhes técnicos e SQL de índices em [relatorio-tecnico-alteracoes-e-otimizacoes.md](./relatorio-tecnico-alteracoes-e-otimizacoes.md)).
