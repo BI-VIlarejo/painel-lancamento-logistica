@@ -229,6 +229,17 @@ def _all_items_visible_condition(
     *,
     revision: Any,
 ) -> ColumnElement[bool]:
+    if not scope_pairs:
+        return false()
+    if any(id_setor is None and id_localidade is None for id_setor, id_localidade in scope_pairs):
+        return true()
+    sector_wide_ids = sorted(
+        {
+            id_setor
+            for id_setor, id_localidade in scope_pairs
+            if id_setor is not None and id_localidade is None
+        }
+    )
     row_scope = _scope_row_condition(scope_pairs)
     has_hidden_item = exists(
         select(EntregaDiaria.id_entrega_diaria).where(
@@ -236,6 +247,8 @@ def _all_items_visible_condition(
             not_(row_scope),
         )
     )
+    if sector_wide_ids:
+        return or_(Lancamento.id_setor.in_(sector_wide_ids), not_(has_hidden_item))
     return not_(has_hidden_item)
 
 

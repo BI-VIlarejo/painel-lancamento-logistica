@@ -90,6 +90,12 @@ class Frete(Base):
             name="ck_op_logistica_frete_hodometros",
         ),
         Index("ix_op_logistica_frete_setor_data", "id_setor", "data_servico"),
+        Index(
+            "ix_op_logistica_frete_setor_data_id",
+            "id_setor",
+            "data_servico",
+            "id_frete",
+        ),
         Index("ix_op_logistica_frete_tipo_data", "tipo_transporte", "data_servico"),
         Index("ix_op_logistica_frete_status_data", "status_calculo", "data_servico"),
         Index(
@@ -177,6 +183,7 @@ class FreteEvento(Base):
     __table_args__ = (
         Index("ix_op_logistica_frete_evento_frete_data", "id_frete", "ocorrido_em"),
         Index("ix_op_logistica_frete_evento_ator_data", "id_usuario_ator", "ocorrido_em"),
+        Index("ix_op_logistica_frete_evento_tipo_frete", "tipo_evento", "id_frete"),
     )
 
     id_frete_evento: Mapped[int] = mapped_column(

@@ -59,6 +59,12 @@ class Feedback(Base):
             "id_lancamento_revisao",
             "id_localidade",
         ),
+        Index(
+            "ix_op_logistica_feedback_item_localidade_tipo",
+            "codigo_item_lancamento",
+            "id_localidade",
+            "tipo",
+        ),
         Index("ix_op_logistica_feedback_tipo", "tipo"),
     )
 

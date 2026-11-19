@@ -545,6 +545,31 @@ def _ensure_local_authorization_event_checks(engine) -> None:
             )
 
 
+def _ensure_performance_indexes(engine) -> None:
+    """Garante índices de consulta operacional sem recriar os já existentes."""
+    target_tables = {
+        "op_logistica_frete",
+        "op_logistica_frete_evento",
+        "op_logistica_lancamento_revisao",
+        "op_logistica_entrega_diaria",
+        "op_logistica_entrega_participante",
+        "op_logistica_entrega_motivo",
+        "op_logistica_feedback",
+    }
+    inspector = inspect(engine)
+    with engine.begin() as connection:
+        for table_name in target_tables:
+            table = Base.metadata.tables.get(table_name)
+            if table is None or not inspector.has_table(table_name):
+                continue
+            existing_names = {
+                idx.get("name") for idx in inspector.get_indexes(table_name) if idx.get("name")
+            }
+            for index in table.indexes:
+                if index.name and index.name not in existing_names:
+                    index.create(bind=connection, checkfirst=True)
+
+
 def _create_dev_user(
     db: Session,
     *,
@@ -642,6 +667,7 @@ def main() -> int:
         _ensure_local_delivery_otif_columns(engine)
         _ensure_locality_address_columns(engine)
         _ensure_local_authorization_event_checks(engine)
+        _ensure_performance_indexes(engine)
         with Session(engine) as db, db.begin():
             now = _now()
             profiles, permissions = _seed_access_catalog(

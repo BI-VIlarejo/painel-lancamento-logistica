@@ -154,6 +154,12 @@ class LancamentoRevisao(Base):
         ),
         Index("ix_op_logistica_revisao_estado_envio", "estado", "enviado_em"),
         Index(
+            "ix_op_logistica_revisao_lancamento_estado_num",
+            "id_lancamento",
+            "estado",
+            "numero_revisao",
+        ),
+        Index(
             "ix_op_logistica_revisao_formulario_estado",
             "id_formulario_versao",
             "estado",
@@ -359,6 +365,11 @@ class EntregaDiaria(Base):
             "id_lancamento_revisao",
             "data_entrega",
         ),
+        Index(
+            "ix_op_logistica_entrega_data_revisao",
+            "data_entrega",
+            "id_lancamento_revisao",
+        ),
         CheckConstraint(
             "quantidade_realizada >= 0 and quantidade_nao_realizada >= 0 "
             "and quantidade_coleta_realizada >= 0 "
@@ -447,6 +458,11 @@ class EntregaParticipante(Base):
             "ix_op_logistica_entrega_participante_pessoa",
             "id_pessoa",
         ),
+        Index(
+            "ix_op_logistica_entrega_participante_entrega_papel",
+            "id_entrega_diaria",
+            "papel_participante",
+        ),
         CheckConstraint(
             "papel_participante in ('MOTORISTA', 'AJUDANTE')",
             name="ck_op_logistica_entrega_papel",
@@ -484,6 +500,11 @@ class EntregaMotivo(Base):
         Index(
             "ix_op_logistica_entrega_motivo_entrega",
             "id_entrega_diaria",
+        ),
+        Index(
+            "ix_op_logistica_entrega_motivo_entrega_tipo",
+            "id_entrega_diaria",
+            "tipo_operacao",
         ),
         CheckConstraint(
             "quantidade > 0",

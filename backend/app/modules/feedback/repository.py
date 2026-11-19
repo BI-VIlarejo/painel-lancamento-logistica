@@ -4,7 +4,7 @@ from datetime import date
 from typing import Any, TypeAlias
 from uuid import UUID
 
-from sqlalchemy import and_, case, exists, false, func, not_, or_, select, true
+from sqlalchemy import and_, case, exists, false, func, not_, or_, select, true, tuple_
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -111,30 +111,27 @@ def feedback_counts_by_item_keys(
     """Conta manifestações por item lógico e localidade, preservando correções."""
     if not item_keys:
         return {}
-    predicates = [
-        and_(
-            Feedback.codigo_item_lancamento == item_code,
-            Feedback.id_localidade == locality_id,
-        )
-        for item_code, locality_id in item_keys
-    ]
-    rows = db.execute(
-        select(
-            Feedback.codigo_item_lancamento,
-            Feedback.id_localidade,
-            Feedback.tipo,
-            func.count(Feedback.id_feedback),
-        )
-        .where(or_(*predicates))
-        .group_by(
-            Feedback.codigo_item_lancamento,
-            Feedback.id_localidade,
-            Feedback.tipo,
-        )
-    ).all()
+    key_list = sorted(item_keys)
     counts: dict[tuple[str, int], dict[str, int]] = {}
-    for item_code, locality_id, feedback_type, quantity in rows:
-        counts.setdefault((item_code, locality_id), {})[feedback_type] = int(quantity)
+    batch_size = 400
+    for offset in range(0, len(key_list), batch_size):
+        batch = key_list[offset : offset + batch_size]
+        rows = db.execute(
+            select(
+                Feedback.codigo_item_lancamento,
+                Feedback.id_localidade,
+                Feedback.tipo,
+                func.count(Feedback.id_feedback),
+            )
+            .where(tuple_(Feedback.codigo_item_lancamento, Feedback.id_localidade).in_(batch))
+            .group_by(
+                Feedback.codigo_item_lancamento,
+                Feedback.id_localidade,
+                Feedback.tipo,
+            )
+        ).all()
+        for item_code, locality_id, feedback_type, quantity in rows:
+            counts.setdefault((item_code, locality_id), {})[feedback_type] = quantity
     return counts
 
 
