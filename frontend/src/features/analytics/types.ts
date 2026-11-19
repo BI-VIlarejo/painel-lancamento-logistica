@@ -1,3 +1,5 @@
+import type { FreightResponse } from "../freights/types";
+
 export type DashboardFilters = {
   data_de?: string;
   data_ate?: string;
@@ -186,4 +188,139 @@ export type DashboardResponse = {
   por_tipo_entrega: DashboardDeliveryType[];
   por_pessoa: DashboardPerson[];
   por_equipe: DashboardTeam[];
+};
+
+export type TransportDashboardFilters = {
+  data_de?: string;
+  data_ate?: string;
+};
+
+export type TransportPaymentItem = {
+  key: string;
+  label: string;
+  total: number;
+  fretes_count: number;
+  known_count: number;
+};
+
+export type TransportRateItem = {
+  key: string;
+  label: string;
+  percentual: number;
+  known_count: number;
+};
+
+export type TransportCarrierDeliveryItem = {
+  key: string;
+  label: string;
+  planned: number;
+  realized: number;
+  not_realized: number;
+  occurrences: number;
+  accuracy: number | null;
+};
+
+export type TransportKmItem = {
+  key: string;
+  label: string;
+  total_km: number;
+  known_count: number;
+};
+
+export type TransportCityDeliveryItem = {
+  city: string;
+  planned: number;
+  realized: number;
+  not_realized: number;
+  occurrences: number;
+};
+
+export type TransportDashboardResponse = {
+  data_de: string | null;
+  data_ate: string | null;
+  total_fretes: number;
+  total_registros_entrega: number;
+  pagamentos: TransportPaymentItem[];
+  percentuais_frete: TransportRateItem[];
+  entregas_transportadora: TransportCarrierDeliveryItem[];
+  km_rodado: TransportKmItem[];
+  entregas_cidade: TransportCityDeliveryItem[];
+};
+
+export type TransportDetailFilters = {
+  kind: "carrier" | "city";
+  key: string;
+  data_de?: string;
+  data_ate?: string;
+  freight_limit?: number;
+  freight_offset?: number;
+  delivery_limit?: number;
+  delivery_offset?: number;
+};
+
+export type TransportDetailParticipant = {
+  nome_exibicao: string;
+  papel_participante: string;
+};
+
+export type TransportDetailReason = {
+  descricao_motivo: string;
+  quantidade: number;
+};
+
+export type TransportDetailDeliveryItem = {
+  codigo_lancamento: string;
+  codigo_item_lancamento: string;
+  data_entrega: string;
+  id_localidade: number;
+  codigo_localidade: string;
+  nome_localidade: string;
+  cidade: string | null;
+  uf: string | null;
+  carrier_label: string;
+  driver: string | null;
+  quantidade_realizada: number;
+  quantidade_nao_realizada: number;
+  ocorrencias: number;
+  quantidade_reclamacoes: number;
+  quantidade_elogios: number;
+  observacao: string | null;
+  participantes: TransportDetailParticipant[];
+  motivos: TransportDetailReason[];
+};
+
+export type TransportDetailTotals = {
+  fretes_count: number;
+  pagamento_total: number;
+  pagamento_count: number;
+  percentual_frete: number | null;
+  percentual_count: number;
+  km_total: number;
+  km_count: number;
+  registros_entrega: number;
+  entregas_planejadas: number;
+  entregas_realizadas: number;
+  entregas_nao_realizadas: number;
+  ocorrencias: number;
+  taxa_acerto: number | null;
+};
+
+export type TransportDashboardDetailResponse = {
+  kind: "carrier" | "city";
+  key: string;
+  data_de: string | null;
+  data_ate: string | null;
+  totals: TransportDetailTotals;
+  fretes: {
+    items: FreightResponse[];
+    total: number;
+    limit: number;
+    offset: number;
+  };
+  entregas: {
+    items: TransportDetailDeliveryItem[];
+    total: number;
+    limit: number;
+    offset: number;
+  };
 };

@@ -1,8 +1,28 @@
 import { demoApi } from "../deliveries/demoApi";
 import { demoFeedbackApi } from "../feedback/demoApi";
 import { demoAdministrationApi } from "../administration/demoApi";
+import { freightsDemoApi } from "../freights/demoApi";
+import { numericValue } from "../freights/format";
+import type { FreightResponse } from "../freights/types";
 import type { DeliveryTransportType } from "../deliveries/classifications";
-import type { DashboardFilters, DashboardGoal, DashboardResponse } from "./types";
+import {
+  deliveryCarrier,
+  deliveryCityRegionLabel,
+  deliveryOccurrenceCount,
+  freightCarrier,
+  transportKilometers,
+  transportPaymentAmount,
+} from "./pages/transportDashboardUtils";
+import type { TransportDeliveryRecord } from "./pages/transportDashboardUtils";
+import type {
+  DashboardFilters,
+  DashboardGoal,
+  DashboardResponse,
+  TransportDashboardDetailResponse,
+  TransportDashboardFilters,
+  TransportDashboardResponse,
+  TransportDetailFilters,
+} from "./types";
 
 const percentage = (count: number, total: number): number | null =>
   total ? Math.round((count / total) * 10_000) / 100 : null;
@@ -553,6 +573,256 @@ export const demoAnalyticsApi = {
         motivos: teamReasonOutput(key),
       })).sort((a, b) => (b.taxa_realizacao ?? -1) - (a.taxa_realizacao ?? -1)
         || b.itens_planejados - a.itens_planejados || a.equipe.localeCompare(b.equipe, "pt-BR")),
+    };
+  },
+  async transport(filters: TransportDashboardFilters = {}): Promise<TransportDashboardResponse> {
+    const [freightPage, deliveryPage] = await Promise.all([
+      freightsDemoApi.list({ data_de: filters.data_de, data_ate: filters.data_ate, limit: 500, offset: 0 }),
+      demoApi.listDeliveries({ estado: "LANÇADO", data_de: filters.data_de, data_ate: filters.data_ate, limit: 500, offset: 0 }),
+    ]);
+    const freights = freightPage.items.filter((item) => !item.cancelado);
+    const deliveryRecords: TransportDeliveryRecord[] = deliveryPage.items.flatMap((launch) => launch.itens
+      .filter((item) => (!filters.data_de || item.data_entrega >= filters.data_de)
+        && (!filters.data_ate || item.data_entrega <= filters.data_ate))
+      .filter((item) => item.quantidade_realizada + item.quantidade_nao_realizada > 0)
+      .map((item) => {
+        const driver = item.participantes.find((person) => person.papel_participante === "MOTORISTA");
+        return {
+          launchCode: launch.codigo_lancamento,
+          item,
+          carrier: deliveryCarrier(driver),
+          driver: driver?.nome_exibicao ?? null,
+        };
+      }));
+
+    const carrierLabels = new Map<string, string>();
+    const paymentMap = new Map<string, { total: number; fretes_count: number; known_count: number }>();
+    const rateMap = new Map<string, { gross: number; invoice: number; known_count: number }>();
+    const kmMap = new Map<string, { total_km: number; known_count: number }>();
+
+    for (const freight of freights) {
+      const carrier = freightCarrier(freight);
+      carrierLabels.set(carrier.key, carrier.label);
+
+      const pay = paymentMap.get(carrier.key) ?? { total: 0, fretes_count: 0, known_count: 0 };
+      pay.fretes_count += 1;
+      const amount = transportPaymentAmount(freight);
+      if (amount !== null) {
+        pay.total += amount;
+        pay.known_count += 1;
+      }
+      paymentMap.set(carrier.key, pay);
+
+      const gross = numericValue(freight.valor_frete_bruto);
+      const invoice = numericValue(freight.valor_nota);
+      if (gross !== null && invoice !== null && invoice > 0) {
+        const rate = rateMap.get(carrier.key) ?? { gross: 0, invoice: 0, known_count: 0 };
+        rate.gross += gross;
+        rate.invoice += invoice;
+        rate.known_count += 1;
+        rateMap.set(carrier.key, rate);
+      }
+
+      const km = transportKilometers(freight);
+      if (km !== null) {
+        const kmEntry = kmMap.get(carrier.key) ?? { total_km: 0, known_count: 0 };
+        kmEntry.total_km += km;
+        kmEntry.known_count += 1;
+        kmMap.set(carrier.key, kmEntry);
+      }
+    }
+
+    const deliveryCarrierMap = new Map<string, { planned: number; realized: number; not_realized: number; occurrences: number }>();
+    const cityMap = new Map<string, { planned: number; realized: number; not_realized: number; occurrences: number }>();
+
+    for (const record of deliveryRecords) {
+      carrierLabels.set(record.carrier.key, record.carrier.label);
+      const realized = record.item.quantidade_realizada;
+      const notRealized = record.item.quantidade_nao_realizada;
+      const planned = realized + notRealized;
+      const occurrences = deliveryOccurrenceCount(record);
+
+      const dc = deliveryCarrierMap.get(record.carrier.key) ?? { planned: 0, realized: 0, not_realized: 0, occurrences: 0 };
+      dc.planned += planned;
+      dc.realized += realized;
+      dc.not_realized += notRealized;
+      dc.occurrences += occurrences;
+      deliveryCarrierMap.set(record.carrier.key, dc);
+
+      const city = deliveryCityRegionLabel(record.item);
+      const ct = cityMap.get(city) ?? { planned: 0, realized: 0, not_realized: 0, occurrences: 0 };
+      ct.planned += planned;
+      ct.realized += realized;
+      ct.not_realized += notRealized;
+      ct.occurrences += occurrences;
+      cityMap.set(city, ct);
+    }
+
+    return {
+      data_de: filters.data_de ?? null,
+      data_ate: filters.data_ate ?? null,
+      total_fretes: freights.length,
+      total_registros_entrega: deliveryRecords.length,
+      pagamentos: [...paymentMap.entries()].map(([key, entry]) => ({
+        key,
+        label: carrierLabels.get(key) ?? key,
+        total: Math.round(entry.total * 100) / 100,
+        fretes_count: entry.fretes_count,
+        known_count: entry.known_count,
+      })).sort((a, b) => b.total - a.total || a.label.localeCompare(b.label, "pt-BR")),
+      percentuais_frete: [...rateMap.entries()]
+        .filter(([, entry]) => entry.invoice > 0)
+        .map(([key, entry]) => ({
+          key,
+          label: carrierLabels.get(key) ?? key,
+          percentual: (entry.gross / entry.invoice) * 100,
+          known_count: entry.known_count,
+        })).sort((a, b) => b.percentual - a.percentual || a.label.localeCompare(b.label, "pt-BR")),
+      entregas_transportadora: [...deliveryCarrierMap.entries()].map(([key, entry]) => ({
+        key,
+        label: carrierLabels.get(key) ?? key,
+        ...entry,
+        accuracy: entry.planned ? (entry.realized / entry.planned) * 100 : null,
+      })).sort((a, b) => b.planned - a.planned || a.label.localeCompare(b.label, "pt-BR")),
+      km_rodado: [...kmMap.entries()].map(([key, entry]) => ({
+        key,
+        label: carrierLabels.get(key) ?? key,
+        total_km: Math.round(entry.total_km * 1000) / 1000,
+        known_count: entry.known_count,
+      })).sort((a, b) => b.total_km - a.total_km || a.label.localeCompare(b.label, "pt-BR")),
+      entregas_cidade: [...cityMap.entries()].map(([city, entry]) => ({
+        city,
+        ...entry,
+      })).sort((a, b) => b.planned - a.planned || a.city.localeCompare(b.city, "pt-BR")),
+    };
+  },
+  async transportDetails(filters: TransportDetailFilters): Promise<TransportDashboardDetailResponse> {
+    const [freightPage, deliveryPage] = await Promise.all([
+      filters.kind === "carrier"
+        ? freightsDemoApi.list({ data_de: filters.data_de, data_ate: filters.data_ate, limit: 500, offset: 0 })
+        : Promise.resolve({ items: [] as FreightResponse[], total: 0, limit: 0, offset: 0 }),
+      demoApi.listDeliveries({ estado: "LANÇADO", data_de: filters.data_de, data_ate: filters.data_ate, limit: 500, offset: 0 }),
+    ]);
+
+    const matchedFreights = freightPage.items
+      .filter((item) => !item.cancelado && filters.kind === "carrier" && freightCarrier(item).key === filters.key)
+      .sort((a, b) => b.data_servico.localeCompare(a.data_servico) || b.codigo_frete.localeCompare(a.codigo_frete));
+
+    let paymentTotal = 0;
+    let paymentCount = 0;
+    let kmTotal = 0;
+    let kmCount = 0;
+    let rateGross = 0;
+    let rateInvoice = 0;
+    let rateCount = 0;
+    for (const freight of matchedFreights) {
+      const amount = transportPaymentAmount(freight);
+      if (amount !== null) {
+        paymentTotal += amount;
+        paymentCount += 1;
+      }
+      const km = transportKilometers(freight);
+      if (km !== null) {
+        kmTotal += km;
+        kmCount += 1;
+      }
+      const gross = numericValue(freight.valor_frete_bruto);
+      const invoice = numericValue(freight.valor_nota);
+      if (gross !== null && invoice !== null && invoice > 0) {
+        rateGross += gross;
+        rateInvoice += invoice;
+        rateCount += 1;
+      }
+    }
+
+    const matchedDeliveries: TransportDeliveryRecord[] = deliveryPage.items.flatMap((launch) => launch.itens
+      .filter((item) => (!filters.data_de || item.data_entrega >= filters.data_de)
+        && (!filters.data_ate || item.data_entrega <= filters.data_ate))
+      .filter((item) => item.quantidade_realizada + item.quantidade_nao_realizada > 0)
+      .map((item) => {
+        const driver = item.participantes.find((person) => person.papel_participante === "MOTORISTA");
+        return {
+          launchCode: launch.codigo_lancamento,
+          item,
+          carrier: deliveryCarrier(driver),
+          driver: driver?.nome_exibicao ?? null,
+        };
+      }))
+      .filter((record) => (filters.kind === "carrier"
+        ? record.carrier.key === filters.key
+        : deliveryCityRegionLabel(record.item) === filters.key))
+      .sort((a, b) => b.item.data_entrega.localeCompare(a.item.data_entrega)
+        || a.item.nome_localidade.localeCompare(b.item.nome_localidade, "pt-BR"));
+
+    const realized = matchedDeliveries.reduce((sum, record) => sum + record.item.quantidade_realizada, 0);
+    const notRealized = matchedDeliveries.reduce((sum, record) => sum + record.item.quantidade_nao_realizada, 0);
+    const planned = realized + notRealized;
+    const occurrences = matchedDeliveries.reduce((sum, record) => sum + deliveryOccurrenceCount(record), 0);
+
+    const freightLimit = filters.freight_limit ?? 10;
+    const freightOffset = filters.freight_offset ?? 0;
+    const deliveryLimit = filters.delivery_limit ?? 10;
+    const deliveryOffset = filters.delivery_offset ?? 0;
+
+    return {
+      kind: filters.kind,
+      key: filters.key,
+      data_de: filters.data_de ?? null,
+      data_ate: filters.data_ate ?? null,
+      totals: {
+        fretes_count: matchedFreights.length,
+        pagamento_total: Math.round(paymentTotal * 100) / 100,
+        pagamento_count: paymentCount,
+        percentual_frete: rateInvoice > 0 ? (rateGross / rateInvoice) * 100 : null,
+        percentual_count: rateCount,
+        km_total: Math.round(kmTotal * 1000) / 1000,
+        km_count: kmCount,
+        registros_entrega: matchedDeliveries.length,
+        entregas_planejadas: planned,
+        entregas_realizadas: realized,
+        entregas_nao_realizadas: notRealized,
+        ocorrencias: occurrences,
+        taxa_acerto: planned > 0 ? (realized / planned) * 100 : null,
+      },
+      fretes: {
+        items: matchedFreights.slice(freightOffset, freightOffset + freightLimit),
+        total: matchedFreights.length,
+        limit: freightLimit,
+        offset: freightOffset,
+      },
+      entregas: {
+        items: matchedDeliveries.slice(deliveryOffset, deliveryOffset + deliveryLimit).map((record) => ({
+          codigo_lancamento: record.launchCode,
+          codigo_item_lancamento: record.item.codigo_item_lancamento,
+          data_entrega: record.item.data_entrega,
+          id_localidade: record.item.id_localidade,
+          codigo_localidade: record.item.codigo_localidade,
+          nome_localidade: record.item.nome_localidade,
+          cidade: record.item.cidade ?? null,
+          uf: record.item.uf ?? null,
+          carrier_label: record.carrier.label,
+          driver: record.driver,
+          quantidade_realizada: record.item.quantidade_realizada,
+          quantidade_nao_realizada: record.item.quantidade_nao_realizada,
+          ocorrencias: deliveryOccurrenceCount(record),
+          quantidade_reclamacoes: record.item.quantidade_reclamacoes ?? 0,
+          quantidade_elogios: record.item.quantidade_elogios ?? 0,
+          observacao: record.item.observacao ?? null,
+          participantes: record.item.participantes.map((person) => ({
+            nome_exibicao: person.nome_exibicao,
+            papel_participante: person.papel_participante,
+          })),
+          motivos: record.item.motivos
+            .filter((reason) => reason.tipo_operacao === "ENTREGA")
+            .map((reason) => ({
+              descricao_motivo: reason.descricao_motivo,
+              quantidade: reason.quantidade,
+            })),
+        })),
+        total: matchedDeliveries.length,
+        limit: deliveryLimit,
+        offset: deliveryOffset,
+      },
     };
   },
 };

@@ -52,6 +52,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       signal: requestOptions.signal ?? controller.signal,
     });
   } catch (error) {
+    if (requestOptions.signal?.aborted) throw error;
     if (error instanceof DOMException && error.name === "AbortError") {
       throw new Error("A solicitação demorou demais. Verifique a conexão e tente novamente.");
     }
