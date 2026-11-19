@@ -5,8 +5,11 @@ from __future__ import annotations
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.modules.fretes.schemas import FreightResponse
 
 
 class DashboardSummary(BaseModel):
@@ -218,3 +221,126 @@ class DashboardGoalUpdate(BaseModel):
     )
     periodicidade: Literal["MENSAL", "TRIMESTRAL", "ANUAL"]
     escopo_operacao: Literal["TODAS", "ENTREGAS", "COLETAS"]
+
+
+class TransportPaymentItem(BaseModel):
+    key: str
+    label: str
+    total: float
+    fretes_count: int
+    known_count: int
+
+
+class TransportRateItem(BaseModel):
+    key: str
+    label: str
+    percentual: float
+    known_count: int
+
+
+class TransportCarrierDeliveryItem(BaseModel):
+    key: str
+    label: str
+    planned: int
+    realized: int
+    not_realized: int
+    occurrences: int
+    accuracy: float | None
+
+
+class TransportKmItem(BaseModel):
+    key: str
+    label: str
+    total_km: float
+    known_count: int
+
+
+class TransportCityDeliveryItem(BaseModel):
+    city: str
+    planned: int
+    realized: int
+    not_realized: int
+    occurrences: int
+
+
+class TransportDashboardResponse(BaseModel):
+    data_de: date | None
+    data_ate: date | None
+    total_fretes: int
+    total_registros_entrega: int
+    pagamentos: list[TransportPaymentItem]
+    percentuais_frete: list[TransportRateItem]
+    entregas_transportadora: list[TransportCarrierDeliveryItem]
+    km_rodado: list[TransportKmItem]
+    entregas_cidade: list[TransportCityDeliveryItem]
+
+
+class TransportDetailParticipant(BaseModel):
+    nome_exibicao: str
+    papel_participante: str
+
+
+class TransportDetailReason(BaseModel):
+    descricao_motivo: str
+    quantidade: int
+
+
+class TransportDetailDeliveryItem(BaseModel):
+    codigo_lancamento: UUID
+    codigo_item_lancamento: UUID
+    data_entrega: date
+    id_localidade: int
+    codigo_localidade: str
+    nome_localidade: str
+    cidade: str | None
+    uf: str | None
+    carrier_label: str
+    driver: str | None
+    quantidade_realizada: int
+    quantidade_nao_realizada: int
+    ocorrencias: int
+    quantidade_reclamacoes: int
+    quantidade_elogios: int
+    observacao: str | None
+    participantes: list[TransportDetailParticipant]
+    motivos: list[TransportDetailReason]
+
+
+class TransportDetailFreightPage(BaseModel):
+    items: list[FreightResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+class TransportDetailDeliveryPage(BaseModel):
+    items: list[TransportDetailDeliveryItem]
+    total: int
+    limit: int
+    offset: int
+
+
+class TransportDetailTotals(BaseModel):
+    fretes_count: int
+    pagamento_total: float
+    pagamento_count: int
+    percentual_frete: float | None
+    percentual_count: int
+    km_total: float
+    km_count: int
+    registros_entrega: int
+    entregas_planejadas: int
+    entregas_realizadas: int
+    entregas_nao_realizadas: int
+    ocorrencias: int
+    taxa_acerto: float | None
+
+
+class TransportDashboardDetailResponse(BaseModel):
+    kind: Literal["carrier", "city"]
+    key: str
+    data_de: date | None
+    data_ate: date | None
+    totals: TransportDetailTotals
+    fretes: TransportDetailFreightPage
+    entregas: TransportDetailDeliveryPage
