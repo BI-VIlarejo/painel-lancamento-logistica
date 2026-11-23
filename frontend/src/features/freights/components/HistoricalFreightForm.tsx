@@ -124,6 +124,20 @@ function supportVehiclePrice(value: string): number {
   return 0;
 }
 
+function pauloCruzTruckPrice(value: string): number | null {
+  if (value === "SAVEIRO") return 300;
+  if (value === "KIA_BONGO") return 500;
+  if (value === "CAMINHAO_3_4") return 950;
+  if (value === "CAMINHAO_TOCO") return 1100;
+  return null;
+}
+
+function appliedSupportPriceFromFreight(freight: FreightResponse): number {
+  const raw = freight.detalhe_calculo.valor_carro_apoio;
+  if (typeof raw !== "string" && typeof raw !== "number") return 0;
+  return numericValue(raw) ?? 0;
+}
+
 function sourceOriginalValue(source: Record<string, unknown>, field: string): string | null {
   const originals = source.valores_originais_planilha;
   if (typeof originals !== "object" || originals === null) return null;
@@ -261,13 +275,35 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
   const [restored] = useState(() => readSessionDraft<{ values: Values; selectedDriverId: string; deliveryApplied: boolean; appliedDeliveryValues: Partial<Record<keyof Values, string>>; idempotency: { signature: string; key: string } | null }>(draftKey));
   const [values, setValues] = useState(() => {
     const defaults = valuesFromFreight(freight);
-    const current = restored?.values ? { ...defaults, ...restored.values } : defaults;
+    const merged = restored?.values ? { ...defaults, ...restored.values } : defaults;
     const allowedZoneCodes = new Set(options.zonas_just_in_time.flatMap((region) =>
       region.subzonas.map((zone) => zone.codigo),
     ));
-    return current.codigo_zona_jit && !allowedZoneCodes.has(current.codigo_zona_jit)
-      ? { ...current, codigo_zona_jit: "" }
-      : current;
+    const current = merged.codigo_zona_jit && !allowedZoneCodes.has(merged.codigo_zona_jit)
+      ? { ...merged, codigo_zona_jit: "" }
+      : merged;
+    if (freight.codigo_fonte_tarifa === "PAULO_CRUZ") {
+      const targetSupport = supportVehiclePrice(current.carro_apoio);
+      const appliedSupport = appliedSupportPriceFromFreight(freight);
+      const currentGross = numericValue(current.valor_frete_bruto);
+      const savedGross = numericValue(freight.valor_frete_bruto);
+      if (
+        targetSupport !== appliedSupport
+        && currentGross !== null
+        && savedGross !== null
+        && currentGross === savedGross
+      ) {
+        const nextGross = Math.max(0, Number((currentGross + (targetSupport - appliedSupport)).toFixed(2)));
+        const damage = numericValue(current.valor_avaria) ?? 0;
+        return {
+          ...current,
+          valor_frete_bruto: nextGross.toFixed(2),
+          valor_frete_pago: Number((nextGross - damage).toFixed(2)).toFixed(2),
+          percentual_frete: "",
+        };
+      }
+    }
+    return current;
   });
   const [jitRegionCode, setJitRegionCode] = useState(() => {
     const zoneCode = restored?.values?.codigo_zona_jit ?? freight.codigo_zona_jit;
@@ -393,9 +429,26 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
   function update<K extends keyof Values>(key: K, value: Values[K]) {
     setValues((current) => {
       const next: Values = { ...current, [key]: value };
-      if (key === "carro_apoio" && freight.codigo_fonte_tarifa === "PAULO_CRUZ") {
+      if (key === "tipo_caminhao" && freight.codigo_fonte_tarifa === "PAULO_CRUZ") {
+        const truckPrice = pauloCruzTruckPrice(value);
+        if (truckPrice !== null) {
+          const nextGross = Number((truckPrice + supportVehiclePrice(next.carro_apoio)).toFixed(2));
+          const damage = numericValue(current.valor_avaria) ?? 0;
+          next.valor_frete_bruto = nextGross.toFixed(2);
+          next.valor_frete_pago = Number((nextGross - damage).toFixed(2)).toFixed(2);
+          next.percentual_frete = "";
+        }
+      } else if (key === "carro_apoio" && freight.codigo_fonte_tarifa === "PAULO_CRUZ") {
+        const truckPrice = pauloCruzTruckPrice(next.tipo_caminhao);
         const currentGross = numericValue(current.valor_frete_bruto);
-        if (currentGross !== null) {
+        const oldExpectedGross = truckPrice === null ? null : truckPrice + supportVehiclePrice(current.carro_apoio);
+        if (truckPrice !== null && (currentGross === null || currentGross === oldExpectedGross)) {
+          const nextGross = Number((truckPrice + supportVehiclePrice(value)).toFixed(2));
+          const damage = numericValue(current.valor_avaria) ?? 0;
+          next.valor_frete_bruto = nextGross.toFixed(2);
+          next.valor_frete_pago = Number((nextGross - damage).toFixed(2)).toFixed(2);
+          next.percentual_frete = "";
+        } else if (currentGross !== null) {
           const delta = supportVehiclePrice(value) - supportVehiclePrice(current.carro_apoio);
           const nextGross = Math.max(0, Number((currentGross + delta).toFixed(2)));
           const damage = numericValue(current.valor_avaria) ?? 0;

@@ -323,7 +323,14 @@ def _calculate_paulo_cruz(
         return _pending("Selecione um tipo de caminhão da tabela Paulo Cruz.", base_detail)
     base_value = _decimal(vehicle["price"])
     support_name = {"SAVEIRO": "Saveiro", "KIA_BONGO": "Kia Bongo"}.get(payload.carro_apoio)
-    support = next((item for item in data["paulo_cruz"] if item["vehicle"] == support_name), None)
+    support = next(
+        (
+            item
+            for item in data["paulo_cruz"]
+            if support_name and normalize_label(item["vehicle"]) == normalize_label(support_name)
+        ),
+        None,
+    )
     support_value = _decimal(support["price"]) if support else Decimal("0")
     gross = _money(base_value + support_value)
     detail: dict[str, object] = {

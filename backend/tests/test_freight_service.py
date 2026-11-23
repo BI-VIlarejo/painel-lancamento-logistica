@@ -510,3 +510,110 @@ class FreightServiceTests(TestCase):
         self.assertIn("Código do cliente", headers)
         client_col = headers.index("Código do cliente") + 1
         self.assertEqual(ws.cell(4, client_col).value, "CLI-9988")
+
+    def test_support_vehicle_addition_auto_recalculates_even_with_stale_gross(self):
+        # 1. Histórico Paulo Cruz salvo com R$ 950,00: ao adicionar Kia Bongo (+R$ 500,00)
+        #    mesmo enviando valor_frete_bruto antigo (950.00), recalcula para 1450.00.
+        request = HistoricalFreightImportRequest.model_validate({
+            "nome_arquivo": "fretes.xlsx",
+            "sha256_arquivo": "d" * 64,
+            "aba_origem": "LANÇAMENTO",
+            "itens": [{
+                "linha_planilha": 12,
+                "data_servico": "2026-11-03",
+                "nome_transportador": "Motorista Paulo Cruz Teste",
+                "rota_cidade": "Niterói",
+                "valor_frete_bruto": "950.00",
+                "valor_frete_pago": "950.00",
+            }],
+        })
+        service.import_historical_freights(self.db, payload=request, access=access())
+        freight = self.db.scalar(select(Frete))
+        assert freight is not None
+
+        add_support = HistoricalFreightEditInput.model_validate({
+            "data_servico": "2026-11-03",
+            "id_motorista_selecionado": 2,
+            "nome_transportador": "Motorista Paulo Cruz Teste",
+            "rota_cidade": "Niterói",
+            "km_inicial": None,
+            "km_final": None,
+            "km_rodado": None,
+            "quantidade_entregas": 5,
+            "peso_kg": "2000",
+            "valor_nota": "10000.00",
+            "valor_frete_bruto": "950.00",
+            "valor_frete_pago": "950.00",
+            "percentual_frete": None,
+            "tipo_caminhao": None,
+            "carro_apoio": "KIA_BONGO",
+            "valor_avaria": "0",
+        })
+        saved = service.update_historical_freight(
+            self.db,
+            codigo_frete=service.UUID(freight.codigo_frete),
+            payload=add_support,
+            idempotency_key=uuid4(),
+            access=access(),
+        )
+        self.assertEqual(saved.carro_apoio, "KIA_BONGO")
+        self.assertEqual(saved.valor_frete_bruto, Decimal("1450.00"))
+        self.assertEqual(saved.valor_frete_pago, Decimal("1450.00"))
+        self.assertEqual(saved.detalhe_calculo["valor_carro_apoio"], "500.00")
+
+        # 2. Re-editar outro campo (ex.: código do cliente) não soma os R$ 500 novamente.
+        re_edit = add_support.model_copy(
+            update={
+                "valor_frete_bruto": Decimal("1450.00"),
+                "valor_frete_pago": Decimal("1450.00"),
+                "codigo_cliente": "CLI-500",
+            }
+        )
+        re_saved = service.update_historical_freight(
+            self.db,
+            codigo_frete=service.UUID(freight.codigo_frete),
+            payload=re_edit,
+            idempotency_key=uuid4(),
+            access=access(),
+        )
+        self.assertEqual(re_saved.valor_frete_bruto, Decimal("1450.00"))
+        self.assertEqual(re_saved.valor_frete_pago, Decimal("1450.00"))
+        self.assertEqual(re_saved.codigo_cliente, "CLI-500")
+
+        # 3. Remover o carro de apoio desconta os R$ 500 e volta para R$ 950,00.
+        removed = service.update_historical_freight(
+            self.db,
+            codigo_frete=service.UUID(freight.codigo_frete),
+            payload=re_edit.model_copy(update={"carro_apoio": None}),
+            idempotency_key=uuid4(),
+            access=access(),
+        )
+        self.assertIsNone(removed.carro_apoio)
+        self.assertEqual(removed.valor_frete_bruto, Decimal("950.00"))
+        self.assertEqual(removed.valor_frete_pago, Decimal("950.00"))
+
+        # 4. Frete normal Paulo Cruz (950.00) editado com carro_apoio + valor bruto antigo (950.00)
+        #    recalcula automaticamente para 1450.00 via update_freight.
+        normal = self.create_transporter(carro_apoio=None)
+        self.assertEqual(normal.valor_frete_bruto, Decimal("950.00"))
+        updated_normal = service.update_freight(
+            self.db,
+            codigo_frete=normal.codigo_frete,
+            payload=payload(
+                tipo_transporte="TRANSPORTADORA",
+                id_motorista_agregado=None,
+                nome_transportador="Paulo Cruz",
+                codigo_fonte_tarifa="PAULO_CRUZ",
+                km_inicial=None,
+                km_final=None,
+                tipo_caminhao="CAMINHAO_3_4",
+                peso_kg="2000",
+                carro_apoio="KIA_BONGO",
+                valor_frete_bruto="950.00",
+            ),
+            idempotency_key=uuid4(),
+            access=access(),
+        )
+        self.assertEqual(updated_normal.carro_apoio, "KIA_BONGO")
+        self.assertEqual(updated_normal.valor_frete_bruto, Decimal("1450.00"))
+        self.assertEqual(updated_normal.valor_frete_pago, Decimal("1434.00"))

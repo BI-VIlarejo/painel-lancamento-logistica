@@ -896,7 +896,19 @@ export const freightsDemoApi = {
     if (!existing) throw new Error("Lançamento de frete não encontrado.");
     if (existing.cancelado) throw new Error("Um frete cancelado não pode ser editado.");
 
-    const quote = calculateQuote(payload);
+    const effectivePayload = (
+      payload.codigo_fonte_tarifa === "PAULO_CRUZ"
+      && payload.valor_frete_bruto != null
+      && existing.valor_frete_bruto != null
+      && numeric(payload.valor_frete_bruto) === numeric(existing.valor_frete_bruto)
+      && (
+        (payload.carro_apoio ?? null) !== (existing.carro_apoio ?? null)
+        || (payload.tipo_caminhao ?? null) !== (existing.tipo_caminhao ?? null)
+      )
+    )
+      ? { ...payload, valor_frete_bruto: null }
+      : payload;
+    const quote = calculateQuote(effectivePayload);
     const gross = numeric(quote.valor_frete_bruto);
     const damage = numeric(payload.valor_avaria) ?? 0;
     const kmRun = odometerDistance(payload);
@@ -986,6 +998,20 @@ export const freightsDemoApi = {
     let gross = numeric(savedPayload.valor_frete_bruto);
     const damage = numeric(savedPayload.valor_avaria) ?? 0;
     const invoice = numeric(savedPayload.valor_nota);
+    const supportPrice = (code: string | null | undefined) => (code === "SAVEIRO" ? 300 : code === "KIA_BONGO" ? 500 : 0);
+    const appliedSupport = numeric(existing.detalhe_calculo.valor_carro_apoio as string | number | null | undefined) ?? 0;
+    const targetSupport = tariffCode === "PAULO_CRUZ" ? supportPrice(savedPayload.carro_apoio) : 0;
+    if (
+      tariffCode === "PAULO_CRUZ"
+      && gross !== null
+      && numeric(existing.valor_frete_bruto) !== null
+      && targetSupport !== appliedSupport
+      && gross === numeric(existing.valor_frete_bruto)
+    ) {
+      gross = Math.max(0, money(gross + (targetSupport - appliedSupport)));
+      savedPayload.valor_frete_pago = null;
+      savedPayload.percentual_frete = null;
+    }
     let historicalCalculation: FreightQuoteResponse | null = null;
     if (gross === null && linked) {
       if (
@@ -1141,6 +1167,7 @@ export const freightsDemoApi = {
         fonte_tarifa: tariffCode ?? "AGREGADOS_CD",
         percentual_frete: ratio === null ? null : String(ratio),
         carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
+        valor_carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? moneyText(targetSupport) : null,
         nome_cliente: savedPayload.nome_cliente ?? null,
         codigo_cliente: savedPayload.codigo_cliente ?? null,
         observacao: savedPayload.observacao ?? null,

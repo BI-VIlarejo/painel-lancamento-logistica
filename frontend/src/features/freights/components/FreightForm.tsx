@@ -238,9 +238,24 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const damageCountId = useId();
   const truckId = useId();
   const supportId = useId();
-  const [values, setValues] = useState(() => restored
-    ? valuesFromDraft(restored.values, options)
-    : initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options));
+  const [values, setValues] = useState(() => {
+    if (restored) {
+      const draft = valuesFromDraft(restored.values, options);
+      if (
+        initialFreight
+        && draft.codigo_fonte_tarifa === "PAULO_CRUZ"
+        && (
+          draft.carro_apoio !== (initialFreight.carro_apoio ?? "")
+          || draft.tipo_caminhao !== (initialFreight.tipo_caminhao ?? "")
+        )
+        && numericValue(draft.valor_frete_bruto) === numericValue(initialFreight.valor_frete_bruto)
+      ) {
+        return { ...draft, valor_frete_bruto: "" };
+      }
+      return draft;
+    }
+    return initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options);
+  });
   const preserveSummaryFor = useRef(restored || initialFreight ? `${values.data_servico}:${values.id_motorista_agregado}` : "");
   const [aggregateDrivers, setAggregateDrivers] = useState<FreightAggregateDriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);

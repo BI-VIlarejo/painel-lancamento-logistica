@@ -6,7 +6,7 @@ import json
 import re
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 from io import BytesIO
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
@@ -32,7 +32,7 @@ from . import repository
 from .calculator import FreightCalculation, calculate_freight
 from .models import Frete, FreteEvento
 from .status import effective_status
-from .tariff_catalog import normalize_label, tariff_options
+from .tariff_catalog import normalize_label, tariff_data, tariff_options
 from .schemas import (
     FreightAggregateDriverOption,
     FreightCarrierDriverOption,
@@ -704,6 +704,35 @@ def _truck_type(value: str | None) -> TruckType:
     if value == "CAMINHAO_TOCO":
         return "CAMINHAO_TOCO"
     raise ValueError(f"Tipo de caminhão inválido no frete: {value!r}")
+
+
+def _support_vehicle_price(support_code: object) -> Decimal:
+    """Retorna o adicional da tabela Paulo Cruz para o carro de apoio selecionado."""
+    support_name = {"SAVEIRO": "Saveiro", "KIA_BONGO": "Kia Bongo"}.get(
+        str(support_code) if isinstance(support_code, str) else ""
+    )
+    if not support_name:
+        return Decimal("0.00")
+    item = next(
+        (
+            row
+            for row in tariff_data()["paulo_cruz"]
+            if normalize_label(str(row["vehicle"])) == normalize_label(support_name)
+        ),
+        None,
+    )
+    return Decimal(str(item["price"])).quantize(Decimal("0.01")) if item else Decimal("0.00")
+
+
+def _applied_support_vehicle_price(detalhe_calculo: dict[str, object]) -> Decimal:
+    """Lê o valor de carro de apoio já somado no frete bruto persistido."""
+    raw = detalhe_calculo.get("valor_carro_apoio")
+    if raw is None or str(raw).strip() == "":
+        return Decimal("0.00")
+    try:
+        return Decimal(str(raw)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        return Decimal("0.00")
 
 
 def _freight_response(
@@ -1652,9 +1681,24 @@ def update_freight(
         if cancellation is not None:
             raise ConflictError("Um frete cancelado não pode ser editado.")
 
+        effective_payload = payload
+        if (
+            payload.codigo_fonte_tarifa == "PAULO_CRUZ"
+            and payload.valor_frete_bruto is not None
+            and freight.valor_frete_bruto is not None
+            and payload.valor_frete_bruto == freight.valor_frete_bruto
+            and (
+                payload.carro_apoio != freight.detalhe_calculo.get("carro_apoio")
+                or payload.tipo_caminhao != freight.tipo_caminhao
+                or _support_vehicle_price(payload.carro_apoio)
+                != _applied_support_vehicle_price(freight.detalhe_calculo)
+            )
+        ):
+            effective_payload = payload.model_copy(update={"valor_frete_bruto": None})
+
         prepared_payload, calculation = _freight_calculation(
             db,
-            payload,
+            effective_payload,
             require_delivery_data=True,
         )
         gross = calculation.valor_frete_bruto
@@ -1905,6 +1949,37 @@ def update_historical_freight(
         )
 
         historical_calculation = None
+        if (
+            transport_fields["codigo_fonte_tarifa"] == "PAULO_CRUZ"
+            and payload.valor_frete_bruto is not None
+            and freight.valor_frete_bruto is not None
+        ):
+            target_support = _support_vehicle_price(payload.carro_apoio)
+            applied_support = _applied_support_vehicle_price(freight.detalhe_calculo)
+            if (
+                target_support != applied_support
+                and payload.valor_frete_bruto == freight.valor_frete_bruto
+            ):
+                adjusted_gross = max(
+                    Decimal("0.00"),
+                    (payload.valor_frete_bruto + (target_support - applied_support)).quantize(
+                        Decimal("0.01")
+                    ),
+                )
+                old_paid = _payment_amount(freight)
+                next_paid = (
+                    None
+                    if payload.valor_frete_pago in (None, freight.valor_frete_pago, old_paid)
+                    else payload.valor_frete_pago
+                )
+                payload = payload.model_copy(
+                    update={
+                        "valor_frete_bruto": adjusted_gross,
+                        "valor_frete_pago": next_paid,
+                        "percentual_frete": None,
+                    }
+                )
+
         if payload.valor_frete_bruto is None and match.person is not None:
             tariff_source = str(transport_fields["codigo_fonte_tarifa"])
             calculation_input: FreightInput | None = None
@@ -2149,6 +2224,11 @@ def update_historical_freight(
             "fonte_tarifa": transport_fields["codigo_fonte_tarifa"],
             "carro_apoio": (
                 payload.carro_apoio
+                if transport_fields["codigo_fonte_tarifa"] == "PAULO_CRUZ"
+                else None
+            ),
+            "valor_carro_apoio": (
+                str(_support_vehicle_price(payload.carro_apoio))
                 if transport_fields["codigo_fonte_tarifa"] == "PAULO_CRUZ"
                 else None
             ),
