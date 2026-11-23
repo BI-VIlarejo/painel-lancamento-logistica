@@ -223,7 +223,22 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
         item,
       }))
       : catalogTab === "people"
-        ? people.map((item) => ({ id: item.id_pessoa, primary: item.nome_exibicao, secondary: item.tipo_funcao === "MOTORISTA" ? "Motorista" : "Ajudante", detail: item.tipo_transporte_entrega === "TERCEIRIZADA" && item.tipo_funcao === "MOTORISTA" ? `${deliveryTransportLabel(item.tipo_transporte_entrega)} · ${item.modalidade_terceirizada === "AGREGADO" ? "Agregado" : item.modalidade_terceirizada === "TRANSPORTADORA_INDEPENDENTE" ? `Transportadora · ${item.codigo_transportadora_independente === "PAULO_CRUZ" ? "Paulo Cruz" : "Just In Time"}` : "Modalidade de Fretes pendente"} · Vigente desde ${formatDate(item.vigente_desde)}` : `${deliveryTransportLabel(item.tipo_transporte_entrega)} · Vigente desde ${formatDate(item.vigente_desde)}`, active: item.ativo, item }))
+        ? people.map((item) => ({
+          id: item.id_pessoa,
+          primary: item.nome_exibicao,
+          secondary: item.tipo_funcao === "MOTORISTA" ? "Motorista" : "Ajudante",
+          detail: [
+            item.tipo_transporte_entrega === "TERCEIRIZADA" && item.tipo_funcao === "MOTORISTA"
+              ? `${deliveryTransportLabel(item.tipo_transporte_entrega)} · ${item.modalidade_terceirizada === "AGREGADO" ? "Agregado" : item.modalidade_terceirizada === "TRANSPORTADORA_INDEPENDENTE" ? `Transportadora · ${item.codigo_transportadora_independente === "PAULO_CRUZ" ? "Paulo Cruz" : "Just In Time"}` : "Modalidade de Fretes pendente"}`
+              : deliveryTransportLabel(item.tipo_transporte_entrega),
+            item.documento_fiscal ? `Doc. ${item.documento_fiscal}` : null,
+            item.chave_pix ? "PIX cadastrado" : null,
+            item.exige_nota_fiscal ? "Exige NF" : null,
+            `Vigente desde ${formatDate(item.vigente_desde)}`,
+          ].filter(Boolean).join(" · "),
+          active: item.ativo,
+          item,
+        }))
         : reasons.map((item) => ({ id: item.id_motivo_nao_entrega, primary: item.descricao_motivo, secondary: nonDeliveryReasonGroupLabel(item.grupo_motivo), detail: "Vigente desde " + formatDate(item.vigente_desde), active: item.ativo, item }));
     const needle = query.trim().toLocaleLowerCase("pt-BR");
     return rows.filter((row) => statusFilter === "ALL" || (statusFilter === "ACTIVE" ? row.active : !row.active))
@@ -270,7 +285,17 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
       });
     } else if (kind === "people") {
       const person = isPerson(item) ? item : undefined;
-      setForm({ nome: person?.nome_exibicao ?? "", funcao: person?.tipo_funcao ?? "MOTORISTA", tipoTransporte: person?.tipo_transporte_entrega ?? "", modalidadeTerceirizada: person?.modalidade_terceirizada ?? "", transportadoraIndependente: person?.codigo_transportadora_independente ?? "", codigoPessoa: person?.codigo_pessoa ?? "" });
+      setForm({
+        nome: person?.nome_exibicao ?? "",
+        funcao: person?.tipo_funcao ?? "MOTORISTA",
+        tipoTransporte: person?.tipo_transporte_entrega ?? "",
+        modalidadeTerceirizada: person?.modalidade_terceirizada ?? "",
+        transportadoraIndependente: person?.codigo_transportadora_independente ?? "",
+        documentoFiscal: person?.documento_fiscal ?? "",
+        chavePix: person?.chave_pix ?? "",
+        exigeNotaFiscal: person?.exige_nota_fiscal ? "1" : "0",
+        codigoPessoa: person?.codigo_pessoa ?? "",
+      });
     } else {
       const reason = isReason(item) ? item : undefined;
       setForm({ codigo: reason?.codigo_motivo ?? "", descricao: reason?.descricao_motivo ?? "", grupoMotivo: reason?.grupo_motivo ?? "" });
@@ -313,6 +338,9 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
           tipo_transporte_entrega: form.tipoTransporte as "PROPRIA" | "TERCEIRIZADA",
           modalidade_terceirizada: (form.modalidadeTerceirizada || null) as "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null,
           codigo_transportadora_independente: (form.transportadoraIndependente || null) as "PAULO_CRUZ" | "JUST_IN_TIME" | null,
+          documento_fiscal: form.documentoFiscal?.trim() || null,
+          chave_pix: form.chavePix?.trim() || null,
+          exige_nota_fiscal: form.exigeNotaFiscal === "1",
         })
         : administrationApi.createPerson({
           ...(form.codigoPessoa ? { codigo_pessoa: form.codigoPessoa } : {}),
@@ -321,6 +349,9 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
           tipo_transporte_entrega: form.tipoTransporte as "PROPRIA" | "TERCEIRIZADA",
           modalidade_terceirizada: (form.modalidadeTerceirizada || null) as "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null,
           codigo_transportadora_independente: (form.transportadoraIndependente || null) as "PAULO_CRUZ" | "JUST_IN_TIME" | null,
+          documento_fiscal: form.documentoFiscal?.trim() || null,
+          chave_pix: form.chavePix?.trim() || null,
+          exige_nota_fiscal: form.exigeNotaFiscal === "1",
         })
       : dialog.item && isReason(dialog.item)
         ? administrationApi.updateReason(dialog.item.id_motivo_nao_entrega, {
@@ -601,7 +632,7 @@ export function RegistriesPage({ permissions, currentUserId }: Props) {
           </div>
           <label>Tipo de localidade<select value={form.tipoLocalidade ?? "LOJA"} onChange={(event) => setField("tipoLocalidade", event.target.value)} required>{form.tipoLocalidade && !["LOJA", "CD", "OUTRO"].includes(form.tipoLocalidade) && <option value={form.tipoLocalidade}>Tipo atual: {form.tipoLocalidade}</option>}<option value="LOJA">Loja</option><option value="CD">Centro de distribuição</option><option value="OUTRO">Outro</option></select></label>
           <p className={cx(styles, commonStyles, "form-guidance")}>A edição preserva lançamentos existentes. Desativar uma localidade remove-a das novas operações sem apagar seu histórico.</p>
-        </> : dialog.kind === "people" ? <><label>Nome para exibição<input autoFocus value={form.nome ?? ""} onChange={(event) => setField("nome", event.target.value)} required maxLength={160} placeholder="Nome e sobrenome" /></label><label>Função<select value={form.funcao ?? "MOTORISTA"} onChange={(event) => { const funcao = event.target.value; setForm((current) => ({ ...current, funcao, modalidadeTerceirizada: "", transportadoraIndependente: "" })); }}><option value="MOTORISTA">Motorista</option><option value="AJUDANTE">Ajudante</option></select></label><label>Grupo de entrega<select value={form.tipoTransporte ?? ""} onChange={(event) => { const tipoTransporte = event.target.value; setForm((current) => ({ ...current, tipoTransporte, modalidadeTerceirizada: "", transportadoraIndependente: "" })); }} required><option value="" disabled>Selecione o grupo</option>{deliveryTransportTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{form.funcao === "MOTORISTA" && form.tipoTransporte === "TERCEIRIZADA" && <><label>Modalidade de Fretes<select value={form.modalidadeTerceirizada ?? ""} onChange={(event) => setForm((current) => ({ ...current, modalidadeTerceirizada: event.target.value, transportadoraIndependente: event.target.value === "TRANSPORTADORA_INDEPENDENTE" ? current.transportadoraIndependente ?? "" : "" }))} required><option value="" disabled>Selecione a modalidade</option><option value="AGREGADO">Agregado</option><option value="TRANSPORTADORA_INDEPENDENTE">Transportadora independente</option></select></label>{form.modalidadeTerceirizada === "TRANSPORTADORA_INDEPENDENTE" && <label>Transportadora<select value={form.transportadoraIndependente ?? ""} onChange={(event) => setField("transportadoraIndependente", event.target.value)} required><option value="" disabled>Selecione a transportadora</option><option value="PAULO_CRUZ">Paulo Cruz</option><option value="JUST_IN_TIME">Just In Time</option></select></label>}</>}<p className={cx(styles, commonStyles, "form-guidance")}>{dialog.item ? "Salva no cadastro atual e registra as mudanças na auditoria. Motoristas terceirizados precisam de uma modalidade de Fretes antes de aparecerem como agregados ou transportadoras independentes." : "Motoristas terceirizados exigem modalidade Agregado ou Transportadora independente. A empresa Paulo Cruz ou Just In Time é exigida para a modalidade independente."}</p></>
+        </> : dialog.kind === "people" ? <><label>Nome para exibição<input autoFocus value={form.nome ?? ""} onChange={(event) => setField("nome", event.target.value)} required maxLength={160} placeholder="Nome e sobrenome" /></label><label>Função<select value={form.funcao ?? "MOTORISTA"} onChange={(event) => { const funcao = event.target.value; setForm((current) => ({ ...current, funcao, modalidadeTerceirizada: "", transportadoraIndependente: "" })); }}><option value="MOTORISTA">Motorista</option><option value="AJUDANTE">Ajudante</option></select></label><label>Grupo de entrega<select value={form.tipoTransporte ?? ""} onChange={(event) => { const tipoTransporte = event.target.value; setForm((current) => ({ ...current, tipoTransporte, modalidadeTerceirizada: "", transportadoraIndependente: "" })); }} required><option value="" disabled>Selecione o grupo</option>{deliveryTransportTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>{form.funcao === "MOTORISTA" && form.tipoTransporte === "TERCEIRIZADA" && <><label>Modalidade de Fretes<select value={form.modalidadeTerceirizada ?? ""} onChange={(event) => setForm((current) => ({ ...current, modalidadeTerceirizada: event.target.value, transportadoraIndependente: event.target.value === "TRANSPORTADORA_INDEPENDENTE" ? current.transportadoraIndependente ?? "" : "" }))} required><option value="" disabled>Selecione a modalidade</option><option value="AGREGADO">Agregado</option><option value="TRANSPORTADORA_INDEPENDENTE">Transportadora independente</option></select></label>{form.modalidadeTerceirizada === "TRANSPORTADORA_INDEPENDENTE" && <label>Transportadora<select value={form.transportadoraIndependente ?? ""} onChange={(event) => setField("transportadoraIndependente", event.target.value)} required><option value="" disabled>Selecione a transportadora</option><option value="PAULO_CRUZ">Paulo Cruz</option><option value="JUST_IN_TIME">Just In Time</option></select></label>}<div className={cx(styles, commonStyles, "form-grid-two")}><label>CPF / CNPJ (para solicitação de pagamento)<input value={form.documentoFiscal ?? ""} onChange={(event) => setField("documentoFiscal", event.target.value)} maxLength={32} placeholder="000.000.000-00" /></label><label>Exige NF para liberar pagamento?<select value={form.exigeNotaFiscal ?? "0"} onChange={(event) => setField("exigeNotaFiscal", event.target.value)}><option value="0">Não exige</option><option value="1">Sim, controlar NF</option></select></label></div><label>Chave PIX ou dados bancários<input value={form.chavePix ?? ""} onChange={(event) => setField("chavePix", event.target.value)} maxLength={160} placeholder="CPF, e-mail, telefone ou chave aleatória" /></label></>}<p className={cx(styles, commonStyles, "form-guidance")}>{dialog.item ? "Salva no cadastro atual e registra as mudanças na auditoria. CPF/CNPJ e PIX aparecem automaticamente na tela de Pagamentos e na solicitação XLSX." : "Motoristas terceirizados exigem modalidade Agregado ou Transportadora independente. A empresa Paulo Cruz ou Just In Time é exigida para a modalidade independente."}</p></>
             : <><label>Descrição do motivo<input autoFocus value={form.descricao ?? ""} onChange={(event) => setField("descricao", event.target.value)} required maxLength={160} placeholder="Ex.: Cliente ausente" /></label><label>Grupo do motivo<select value={form.grupoMotivo ?? ""} onChange={(event) => setField("grupoMotivo", event.target.value)} required><option value="" disabled>Selecione o grupo</option>{nonDeliveryReasonGroups.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><p className={cx(styles, commonStyles, "form-guidance")}>{dialog.item ? "Salva no motivo atual e registra as mudanças na auditoria. A nova classificação aparece também nos indicadores históricos vinculados a este motivo." : "Selecione o grupo em que esse motivo se enquadra."}</p></>}
         <div className={cx(styles, commonStyles, "modal-actions")}><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={closeCatalog} disabled={saving}>Cancelar</button><button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={saving}>{saving ? "Salvando..." : dialog.kind === "localities" ? dialog.item ? "Salvar alterações" : "Cadastrar loja" : dialog.item ? "Salvar alterações" : "Cadastrar"}</button></div>
       </form>

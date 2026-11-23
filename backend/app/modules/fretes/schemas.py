@@ -13,6 +13,25 @@ type FreightStatus = Literal["CALCULADO", "PENDENTE_CONFERENCIA"]
 type FreightInputTransportType = Literal["AGREGADO", "TRANSPORTADORA"]
 type TransportType = Literal["PROPRIO", "AGREGADO", "TRANSPORTADORA"]
 type PaymentTransportType = Literal["AGREGADO", "TRANSPORTADORA"]
+PaymentSettlementStatus = Literal["SOLICITADO", "PAGO", "ESTORNADO"]
+PaymentResponsibleStatus = Literal[
+    "PENDENTE_CONFERENCIA",
+    "A_PAGAR",
+    "PARCIAL",
+    "SOLICITADO",
+    "PAGO",
+]
+PaymentFreightState = Literal["EM_ABERTO", "SOLICITADO", "PAGO"]
+PaymentAdjustmentNature = Literal["ACRESCIMO", "DESCONTO"]
+PaymentAdjustmentCategory = Literal[
+    "VALE",
+    "ADIANTAMENTO",
+    "BONUS",
+    "PEDAGIO",
+    "DESCONTO",
+    "OUTRO",
+]
+PaymentInstallmentFrequency = Literal["SEMANAL", "MENSAL"]
 type TariffSource = Literal["AGREGADOS_CD", "JUST_IN_TIME", "PAULO_CRUZ"]
 type CarrierSource = Literal["JUST_IN_TIME", "PAULO_CRUZ"]
 type TruckType = Literal["SAVEIRO", "KIA_BONGO", "CAMINHAO_3_4", "CAMINHAO_TOCO"] | None
@@ -529,6 +548,180 @@ class FreightPaymentWarning(BaseModel):
     motivo_aviso: str
 
 
+class FreightPaymentAdjustmentItem(BaseModel):
+    """Lançamento financeiro extra (vale, adiantamento, bônus, pedágio ou desconto)."""
+
+    codigo_ajuste: UUID
+    tipo_transporte: PaymentTransportType
+    nome_transportador: str
+    id_pessoa_responsavel: int | None = None
+    data_referencia: date
+    natureza: PaymentAdjustmentNature
+    categoria: PaymentAdjustmentCategory
+    descricao: str
+    valor: Decimal
+    observacao: str | None = None
+    vinculado_pagamento: bool = False
+    codigo_pagamento: UUID | None = None
+    status_pagamento: PaymentSettlementStatus | None = None
+    criado_em: datetime
+    criado_por_nome: str | None = None
+
+
+class FreightPaymentAdjustmentCreateRequest(BaseModel):
+    """Entrada para lançar um vale, adiantamento, bônus ou desconto (à vista ou parcelado)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tipo_transporte: PaymentTransportType
+    nome_transportador: str = Field(min_length=1, max_length=160)
+    data_referencia: date
+    natureza: PaymentAdjustmentNature
+    categoria: PaymentAdjustmentCategory
+    descricao: str = Field(min_length=2, max_length=200)
+    valor: Decimal = Field(gt=Decimal("0"))
+    parcelas: int = Field(default=1, ge=1, le=12)
+    periodicidade: PaymentInstallmentFrequency = "SEMANAL"
+    observacao: str | None = Field(default=None, max_length=500)
+
+    @field_validator("nome_transportador", "descricao")
+    @classmethod
+    def normalize_required_text(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized:
+            raise ValueError("O campo é obrigatório.")
+        return normalized
+
+    @field_validator("observacao")
+    @classmethod
+    def normalize_optional_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
+
+class FreightPaymentFreightDetail(BaseModel):
+    """Detalhamento de um frete dentro da conferência do responsável."""
+
+    id_frete: int
+    codigo_frete: UUID
+    data_servico: date
+    rota_cidade: str | None
+    nome_motorista_transportadora: str | None = None
+    quantidade_entregas: int | None = None
+    peso_kg: Decimal | None = None
+    valor_nota: Decimal | None = None
+    valor_frete_bruto: Decimal | None = None
+    valor_avaria: Decimal
+    valor_frete_pago: Decimal | None = None
+    pronto_para_pagamento: bool
+    motivo_pendencia: str | None = None
+    status_pagamento_frete: PaymentFreightState = "EM_ABERTO"
+    codigo_pagamento: UUID | None = None
+    data_pagamento: date | None = None
+    valor_divergente: bool = False
+
+
+class FreightPaymentSettlementSummary(BaseModel):
+    """Registro de um fechamento/lote de pagamento solicitado, pago ou estornado."""
+
+    codigo_pagamento: UUID
+    tipo_transporte: PaymentTransportType
+    nome_transportador: str
+    sem_identificacao: bool = False
+    id_pessoa_responsavel: int | None = None
+    documento_fiscal: str | None = None
+    chave_pix: str | None = None
+    exige_nota_fiscal: bool = False
+    data_de: date
+    data_ate: date
+    status_pagamento: PaymentSettlementStatus
+    quantidade_fretes: int
+    quantidade_dias: int
+    valor_frete_bruto: Decimal
+    valor_avarias: Decimal
+    valor_ajustes: Decimal
+    valor_liquido_registrado: Decimal
+    data_pagamento: date | None = None
+    nf_numero: str | None = None
+    nf_data: date | None = None
+    nf_recebida: bool = False
+    observacao: str | None = None
+    criado_em: datetime
+    criado_por_nome: str | None = None
+    pago_em: datetime | None = None
+    pago_por_nome: str | None = None
+    estornado_em: datetime | None = None
+    estornado_por_nome: str | None = None
+    motivo_estorno: str | None = None
+    possui_alteracao: bool = False
+    motivo_alteracao: str | None = None
+
+
+class FreightPaymentSettlementPage(BaseModel):
+    """Página do histórico de fechamentos de pagamento."""
+
+    items: list[FreightPaymentSettlementSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class FreightPaymentResponsibleSummary(BaseModel):
+    """Consolidação individual de um agregado ou transportadora no período."""
+
+    chave_responsavel: str
+    nome_transportador: str
+    sem_identificacao: bool = False
+    id_pessoa_responsavel: int | None = None
+    documento_fiscal: str | None = None
+    chave_pix: str | None = None
+    exige_nota_fiscal: bool = False
+    quantidade_fretes: int
+    quantidade_fretes_prontos: int
+    quantidade_fretes_pendentes: int
+    quantidade_fretes_pagos: int
+    quantidade_fretes_solicitados: int
+    quantidade_fretes_em_aberto: int
+    quantidade_dias: int
+    valor_frete_bruto: Decimal
+    valor_avarias: Decimal
+    valor_ajustes_acrescimos: Decimal
+    valor_ajustes_descontos: Decimal
+    valor_ajustes_liquido: Decimal
+    valor_liquido_total: Decimal
+    valor_pago: Decimal
+    valor_solicitado: Decimal
+    valor_em_aberto: Decimal
+    status_pagamento: PaymentResponsibleStatus
+    possui_alteracao: bool = False
+    motivo_alteracao: str | None = None
+    data_pagamento_mais_recente: date | None = None
+    nf_pendente: bool = False
+    ultimo_pagamento: FreightPaymentSettlementSummary | None = None
+    pagamentos: list[FreightPaymentSettlementSummary] = Field(default_factory=list)
+    fretes: list[FreightPaymentFreightDetail] = Field(default_factory=list)
+    ajustes: list[FreightPaymentAdjustmentItem] = Field(default_factory=list)
+
+
+class FreightPaymentExecutionSummary(BaseModel):
+    """Indicadores de acompanhamento do pagamento no período."""
+
+    total_responsaveis: int = 0
+    responsaveis_pagos: int = 0
+    responsaveis_solicitados: int = 0
+    responsaveis_parciais: int = 0
+    responsaveis_em_aberto: int = 0
+    responsaveis_com_pendencia: int = 0
+    responsaveis_com_alteracao: int = 0
+    nf_pendentes: int = 0
+    valor_pago: Decimal = Decimal("0.00")
+    valor_solicitado: Decimal = Decimal("0.00")
+    valor_em_aberto: Decimal = Decimal("0.00")
+    valor_ajustes: Decimal = Decimal("0.00")
+
+
 class FreightPaymentReport(BaseModel):
     """Resumo de pagamento filtrado por modalidade e responsável."""
 
@@ -544,6 +737,86 @@ class FreightPaymentReport(BaseModel):
     valor_frete_bruto: Decimal
     valor_avarias: Decimal
     valor_a_pagar: Decimal
+    resumo_execucao: FreightPaymentExecutionSummary = Field(
+        default_factory=FreightPaymentExecutionSummary
+    )
+    responsaveis: list[FreightPaymentResponsibleSummary] = Field(default_factory=list)
+    ajustes: list[FreightPaymentAdjustmentItem] = Field(default_factory=list)
+
+
+class FreightPaymentSettlementCreateRequest(BaseModel):
+    """Cria ou atualiza fechamentos de pagamento para responsáveis selecionados."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    data_de: date
+    data_ate: date
+    tipo_transporte: PaymentTransportType
+    acao: Literal["SOLICITAR", "MARCAR_PAGO"]
+    responsaveis: list[str] | None = None
+    sem_identificacao: bool = False
+    data_pagamento: date | None = None
+    observacao: str | None = Field(default=None, max_length=500)
+    incluir_solicitados: bool = True
+    nf_numero: str | None = Field(default=None, max_length=60)
+    nf_data: date | None = None
+    nf_recebida: bool = False
+
+    @field_validator("observacao", "nf_numero")
+    @classmethod
+    def normalize_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
+
+class FreightPaymentSettlementStatusRequest(BaseModel):
+    """Atualiza a situação de um fechamento específico (pago, desfazer pago ou estornar)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    acao: Literal["MARCAR_PAGO", "DESFAZER_PAGO", "ESTORNAR"]
+    data_pagamento: date | None = None
+    observacao: str | None = Field(default=None, max_length=500)
+    motivo_estorno: str | None = Field(default=None, max_length=500)
+
+    @field_validator("observacao", "motivo_estorno")
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
+
+class FreightPaymentInvoiceUpdateRequest(BaseModel):
+    """Registra ou atualiza o controle de nota fiscal de um pagamento."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    nf_numero: str | None = Field(default=None, max_length=60)
+    nf_data: date | None = None
+    nf_recebida: bool
+
+    @field_validator("nf_numero")
+    @classmethod
+    def normalize_nf(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
+
+class FreightPaymentPendingSummary(BaseModel):
+    """Contagem rápida da semana atual para badge de pendências no menu."""
+
+    semana_de: date
+    semana_ate: date
+    responsaveis_em_aberto: int
+    responsaveis_com_pendencia: int
+    nf_pendentes: int
+    valor_em_aberto: Decimal
 
 
 class FreightPaymentOptions(BaseModel):

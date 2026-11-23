@@ -2,6 +2,7 @@ import { Workbook } from "exceljs";
 
 export type PaymentRequestWorkbookRow = {
   name: string;
+  cpf?: string | null;
   reason: string;
   total: number;
   observations: string;
@@ -76,7 +77,7 @@ export async function createPaymentRequestWorkbook(
   const dataSlotEnd = Math.max(23, dataEnd);
   rows.forEach((row, index) => {
     const rowNumber = dataStart + index;
-    const values: (string | number | null)[] = [row.name, null, row.reason, "TRANSPORTE", row.total, row.observations];
+    const values: (string | number | null)[] = [row.name, row.cpf ?? null, row.reason, "TRANSPORTE", row.total, row.observations];
     values.forEach((value, columnIndex) => {
       const cell = worksheet.getCell(rowNumber, columnIndex + 1);
       cell.value = value;

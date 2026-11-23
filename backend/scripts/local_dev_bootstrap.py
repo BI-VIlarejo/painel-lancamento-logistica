@@ -545,11 +545,45 @@ def _ensure_local_authorization_event_checks(engine) -> None:
             )
 
 
+def _ensure_person_payment_columns(engine) -> None:
+    """Adiciona CPF/CNPJ, PIX e exigência de NF no cadastro de pessoas local."""
+    table = "op_logistica_pessoa"
+    inspector = inspect(engine)
+    if not inspector.has_table(table):
+        return
+    columns = {column["name"] for column in inspector.get_columns(table)}
+    with engine.begin() as connection:
+        if "documento_fiscal" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_pessoa "
+                    "ADD COLUMN documento_fiscal VARCHAR(32) NULL"
+                )
+            )
+        if "chave_pix" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_pessoa "
+                    "ADD COLUMN chave_pix VARCHAR(160) NULL"
+                )
+            )
+        if "exige_nota_fiscal" not in columns:
+            connection.execute(
+                text(
+                    "ALTER TABLE op_logistica_pessoa "
+                    "ADD COLUMN exige_nota_fiscal TINYINT(1) NOT NULL DEFAULT 0"
+                )
+            )
+
+
 def _ensure_performance_indexes(engine) -> None:
     """Garante índices de consulta operacional sem recriar os já existentes."""
     target_tables = {
         "op_logistica_frete",
         "op_logistica_frete_evento",
+        "op_logistica_frete_pagamento",
+        "op_logistica_frete_pagamento_item",
+        "op_logistica_frete_ajuste",
         "op_logistica_lancamento_revisao",
         "op_logistica_entrega_diaria",
         "op_logistica_entrega_participante",
@@ -666,6 +700,7 @@ def main() -> int:
         _ensure_local_feedback_idempotency(engine)
         _ensure_local_delivery_otif_columns(engine)
         _ensure_locality_address_columns(engine)
+        _ensure_person_payment_columns(engine)
         _ensure_local_authorization_event_checks(engine)
         _ensure_performance_indexes(engine)
         with Session(engine) as db, db.begin():

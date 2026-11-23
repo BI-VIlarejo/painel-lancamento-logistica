@@ -28,7 +28,7 @@ from app.modules.access_control.catalog import FREIGHT_SECTOR_CODE
 from app.modules.access_control.service import AuthorizationContext
 from app.modules.catalogs.models import Localidade, Pessoa
 
-from . import repository
+from . import payment_service, repository
 from .calculator import FreightCalculation, calculate_freight
 from .models import Frete, FreteEvento
 from .status import effective_status
@@ -42,9 +42,17 @@ from .schemas import (
     FreightHistoryFilterOptions,
     FreightInput,
     FreightPage,
+    FreightPaymentAdjustmentCreateRequest,
+    FreightPaymentAdjustmentItem,
+    FreightPaymentInvoiceUpdateRequest,
     FreightPaymentOptions,
     FreightPaymentPending,
+    FreightPaymentPendingSummary,
     FreightPaymentReport,
+    FreightPaymentSettlementCreateRequest,
+    FreightPaymentSettlementPage,
+    FreightPaymentSettlementStatusRequest,
+    FreightPaymentSettlementSummary,
     FreightPaymentWarning,
     FreightQuoteResponse,
     FreightResponse,
@@ -53,6 +61,7 @@ from .schemas import (
     HistoricalFreightImportItem,
     HistoricalFreightImportRequest,
     HistoricalFreightImportResponse,
+    PaymentSettlementStatus,
     PaymentTransportType,
     TariffSource,
     TransportType,
@@ -2740,23 +2749,18 @@ def build_payment_report(
             raise ConflictError("A opção sem identificação só se aplica aos agregados.")
         if sem_identificacao and nome_transportador is not None:
             raise ConflictError("Escolha um nome ou a opção sem identificação, não ambos.")
-        records = repository.list_payment_freights(
+        return payment_service.build_payment_report(
             db,
-            id_setor=sector_id,
+            sector_id=sector_id,
             data_de=data_de,
             data_ate=data_ate,
             tipo_transporte=tipo_transporte,
             nome_transportador=nome_transportador,
             sem_identificacao=sem_identificacao,
-        )
-        records = _remove_relaunched_historical_duplicates(records)
-        return _payment_report_from_records(
-            records,
-            data_de=data_de,
-            data_ate=data_ate,
-            tipo_transporte=tipo_transporte,
-            nome_transportador=nome_transportador,
-            sem_identificacao=sem_identificacao,
+            dedup_fn=_remove_relaunched_historical_duplicates,
+            payment_amount_fn=_payment_amount,
+            historical_source_fn=_historical_import_source,
+            historical_warning_fn=_historical_payment_warning,
         )
     except ConflictError, PermissionDeniedError, NotFoundError:
         raise
@@ -2782,15 +2786,29 @@ def build_payment_options(
             data_de=data_de,
             data_ate=data_ate,
         )
+        adjustments = repository.list_payment_adjustments(
+            db,
+            id_setor=sector_id,
+            data_de=data_de,
+            data_ate=data_ate,
+        )
         aggregate_names = {
             freight.nome_transportador
             for freight in records
             if freight.tipo_transporte == "AGREGADO" and freight.nome_transportador
+        } | {
+            adj.nome_transportador
+            for adj in adjustments
+            if adj.tipo_transporte == "AGREGADO" and adj.nome_transportador
         }
         carrier_names = {
             freight.nome_transportador
             for freight in records
             if freight.tipo_transporte == "TRANSPORTADORA" and freight.nome_transportador
+        } | {
+            adj.nome_transportador
+            for adj in adjustments
+            if adj.tipo_transporte == "TRANSPORTADORA" and adj.nome_transportador
         }
         return FreightPaymentOptions(
             agregados=sorted(aggregate_names, key=str.casefold),
@@ -2963,68 +2981,16 @@ def _payment_report_from_records(
     sem_identificacao: bool,
 ) -> FreightPaymentReport:
     """Soma lançamentos já filtrados e registra os critérios no resultado."""
-    pending_items: list[FreightPaymentPending] = []
-    warning_items: list[FreightPaymentWarning] = []
-    gross_total = Decimal("0")
-    damage_total = Decimal("0")
-    net_total = Decimal("0")
-
-    for freight in records:
-        status, reason = effective_status(freight)
-        payment_amount = _payment_amount(freight)
-        imported_source = _historical_import_source(freight)
-        imported_responsible_is_clear = (
-            imported_source is not None
-            and bool((freight.nome_transportador or "").strip())
-            and imported_source.get("tipo_transporte_identificado") is not False
-            and not (
-                freight.tipo_transporte == "AGREGADO"
-                and imported_source.get("vinculo_responsavel_status") == "AMBIGUO"
-            )
-        )
-        payment_is_ready = payment_amount is not None and (
-            status == "CALCULADO" or imported_responsible_is_clear
-        )
-        if not payment_is_ready:
-            pending_items.append(FreightPaymentPending(
-                codigo_frete=UUID(freight.codigo_frete),
-                data_servico=freight.data_servico,
-                nome_transportador=freight.nome_transportador,
-                rota_cidade=freight.rota_cidade,
-                valor_frete_bruto=freight.valor_frete_bruto,
-                valor_avaria=freight.valor_avaria,
-                valor_frete_pago=payment_amount,
-                motivo_pendencia=reason or (
-                    "Valor líquido do frete não informado." if payment_amount is None
-                    else "Frete aguardando conferência."
-                ),
-            ))
-            continue
-
-        warning = _historical_payment_warning(freight)
-        if warning is not None:
-            warning_items.append(warning)
-
-        gross = freight.valor_frete_bruto or Decimal("0")
-        damage = freight.valor_avaria
-        net = payment_amount
-        gross_total += gross
-        damage_total += damage
-        net_total += net
-
-    return FreightPaymentReport(
+    return payment_service.build_payment_report_from_records(
+        records,
         data_de=data_de,
         data_ate=data_ate,
         tipo_transporte=tipo_transporte,
         nome_transportador=nome_transportador,
         sem_identificacao=sem_identificacao,
-        quantidade_fretes=len(records),
-        quantidade_pendentes=len(pending_items),
-        pendencias=pending_items,
-        avisos=warning_items,
-        valor_frete_bruto=gross_total,
-        valor_avarias=damage_total,
-        valor_a_pagar=net_total,
+        payment_amount_fn=_payment_amount,
+        historical_source_fn=_historical_import_source,
+        historical_warning_fn=_historical_payment_warning,
     )
 
 
@@ -3032,205 +2998,224 @@ def export_payment_report(
     db: Session,
     *,
     access: AuthorizationContext,
-    data_de: date,
-    data_ate: date,
+    data_de: date | None,
+    data_ate: date | None,
     tipo_transporte: PaymentTransportType,
-    nome_transportador: str | None,
-    sem_identificacao: bool,
+    nome_transportador: str | None = None,
+    sem_identificacao: bool = False,
+    responsaveis: list[str] | None = None,
+    apenas_em_aberto: bool = False,
+    codigo_pagamento: UUID | None = None,
 ) -> bytes:
     """Gera a solicitação XLSX no formato da planilha usada pela operação."""
     try:
         sector_id = _transport_access(db, access)
-        if data_de > data_ate:
-            raise ConflictError("A data inicial deve ser anterior à data final.")
-        if sem_identificacao and tipo_transporte != "AGREGADO":
-            raise ConflictError("A opção sem identificação só se aplica aos agregados.")
-        if sem_identificacao and nome_transportador is not None:
-            raise ConflictError("Escolha um nome ou a opção sem identificação, não ambos.")
-        records = repository.list_payment_freights(
+        return payment_service.export_payment_report(
             db,
-            id_setor=sector_id,
+            sector_id=sector_id,
             data_de=data_de,
             data_ate=data_ate,
             tipo_transporte=tipo_transporte,
             nome_transportador=nome_transportador,
             sem_identificacao=sem_identificacao,
-        )
-        records = _remove_relaunched_historical_duplicates(records)
-        report = _payment_report_from_records(
-            records,
-            data_de=data_de,
-            data_ate=data_ate,
-            tipo_transporte=tipo_transporte,
-            nome_transportador=nome_transportador,
-            sem_identificacao=sem_identificacao,
+            responsaveis=responsaveis,
+            apenas_em_aberto=apenas_em_aberto,
+            codigo_pagamento=codigo_pagamento,
+            dedup_fn=_remove_relaunched_historical_duplicates,
+            payment_amount_fn=_payment_amount,
+            historical_source_fn=_historical_import_source,
+            historical_warning_fn=_historical_payment_warning,
         )
     except ConflictError, PermissionDeniedError, NotFoundError:
         raise
     except SQLAlchemyError as exc:
         raise _database_unavailable(db, exc) from exc
 
-    if report.quantidade_pendentes:
-        raise ConflictError(
-            "Resolva os fretes pendentes de conferência antes de exportar o pagamento."
+
+def create_payment_settlements(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    payload: FreightPaymentSettlementCreateRequest,
+) -> list[FreightPaymentSettlementSummary]:
+    """Cria ou efetiva fechamentos de pagamento para os responsáveis selecionados."""
+    try:
+        sector_id = _transport_access(db, access)
+        return payment_service.create_payment_settlements(
+            db,
+            sector_id=sector_id,
+            actor_id=access.id_usuario,
+            payload=payload,
+            dedup_fn=_remove_relaunched_historical_duplicates,
+            payment_amount_fn=_payment_amount,
+            historical_source_fn=_historical_import_source,
+            historical_warning_fn=_historical_payment_warning,
         )
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
 
-    grouped: dict[str, dict[str, object]] = {}
-    for freight in records:
-        # Pendências são bloqueadas acima; mantenha a proteção caso a regra mude.
-        payment_amount = _payment_amount(freight)
-        if payment_amount is None:
-            continue
-        responsible = freight.nome_transportador or "Sem identificação"
-        row = grouped.setdefault(
-            responsible,
-            {
-                "days": set(),
-                "net": Decimal("0"),
-            },
+
+def update_payment_settlement_status(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    codigo_pagamento: UUID,
+    payload: FreightPaymentSettlementStatusRequest,
+) -> FreightPaymentSettlementSummary:
+    try:
+        sector_id = _transport_access(db, access)
+        return payment_service.update_payment_settlement_status(
+            db,
+            sector_id=sector_id,
+            actor_id=access.id_usuario,
+            codigo_pagamento=codigo_pagamento,
+            payload=payload,
         )
-        days = row["days"]
-        assert isinstance(days, set)
-        days.add(freight.data_servico)
-        row["net"] = Decimal(row["net"]) + payment_amount
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
 
-    workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = "Sheet1"
-    worksheet.sheet_view.showGridLines = False
-    workbook.properties.creator = "Portal de Logística"
-    workbook.properties.title = "Solicitação de pagamento de Fretes"
 
-    dark = "FF000000"
-    dark_gray = "FF808080"
-    medium_gray = "FF404040"
-    white = "FFFFFFFF"
-    black = "FF000000"
-    thin = Side(style="thin", color=black)
-    medium = Side(style="medium", color=black)
-    currency_format = r'_-[$R$-416]\ * #,##0.00_-;\-[$R$-416]\ * #,##0.00_-;_-[$R$-416]\ * "-"??_-;_-@_-'
-
-    widths = (28.140625, 28.7109375, 41.28515625, 20.140625, 19.140625, 40.7109375)
-    for index, width in enumerate(widths, start=1):
-        worksheet.column_dimensions[chr(64 + index)].width = width
-
-    worksheet.merge_cells("A1:F1")
-    title = worksheet["A1"]
-    title.value = "Solicitação de pagamento Extra"
-    title.font = Font(name="Calibri", size=24, bold=True, italic=True, color=white)
-    title.fill = PatternFill("solid", fgColor=dark_gray)
-    title.alignment = Alignment(horizontal="center", vertical="center")
-    worksheet.row_dimensions[1].height = 32.25
-
-    for cell in worksheet[2]:
-        if cell.column <= 6:
-            cell.fill = PatternFill("solid", fgColor=medium_gray)
-            cell.border = Border(left=medium, right=medium, top=medium, bottom=medium)
-    worksheet["A2"] = "Data"
-    worksheet["A2"].font = Font(name="Calibri", size=11, bold=True, color=white)
-    worksheet["A2"].alignment = Alignment(horizontal="center", vertical="center")
-    worksheet["C2"] = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
-    worksheet["C2"].number_format = "dd/mm/yyyy"
-    worksheet["C2"].font = Font(name="Calibri", size=14, bold=True, italic=True, color=white)
-    worksheet["C2"].alignment = Alignment(horizontal="center", vertical="center")
-    worksheet.row_dimensions[2].height = 21.75
-
-    headers = ("Nome", "CPF", "Motivo", "Setor", "Valor Total", "Observações")
-    for column, value in enumerate(headers, start=1):
-        cell = worksheet.cell(row=3, column=column, value=value)
-        cell.font = Font(name="Calibri", size=11, bold=True, color=white)
-        cell.fill = PatternFill("solid", fgColor="FF0D0D0D")
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        cell.border = Border(
-            left=medium if column == 1 else thin,
-            right=thin,
-            top=medium,
-            bottom=thin,
+def update_payment_settlement_invoice(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    codigo_pagamento: UUID,
+    payload: FreightPaymentInvoiceUpdateRequest,
+) -> FreightPaymentSettlementSummary:
+    try:
+        sector_id = _transport_access(db, access)
+        return payment_service.update_payment_settlement_invoice(
+            db,
+            sector_id=sector_id,
+            codigo_pagamento=codigo_pagamento,
+            payload=payload,
         )
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
 
-    data_start = 4
-    data_end = data_start + len(grouped) - 1
-    data_slot_end = max(23, data_end)
-    payment_reason = "AGREGADO" if tipo_transporte == "AGREGADO" else "TRANSPORTADORA"
 
-    for offset, (responsible, values) in enumerate(
-        sorted(grouped.items(), key=lambda item: item[0].casefold())
-    ):
-        row_index = data_start + offset
-        service_days = values["days"]
-        assert isinstance(service_days, set)
-        net = Decimal(values["net"])
-        days_label = "DIA" if len(service_days) == 1 else "DIAS"
-        values_for_row: tuple[object, ...] = (
-            responsible,
-            None,  # O cadastro de pessoas do Portal não armazena CPF.
-            f"{payment_reason} TOTAL DE {len(service_days)} {days_label}",
-            "TRANSPORTE",
-            net,
-            "",
+def list_payment_settlements(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: PaymentTransportType | None = None,
+    status_pagamento: PaymentSettlementStatus | None = None,
+    nome_transportador: str | None = None,
+    incluir_estornados: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+) -> FreightPaymentSettlementPage:
+    try:
+        sector_id = _transport_access(db, access)
+        return payment_service.list_payment_settlements(
+            db,
+            sector_id=sector_id,
+            data_de=data_de,
+            data_ate=data_ate,
+            tipo_transporte=tipo_transporte,
+            status_pagamento=status_pagamento,
+            nome_transportador=nome_transportador,
+            incluir_estornados=incluir_estornados,
+            limit=limit,
+            offset=offset,
+            payment_amount_fn=_payment_amount,
+            historical_source_fn=_historical_import_source,
         )
-        for column, value in enumerate(values_for_row, start=1):
-            cell = worksheet.cell(row=row_index, column=column, value=value)
-            if isinstance(value, str):
-                cell.data_type = "s"
-            cell.font = Font(name="Calibri", size=16, color=black)
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.border = Border(
-                left=medium if column == 1 else thin,
-                right=thin,
-                top=thin,
-                bottom=medium if row_index == data_slot_end else thin,
-            )
-            if column == 5:
-                cell.fill = PatternFill("solid", fgColor="FFD9D9D9")
-                cell.number_format = currency_format
-        worksheet.row_dimensions[row_index].height = 42
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
 
-    for row_index in range(max(data_start, data_end + 1), data_slot_end + 1):
-        worksheet.row_dimensions[row_index].height = 21
-        for column in range(1, 7):
-            cell = worksheet.cell(row=row_index, column=column)
-            cell.font = Font(name="Calibri", size=16, color=black)
-            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-            cell.border = Border(
-                left=medium if column == 1 else thin,
-                right=thin,
-                top=thin,
-                bottom=medium if row_index == data_slot_end else thin,
-            )
-            if column == 5:
-                cell.fill = PatternFill("solid", fgColor="FFD9D9D9")
-                cell.number_format = currency_format
 
-    if data_end < data_slot_end:
-        worksheet.row_dimensions[data_slot_end].height = 21.75
+def list_payment_adjustments(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: PaymentTransportType | None = None,
+    nome_transportador: str | None = None,
+) -> list[FreightPaymentAdjustmentItem]:
+    try:
+        sector_id = _transport_access(db, access)
+        return payment_service.list_payment_adjustments(
+            db,
+            sector_id=sector_id,
+            data_de=data_de,
+            data_ate=data_ate,
+            tipo_transporte=tipo_transporte,
+            nome_transportador=nome_transportador,
+        )
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
 
-    total_row = data_slot_end + 1
-    for column in (4, 5):
-        cell = worksheet.cell(row=total_row, column=column)
-        cell.fill = PatternFill("solid", fgColor=dark)
-        cell.font = Font(name="Calibri", size=16, bold=column == 4, color=white)
-        cell.alignment = Alignment(horizontal="center", vertical="center")
-        cell.border = Border(left=medium, right=medium, top=medium, bottom=medium)
-    worksheet.cell(row=total_row, column=4, value="TOTAL GERAL")
-    total = worksheet.cell(row=total_row, column=5)
-    total.value = f"=SUM(E{data_start}:E{data_slot_end})"
-    total.number_format = currency_format
-    worksheet.row_dimensions[total_row].height = 21.75
 
-    worksheet.page_setup.orientation = "landscape"
-    worksheet.page_setup.paperSize = worksheet.PAPERSIZE_A4
-    worksheet.page_setup.scale = 69
-    worksheet.page_margins = PageMargins(
-        left=0.7086614173228347,
-        right=0.7086614173228347,
-        top=0.7480314960629921,
-        bottom=0.7480314960629921,
-        header=0.3149606299212598,
-        footer=0.3149606299212598,
-    )
-    worksheet.print_area = f"A1:F{total_row}"
+def create_payment_adjustments(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    payload: FreightPaymentAdjustmentCreateRequest,
+) -> list[FreightPaymentAdjustmentItem]:
+    try:
+        sector_id = _transport_access(db, access)
+        return payment_service.create_payment_adjustments(
+            db,
+            sector_id=sector_id,
+            actor_id=access.id_usuario,
+            payload=payload,
+        )
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
 
-    output = BytesIO()
-    workbook.save(output)
-    return output.getvalue()
+
+def delete_payment_adjustment(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+    codigo_ajuste: UUID,
+) -> None:
+    try:
+        sector_id = _transport_access(db, access)
+        payment_service.delete_payment_adjustment(
+            db,
+            sector_id=sector_id,
+            actor_id=access.id_usuario,
+            codigo_ajuste=codigo_ajuste,
+        )
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc
+
+
+def get_pending_payment_summary(
+    db: Session,
+    *,
+    access: AuthorizationContext,
+) -> FreightPaymentPendingSummary:
+    try:
+        sector_id = _transport_access(db, access)
+        return payment_service.get_pending_payment_summary(
+            db,
+            sector_id=sector_id,
+            dedup_fn=_remove_relaunched_historical_duplicates,
+            payment_amount_fn=_payment_amount,
+            historical_source_fn=_historical_import_source,
+            historical_warning_fn=_historical_payment_warning,
+        )
+    except ConflictError, PermissionDeniedError, NotFoundError:
+        raise
+    except SQLAlchemyError as exc:
+        raise _database_unavailable(db, exc) from exc

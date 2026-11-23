@@ -30,6 +30,9 @@ export type PersonAdminItem = {
   tipo_transporte_entrega: DeliveryTransportType | null;
   modalidade_terceirizada: "AGREGADO" | "TRANSPORTADORA_INDEPENDENTE" | null;
   codigo_transportadora_independente: "PAULO_CRUZ" | "JUST_IN_TIME" | null;
+  documento_fiscal?: string | null;
+  chave_pix?: string | null;
+  exige_nota_fiscal?: boolean;
   ativo: boolean;
   vigente_desde: string;
   vigente_ate: string | null;
