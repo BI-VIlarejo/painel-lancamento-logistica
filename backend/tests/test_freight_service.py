@@ -428,3 +428,85 @@ class FreightServiceTests(TestCase):
                     nome_transportador="Motorista Agregado Teste",
                     sem_identificacao=False,
                 )
+
+    def test_historical_paulo_cruz_edit_allows_support_vehicle_value_changes_and_client_code(self):
+        request = HistoricalFreightImportRequest.model_validate({
+            "nome_arquivo": "fretes.xlsx",
+            "sha256_arquivo": "c" * 64,
+            "aba_origem": "LANÇAMENTO",
+            "itens": [{
+                "linha_planilha": 7,
+                "data_servico": "2026-11-03",
+                "nome_transportador": "Motorista Paulo Cruz Teste",
+                "rota_cidade": "Niterói",
+                "valor_frete_bruto": "950.00",
+                "valor_frete_pago": "950.00",
+                "valores_originais_planilha": {
+                    "rota_cidade": "Niterói",
+                    "valor_frete_bruto": "950.00",
+                    "valor_frete_pago": "950.00",
+                },
+            }],
+        })
+        service.import_historical_freights(self.db, payload=request, access=access())
+        freight = self.db.scalar(select(Frete))
+        assert freight is not None
+
+        # Permite selecionar carro de apoio sem obrigar tipo_caminhao e permite editar valores + código do cliente.
+        edit = HistoricalFreightEditInput.model_validate({
+            "data_servico": "2026-11-03",
+            "id_motorista_selecionado": 2,
+            "nome_transportador": "Motorista Paulo Cruz Teste",
+            "rota_cidade": "Niterói Centro",
+            "km_inicial": None,
+            "km_final": None,
+            "km_rodado": None,
+            "quantidade_entregas": 4,
+            "peso_kg": "1200",
+            "valor_nota": "15000.00",
+            "valor_frete_bruto": "1250.00",
+            "valor_frete_pago": "1250.00",
+            "percentual_frete": None,
+            "tipo_caminhao": None,
+            "carro_apoio": "SAVEIRO",
+            "nome_cliente": "  Cliente Exemplo  ",
+            "codigo_cliente": "  CLI-9988  ",
+            "observacao": "  Adicionado carro de apoio  ",
+            "valor_avaria": "0",
+        })
+        saved = service.update_historical_freight(
+            self.db,
+            codigo_frete=service.UUID(freight.codigo_frete),
+            payload=edit,
+            idempotency_key=uuid4(),
+            access=access(),
+        )
+        self.assertEqual(saved.carro_apoio, "SAVEIRO")
+        self.assertEqual(saved.valor_frete_bruto, Decimal("1250.00"))
+        self.assertEqual(saved.valor_frete_pago, Decimal("1250.00"))
+        self.assertEqual(saved.rota_cidade, "Niterói Centro")
+        self.assertEqual(saved.codigo_cliente, "CLI-9988")
+        self.assertEqual(saved.nome_cliente, "Cliente Exemplo")
+        self.assertEqual(saved.observacao, "Adicionado carro de apoio")
+        # Originais da planilha continuam preservados na memória do cálculo.
+        self.assertEqual(
+            saved.detalhe_calculo["importacao_planilha"]["valores_originais_planilha"]["valor_frete_bruto"],
+            "950.00",
+        )
+        # Exportação do histórico inclui o código do cliente.
+        xlsx = service.export_freight_history(
+            self.db,
+            access=access(),
+            data_de=date(2026, 11, 1),
+            data_ate=date(2026, 11, 30),
+            tipo_transporte=None,
+            status_calculo=None,
+            id_motorista=None,
+            rota_cidade=None,
+            codigo_transportadora=None,
+        )
+        ws = load_workbook(BytesIO(xlsx), data_only=False)["Histórico"]
+        headers = [ws.cell(3, col).value for col in range(1, ws.max_column + 1)]
+        self.assertIn("Código do cliente", headers)
+        client_col = headers.index("Código do cliente") + 1
+        self.assertEqual(ws.cell(4, client_col).value, "CLI-9988")

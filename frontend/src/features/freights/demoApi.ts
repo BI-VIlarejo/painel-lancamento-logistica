@@ -954,25 +954,7 @@ export const freightsDemoApi = {
     if (!source || typeof source !== "object") {
       throw new Error("A edição histórica só está disponível para fretes importados.");
     }
-    const importSource = source as Record<string, unknown>;
-    const originals = importSource.valores_originais_planilha;
-    const sourceHasValue = (field: string) => {
-      if (typeof originals !== "object" || originals === null) return false;
-      const value = (originals as Record<string, unknown>)[field];
-      return value !== null && value !== undefined && String(value).trim() !== "";
-    };
-    const lockedValues: Partial<HistoricalFreightEditInput> = {};
-    const fieldsFromSheet: Array<keyof FreightResponse> = [
-      "data_servico", "rota_cidade", "km_inicial", "km_final", "km_rodado",
-      "quantidade_entregas", "peso_kg", "valor_nota", "valor_frete_bruto",
-      "valor_frete_pago", "percentual_frete", "valor_avaria",
-    ];
-    for (const field of fieldsFromSheet) {
-      if (sourceHasValue(field)) {
-        (lockedValues as Record<string, unknown>)[field] = existing[field];
-      }
-    }
-    const savedPayload = { ...payload, ...lockedValues };
+    const savedPayload = { ...payload };
 
     const name = normalizeLabel(savedPayload.nome_transportador ?? "");
     const aggregateDriver = savedPayload.id_motorista_selecionado === 501
@@ -1135,6 +1117,9 @@ export const freightsDemoApi = {
       valor_nota: savedPayload.valor_nota,
       tipo_caminhao: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.tipo_caminhao : null,
       carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
+      nome_cliente: savedPayload.nome_cliente ?? null,
+      codigo_cliente: savedPayload.codigo_cliente ?? null,
+      observacao: savedPayload.observacao ?? null,
       codigo_zona_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME" ? savedPayload.codigo_zona_jit : null,
       codigos_zonas_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME"
         ? (savedPayload.codigo_zona_jit ? [savedPayload.codigo_zona_jit] : [])
@@ -1156,6 +1141,9 @@ export const freightsDemoApi = {
         fonte_tarifa: tariffCode ?? "AGREGADOS_CD",
         percentual_frete: ratio === null ? null : String(ratio),
         carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
+        nome_cliente: savedPayload.nome_cliente ?? null,
+        codigo_cliente: savedPayload.codigo_cliente ?? null,
+        observacao: savedPayload.observacao ?? null,
         ...(historicalCalculation ? { calculo_tarifa_atual: historicalCalculation.detalhe_calculo } : {}),
         importacao_planilha: nextSource,
       },

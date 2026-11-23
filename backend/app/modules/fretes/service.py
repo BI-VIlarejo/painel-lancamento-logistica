@@ -1776,27 +1776,6 @@ def update_historical_freight(
         if cancellation is not None:
             raise ConflictError("Um frete cancelado não pode ser editado.")
 
-        locked_values: dict[str, object] = {}
-        imported_fields = {
-            "data_servico": "data_servico",
-            "rota_cidade": "rota_cidade",
-            "km_inicial": "km_inicial",
-            "km_final": "km_final",
-            "km_rodado": "km_rodado",
-            "quantidade_entregas": "quantidade_entregas",
-            "peso_kg": "peso_kg",
-            "valor_nota": "valor_nota",
-            "valor_frete_bruto": "valor_frete_bruto",
-            "valor_frete_pago": "valor_frete_pago",
-            "percentual_frete": "percentual_frete",
-            "valor_avaria": "valor_avaria",
-        }
-        for source_field, payload_field in imported_fields.items():
-            if _historical_source_has_value(import_source, source_field):
-                locked_values[payload_field] = getattr(freight, payload_field)
-        if locked_values:
-            payload = payload.model_copy(update=locked_values)
-
         drivers = repository.list_historical_freight_driver_versions(
             db,
             data_de=payload.data_servico,
@@ -2173,6 +2152,9 @@ def update_historical_freight(
                 if transport_fields["codigo_fonte_tarifa"] == "PAULO_CRUZ"
                 else None
             ),
+            "nome_cliente": payload.nome_cliente,
+            "codigo_cliente": payload.codigo_cliente,
+            "observacao": payload.observacao,
             "percentual_frete": str(ratio) if ratio is not None else None,
             "motivo": pending_reason,
             "importacao_planilha": import_source,
@@ -2493,6 +2475,9 @@ def export_freight_history(
         "Carro de apoio",
         "Zona JUST IN TIME",
         "Adicionais JIT",
+        "Código do cliente",
+        "Nome do cliente",
+        "Observação",
     )
     worksheet.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
     title = worksheet.cell(row=1, column=1, value="Histórico de fretes")
@@ -2543,6 +2528,7 @@ def export_freight_history(
     widths = (
         13, 22, 24, 25, 24, 11, 12, 16, 14, 16, 16, 17, 16, 21,
         34, 16, 32, 25, 14, 14, 19, 12, 12, 12, 18, 16, 18, 24,
+        18, 24, 32,
     )
     for column, width in enumerate(widths, start=1):
         worksheet.column_dimensions[worksheet.cell(row=3, column=column).column_letter].width = width
@@ -2608,6 +2594,9 @@ def export_freight_history(
             support_label,
             jit_zone_label,
             ", ".join(freight.adicionais_jit or []),
+            freight.detalhe_calculo.get("codigo_cliente"),
+            freight.detalhe_calculo.get("nome_cliente"),
+            freight.detalhe_calculo.get("observacao"),
         )
         fill = PatternFill(
             "solid",
@@ -2620,7 +2609,7 @@ def export_freight_history(
             cell.alignment = Alignment(
                 horizontal="center" if column in center_columns else "left",
                 vertical="center",
-                wrap_text=column in {3, 4, 5, 15, 17, 18, 27, 28},
+                wrap_text=column in {3, 4, 5, 15, 17, 18, 27, 28, 30, 31},
             )
             if column in currency_columns:
                 cell.number_format = '"R$" #,##0.00;[Red]-"R$" #,##0.00'

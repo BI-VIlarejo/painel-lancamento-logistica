@@ -11,6 +11,7 @@ const headers = [
   "Situação do cálculo", "Motivo / pendência", "Situação do registro", "Justificativa de cancelamento",
   "Arquivo de origem", "Aba de origem", "Linha da planilha", "Criado em", "KM inicial", "KM final", "KM rodado",
   "Tipo de caminhão", "Carro de apoio", "Zona JUST IN TIME", "Adicionais JIT",
+  "Código do cliente", "Nome do cliente", "Observação",
 ];
 
 function dateValue(value: string): Date {
@@ -95,6 +96,7 @@ export async function createFreightHistoryWorkbook(
   });
   worksheet.columns = [
     13, 22, 24, 25, 24, 11, 12, 16, 14, 16, 16, 17, 16, 21, 34, 16, 32, 25, 14, 14, 19, 12, 12, 12, 18, 16, 18, 24,
+    18, 24, 32,
   ].map((width) => ({ width }));
   worksheet.mergeCells(1, 1, 1, headers.length);
   worksheet.getCell(1, 1).value = "Histórico de fretes";
@@ -152,6 +154,9 @@ export async function createFreightHistoryWorkbook(
       support,
       jitZoneLabel(item),
       item.adicionais_jit.join(", "),
+      item.codigo_cliente ?? null,
+      item.nome_cliente ?? null,
+      item.observacao ?? null,
     ];
     const dataRow = worksheet.getRow(row);
     dataRow.values = [undefined, ...values];
@@ -162,7 +167,7 @@ export async function createFreightHistoryWorkbook(
       cell.alignment = {
         horizontal: [1, 2, 6, 9, 12, 14, 16, 19, 20, 21, 22, 23, 24, 25, 26, 27].includes(column) ? "center" : "left",
         vertical: "middle",
-        wrapText: [3, 4, 5, 15, 17, 18, 27, 28].includes(column),
+        wrapText: [3, 4, 5, 15, 17, 18, 27, 28, 30, 31].includes(column),
       };
       if ([8, 10, 11, 13].includes(column)) cell.numFmt = '"R$" #,##0.00;[Red]-"R$" #,##0.00';
       else if ([7, 22, 23, 24].includes(column)) cell.numFmt = "#,##0.000";

@@ -119,14 +119,19 @@ function valuesFromDraft(values: FormValues, options: FreightTariffOptions): For
   return { ...emptyValues(options), ...values, codigos_zonas_jit: zones };
 }
 
-function decimalInput(value: string, label: string, optional = false): number | null {
+function decimalInput(
+  value: string,
+  label: string,
+  optional = false,
+  maxDecimals?: number,
+): number | null {
   if (!value.trim() && optional) return null;
   const parsed = numericValue(value);
   if (parsed === null || parsed < 0) throw new Error(`${label}: informe um número igual ou maior que zero.`);
-  return parsed;
+  return maxDecimals === undefined ? parsed : Number(parsed.toFixed(maxDecimals));
 }
 
-function payloadFromValues(values: FormValues): FreightInput {
+function payloadFromValues(values: FormValues, jitZoneNames: string[] = []): FreightInput {
   if (!values.data_servico) throw new Error("Informe a data do serviço.");
   if (values.tipo_transporte === "TRANSPORTADORA" && values.codigo_fonte_tarifa !== "JUST_IN_TIME" && values.codigo_fonte_tarifa !== "PAULO_CRUZ") {
     throw new Error("Selecione a transportadora na etapa 01.");
@@ -138,7 +143,7 @@ function payloadFromValues(values: FormValues): FreightInput {
     throw new Error("Informe a rota ou cidade do frete.");
   }
 
-  if (values.tipo_transporte === "AGREGADO" && values.nome_transportador.trim().length < 2) {
+  if (values.tipo_transporte === "AGREGADO" && (!values.id_motorista_agregado || values.nome_transportador.trim().length < 2)) {
     throw new Error("Selecione um motorista no cadastro de equipes.");
   }
   if (values.tipo_transporte === "TRANSPORTADORA" && values.nome_transportador.trim().length < 2) {
@@ -149,8 +154,8 @@ function payloadFromValues(values: FormValues): FreightInput {
   }
 
   const odometerIsOptional = values.tipo_transporte === "TRANSPORTADORA";
-  const initial = odometerIsOptional ? null : decimalInput(values.km_inicial, "KM inicial");
-  const final = odometerIsOptional ? null : decimalInput(values.km_final, "KM final");
+  const initial = odometerIsOptional ? null : decimalInput(values.km_inicial, "KM inicial", false, 3);
+  const final = odometerIsOptional ? null : decimalInput(values.km_final, "KM final", false, 3);
   if (!odometerIsOptional && (initial === null || final === null)) {
     throw new Error("Informe as duas leituras do hodômetro.");
   }
@@ -162,14 +167,14 @@ function payloadFromValues(values: FormValues): FreightInput {
   if (!Number.isInteger(deliveries) || deliveries < 0) {
     throw new Error("Informe uma quantidade de entregas igual ou maior que zero.");
   }
-  const weight = decimalInput(values.peso_kg, "Peso");
-  const damage = decimalInput(values.valor_avaria, "Valor da Avaria");
+  const weight = decimalInput(values.peso_kg, "Peso", false, 3);
+  const damage = decimalInput(values.valor_avaria, "Valor da Avaria", false, 2);
   const damageCount = Number(values.quantidade_avarias);
   if (!Number.isInteger(damageCount) || damageCount < 0) {
     throw new Error("A quantidade de avarias deve ser um número igual ou maior que zero.");
   }
-  const invoice = decimalInput(values.valor_nota, "Valor da nota", true);
-  const gross = decimalInput(values.valor_frete_bruto, "Valor bruto do frete", true);
+  const invoice = decimalInput(values.valor_nota, "Valor da nota", true, 2);
+  const gross = decimalInput(values.valor_frete_bruto, "Valor bruto do frete", true, 2);
   if (values.tipo_transporte === "AGREGADO" && values.codigo_fonte_tarifa !== "AGREGADOS_CD") {
     throw new Error("Selecione a tabela de tarifa de agregados.");
   }
@@ -180,6 +185,11 @@ function payloadFromValues(values: FormValues): FreightInput {
     throw new Error("Selecione o tipo de caminhão da tarifa Paulo Cruz.");
   }
 
+  const trimmedRoute = values.rota_cidade.trim().replace(/\s+/g, " ");
+  const normalizedRoute = values.codigo_fonte_tarifa === "JUST_IN_TIME" && trimmedRoute.length < 2
+    ? (jitZoneNames.length > 1 ? "JUST IN TIME" : jitZoneNames[0] || "JUST IN TIME")
+    : trimmedRoute;
+
   return {
     data_servico: values.data_servico,
     tipo_transporte: values.tipo_transporte,
@@ -187,7 +197,7 @@ function payloadFromValues(values: FormValues): FreightInput {
     id_motorista_agregado: values.tipo_transporte === "AGREGADO" ? Number(values.id_motorista_agregado) : null,
     id_motorista_transportadora: values.tipo_transporte === "TRANSPORTADORA" ? Number(values.id_motorista_transportadora) : null,
     codigo_fonte_tarifa: values.codigo_fonte_tarifa as FreightTariffSource,
-    rota_cidade: values.rota_cidade.trim().replace(/\s+/g, " "),
+    rota_cidade: normalizedRoute,
     km_inicial: initial,
     km_final: final,
     quantidade_entregas: deliveries,
@@ -390,6 +400,11 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const carrierDriverReady = values.tipo_transporte !== "TRANSPORTADORA"
     || (!carrierDriversLoading && !carrierDriversError && selectedCarrierDriverExists);
 
+  const jitZoneOptions = options.zonas_just_in_time.flatMap((region) => region.subzonas);
+  const selectedJitZoneNames = jitZoneOptions
+    .filter((zone) => values.codigos_zonas_jit.includes(zone.codigo))
+    .map((zone) => zone.nome);
+
   async function simulate(): Promise<void> {
     if (!carrierDriverReady) {
       setError(carrierDriversError || "Selecione o motorista e a transportadora independente.");
@@ -401,7 +416,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
     }
     let input: FreightInput;
     try {
-      input = payloadFromValues(values);
+      input = payloadFromValues(values, selectedJitZoneNames);
     } catch (validationError) {
       setError(messageFromApiError(validationError));
       return;
@@ -443,7 +458,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
     }
     let payload: FreightInput;
     try {
-      payload = payloadFromValues(values);
+      payload = payloadFromValues(values, selectedJitZoneNames);
     } catch (validationError) {
       setError(messageFromApiError(validationError));
       return;
@@ -494,14 +509,10 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   }
 
   const currentSignature = (() => {
-    try { return JSON.stringify(payloadFromValues(values)); } catch { return ""; }
+    try { return JSON.stringify(payloadFromValues(values, selectedJitZoneNames)); } catch { return ""; }
   })();
   const liveQuote = quote && quoteSignature === currentSignature ? quote : null;
   const pendingConfirm = currentSignature !== "" && pendingSignature === currentSignature;
-  const jitZoneOptions = options.zonas_just_in_time.flatMap((region) => region.subzonas);
-  const selectedJitZoneNames = jitZoneOptions
-    .filter((zone) => values.codigos_zonas_jit.includes(zone.codigo))
-    .map((zone) => zone.nome);
   const selectedTruck = options.tipos_caminhao_paulo_cruz.find((truck) => truck.codigo === values.tipo_caminhao);
 
   return (
@@ -750,10 +761,10 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
             <small>Valor financeiro a descontar do frete, conforme a coluna R$ AVARIA da planilha. A quantidade de avarias é registrada separadamente.</small>
           </label>
           <label className={cx(styles, "field")}>Nome do cliente (opcional)
-            <input type="text" maxLength={160} value={values.nome_cliente} onChange={(event) => update("nome_cliente", event.target.value)} disabled={busy} />
+            <input type="text" maxLength={160} placeholder="Ex.: Maria Silva" value={values.nome_cliente} onChange={(event) => update("nome_cliente", event.target.value)} disabled={busy} />
           </label>
           <label className={cx(styles, "field")}>Código do cliente (opcional)
-            <input type="text" maxLength={80} value={values.codigo_cliente} onChange={(event) => update("codigo_cliente", event.target.value)} disabled={busy} />
+            <input type="text" maxLength={80} placeholder="Ex.: 12345" value={values.codigo_cliente} onChange={(event) => update("codigo_cliente", event.target.value)} disabled={busy} />
           </label>
           <label className={cx(styles, "field", "field-wide")}>Observação (opcional)
             <textarea maxLength={1000} rows={3} value={values.observacao} onChange={(event) => update("observacao", event.target.value)} disabled={busy} />
@@ -773,7 +784,7 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
         <div>
           <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { void simulate(); }} disabled={busy || driversLoading || summaryLoading}>{busyAction === "quote" ? "Calculando..." : "Simular cálculo"}</button>
           <button className={cx(styles, commonStyles, "button button-primary")} type="submit" disabled={busy || driversLoading || summaryLoading}>
-            {busyAction === "submit" ? (initialFreight ? "Salvando..." : "Registrando...") : pendingConfirm ? "Confirmar valor e registrar" : initialFreight ? "Salvar alterações" : "Registrar frete"}
+            {busyAction === "submit" ? (initialFreight ? "Salvando..." : "Registrando...") : pendingConfirm ? (initialFreight ? "Confirmar valor e salvar" : "Confirmar valor e registrar") : initialFreight ? "Salvar alterações" : "Registrar frete"}
           </button>
         </div>
       </div>

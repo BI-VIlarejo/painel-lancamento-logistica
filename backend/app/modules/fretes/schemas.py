@@ -98,6 +98,15 @@ class FreightInput(BaseModel):
         normalized = " ".join(value.split()) if value else ""
         return normalized or None
 
+    @field_validator("nome_cliente", "codigo_cliente", "observacao")
+    @classmethod
+    def normalize_optional_client_text(cls, value: str | None) -> str | None:
+        """Remove espaços extras e trata texto vazio como nulo."""
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
+
     @field_validator("codigo_zona_jit")
     @classmethod
     def normalize_zone(cls, value: str | None) -> str | None:
@@ -328,11 +337,14 @@ class HistoricalFreightEditInput(BaseModel):
     adicionais_jit: list[str] = Field(default_factory=list, max_length=8)
     tipo_caminhao: TruckType = None
     carro_apoio: Literal["SAVEIRO", "KIA_BONGO"] | None = None
+    nome_cliente: str | None = Field(default=None, max_length=160)
+    codigo_cliente: str | None = Field(default=None, max_length=80)
+    observacao: str | None = Field(default=None, max_length=1000)
     valor_avaria: Decimal = Field(
-        ge=Decimal("0"), max_digits=14, decimal_places=2, allow_inf_nan=False
+        default=Decimal("0"), ge=Decimal("0"), max_digits=14, decimal_places=2, allow_inf_nan=False
     )
 
-    @field_validator("nome_transportador", "rota_cidade")
+    @field_validator("nome_transportador", "rota_cidade", "nome_cliente", "codigo_cliente", "observacao")
     @classmethod
     def normalize_edit_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -356,16 +368,11 @@ class HistoricalFreightEditInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_edit_odometer(self) -> HistoricalFreightEditInput:
-        if self.carro_apoio is not None and self.tipo_caminhao is None:
-            raise ValueError("Informe o tipo de caminhão antes de selecionar carro de apoio.")
         if self.km_inicial is None or self.km_final is None:
             return self
         if self.km_final < self.km_inicial:
             raise ValueError("KM final deve ser igual ou maior que KM inicial.")
-        derived = self.km_final - self.km_inicial
-        if self.km_rodado is not None and self.km_rodado != derived:
-            raise ValueError("KM rodado diverge da diferença entre KM final e inicial.")
-        self.km_rodado = derived
+        self.km_rodado = self.km_final - self.km_inicial
         return self
 
 

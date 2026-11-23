@@ -25,18 +25,27 @@ export function messageFromApiError(error: unknown): string {
   return "Não foi possível concluir agora. Tente novamente.";
 }
 
+function cleanValidationMessage(message: string | undefined): string {
+  const trimmed = (message ?? "").trim();
+  if (!trimmed) return "Confira os dados informados.";
+  return trimmed.replace(/^Value error,\s*/i, "");
+}
+
 export function errorFromResponse(status: number, payload: unknown): ApiError {
   const body = payload as ApiErrorPayload | null;
   const detail = body?.detail;
 
   if (Array.isArray(body?.error?.details)) {
     const fieldErrors: Record<string, string> = {};
+    let firstMessage = "";
     for (const issue of body.error.details) {
+      const cleaned = cleanValidationMessage(issue.message);
+      if (!firstMessage) firstMessage = cleaned;
       const path = (issue.location ?? []).filter((part) => part !== "body").join(".");
-      if (path) fieldErrors[path] = issue.message ?? "Confira este campo.";
+      if (path) fieldErrors[path] = cleaned;
     }
     return new ApiError(
-      Object.values(fieldErrors)[0] ?? body.error.message ?? "Confira os dados informados.",
+      Object.values(fieldErrors)[0] ?? (firstMessage || body.error.message || "Confira os dados informados."),
       status,
       fieldErrors,
     );
@@ -44,12 +53,15 @@ export function errorFromResponse(status: number, payload: unknown): ApiError {
 
   if (Array.isArray(detail)) {
     const fieldErrors: Record<string, string> = {};
+    let firstMessage = "";
     for (const issue of detail) {
+      const cleaned = cleanValidationMessage(issue.msg);
+      if (!firstMessage) firstMessage = cleaned;
       const path = (issue.loc ?? []).filter((part) => part !== "body").join(".");
-      if (path) fieldErrors[path] = issue.msg ?? "Confira este campo.";
+      if (path) fieldErrors[path] = cleaned;
     }
     return new ApiError(
-      Object.values(fieldErrors)[0] ?? "Confira os dados informados.",
+      Object.values(fieldErrors)[0] ?? (firstMessage || "Confira os dados informados."),
       status,
       fieldErrors,
     );

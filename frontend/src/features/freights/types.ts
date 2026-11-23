@@ -129,6 +129,9 @@ export type HistoricalFreightEditInput = {
   adicionais_jit: string[];
   tipo_caminhao: FreightTruckType | null;
   carro_apoio: "SAVEIRO" | "KIA_BONGO" | null;
+  nome_cliente?: string | null;
+  codigo_cliente?: string | null;
+  observacao?: string | null;
   valor_avaria: DecimalValue;
 };
 

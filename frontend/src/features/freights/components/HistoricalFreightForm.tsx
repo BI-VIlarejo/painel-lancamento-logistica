@@ -118,10 +118,25 @@ function sourceNumber(
   return "";
 }
 
+function supportVehiclePrice(value: string): number {
+  if (value === "SAVEIRO") return 300;
+  if (value === "KIA_BONGO") return 500;
+  return 0;
+}
+
+function sourceOriginalValue(source: Record<string, unknown>, field: string): string | null {
+  const originals = source.valores_originais_planilha;
+  if (typeof originals !== "object" || originals === null) return null;
+  const value = (originals as Record<string, unknown>)[field];
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  return text || null;
+}
+
 function percentForInput(freight: FreightResponse, source: Record<string, unknown>): string {
   const ratio = numericValue(freight.percentual_frete)
     ?? numericValue(source.percentual_frete_importado as string | number | null | undefined);
-  return ratio === null ? "" : String(ratio * 100);
+  return ratio === null ? "" : String(Number((ratio * 100).toFixed(4)));
 }
 
 function valuesFromFreight(freight: FreightResponse): Values {
@@ -150,21 +165,24 @@ function valuesFromFreight(freight: FreightResponse): Values {
     adicionais_jit: freight.adicionais_jit.join(","),
     tipo_caminhao: freight.tipo_caminhao ?? "",
     carro_apoio: freight.carro_apoio ?? "",
+    nome_cliente: freight.nome_cliente ?? "",
+    codigo_cliente: freight.codigo_cliente ?? "",
+    observacao: freight.observacao ?? "",
     valor_avaria: rawDamageValue || numericValue(freight.valor_avaria) !== 0
       ? String(freight.valor_avaria)
       : "",
   };
 }
 
-function optionalNumber(value: string, label: string): number | null {
+function optionalNumber(value: string, label: string, maxDecimals?: number): number | null {
   if (!value.trim()) return null;
   const parsed = numericValue(value);
   if (parsed === null) throw new Error(`${label}: informe um número válido.`);
-  return parsed;
+  return maxDecimals === undefined ? parsed : Number(parsed.toFixed(maxDecimals));
 }
 
-function optionalNonNegativeNumber(value: string, label: string): number | null {
-  const parsed = optionalNumber(value, label);
+function optionalNonNegativeNumber(value: string, label: string, maxDecimals?: number): number | null {
+  const parsed = optionalNumber(value, label, maxDecimals);
   if (parsed !== null && parsed < 0) {
     throw new Error(`${label}: informe um valor igual ou maior que zero.`);
   }
@@ -189,11 +207,11 @@ function makePayload(
 ): HistoricalFreightEditInput {
   if (!values.data_servico) throw new Error("Informe a data do serviço.");
   const carrierFreight = freight.tipo_transporte === "TRANSPORTADORA";
-  const kmInitial = carrierFreight ? null : optionalNonNegativeNumber(values.km_inicial, "KM inicial");
-  const kmFinal = carrierFreight ? null : optionalNonNegativeNumber(values.km_final, "KM final");
-  const enteredDistance = carrierFreight ? null : optionalNonNegativeNumber(values.km_rodado, "KM rodado");
+  const kmInitial = carrierFreight ? null : optionalNonNegativeNumber(values.km_inicial, "KM inicial", 3);
+  const kmFinal = carrierFreight ? null : optionalNonNegativeNumber(values.km_final, "KM final", 3);
+  const enteredDistance = carrierFreight ? null : optionalNonNegativeNumber(values.km_rodado, "KM rodado", 3);
   const kmDriven = kmInitial !== null && kmFinal !== null
-    ? kmFinal - kmInitial
+    ? Number((kmFinal - kmInitial).toFixed(3))
     : enteredDistance;
   if (kmDriven !== null && kmDriven < 0) {
     throw new Error("KM final deve ser igual ou maior que KM inicial.");
@@ -201,6 +219,10 @@ function makePayload(
   const percentage = optionalNumber(values.percentual_frete, "Percentual do frete");
   if (percentage !== null && percentage < 0) {
     throw new Error("O percentual do frete deve ser igual ou maior que zero.");
+  }
+  const normalizedRatio = percentage === null ? null : Number((percentage / 100).toFixed(6));
+  if (normalizedRatio !== null && normalizedRatio >= 10_000) {
+    throw new Error("Percentual do frete excede o limite permitido.");
   }
   return {
     data_servico: values.data_servico,
@@ -212,11 +234,11 @@ function makePayload(
     km_final: kmFinal,
     km_rodado: kmDriven,
     quantidade_entregas: optionalInteger(values.quantidade_entregas, "Entregas"),
-    peso_kg: optionalNonNegativeNumber(values.peso_kg, "Peso"),
-    valor_nota: optionalNonNegativeNumber(values.valor_nota, "Valor da nota"),
-    valor_frete_bruto: optionalNonNegativeNumber(values.valor_frete_bruto, "Frete bruto"),
-    valor_frete_pago: optionalNumber(values.valor_frete_pago, "Total líquido"),
-    percentual_frete: percentage === null ? null : (percentage / 100).toFixed(6),
+    peso_kg: optionalNonNegativeNumber(values.peso_kg, "Peso", 3),
+    valor_nota: optionalNonNegativeNumber(values.valor_nota, "Valor da nota", 2),
+    valor_frete_bruto: optionalNonNegativeNumber(values.valor_frete_bruto, "Frete bruto", 2),
+    valor_frete_pago: optionalNumber(values.valor_frete_pago, "Total líquido", 2),
+    percentual_frete: normalizedRatio === null ? null : normalizedRatio.toFixed(6),
     codigo_zona_jit: values.codigo_zona_jit.trim() || null,
     adicionais_jit: values.adicionais_jit
       ? values.adicionais_jit.split(",").filter(Boolean)
@@ -225,7 +247,10 @@ function makePayload(
     carro_apoio: values.carro_apoio === "SAVEIRO" || values.carro_apoio === "KIA_BONGO"
       ? values.carro_apoio
       : null,
-    valor_avaria: optionalNonNegativeNumber(values.valor_avaria, "Valor da avaria") ?? 0,
+    nome_cliente: values.nome_cliente.trim() || null,
+    codigo_cliente: values.codigo_cliente.trim() || null,
+    observacao: values.observacao.trim() || null,
+    valor_avaria: optionalNonNegativeNumber(values.valor_avaria, "Valor da avaria", 2) ?? 0,
   };
 }
 
@@ -272,10 +297,11 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
   }, [draftKey, values, selectedDriverId, deliveryApplied, appliedDeliveryValues]);
 
   useEffect(() => {
+    const serviceDate = values.data_servico || freight.data_servico;
     let active = true;
     setDriversLoading(true);
     setDriversError("");
-    void freightsApi.historicalEditDrivers(freight.data_servico)
+    void freightsApi.historicalEditDrivers(serviceDate)
       .then((options) => {
         if (active) setEditDrivers(options);
       })
@@ -286,7 +312,7 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
         if (active) setDriversLoading(false);
       });
     return () => { active = false; };
-  }, [freight.data_servico]);
+  }, [values.data_servico, freight.data_servico]);
 
   useEffect(() => {
     if (driversLoading || selectedDriverId || driverSelectionTouched.current) return;
@@ -324,6 +350,7 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
   }, [driversLoading, editDrivers, selectedDriverId, originalSheetName]);
 
   useEffect(() => {
+    const serviceDate = values.data_servico || freight.data_servico;
     const driverId = Number(selectedDriverId);
     if (!Number.isInteger(driverId) || driverId < 1) {
       setDeliverySummary(null);
@@ -334,12 +361,12 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
     setDeliverySummary(null);
     setSummaryLoading(true);
     setSummaryError("");
-    void freightsApi.deliverySummary(freight.data_servico, driverId)
+    void freightsApi.deliverySummary(serviceDate, driverId)
       .then((summary) => { if (active) setDeliverySummary(summary); })
       .catch((loadError: unknown) => { if (active) setSummaryError(messageFromApiError(loadError)); })
       .finally(() => { if (active) setSummaryLoading(false); });
     return () => { active = false; };
-  }, [freight.data_servico, selectedDriverId]);
+  }, [values.data_servico, freight.data_servico, selectedDriverId]);
 
   useEffect(() => {
     if (freight.codigo_fonte_tarifa !== "JUST_IN_TIME" || jitRegionCode) return;
@@ -364,7 +391,38 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
   }, [freight.codigo_fonte_tarifa, deliverySummary, options, values.codigo_zona_jit]);
 
   function update<K extends keyof Values>(key: K, value: Values[K]) {
-    setValues((current) => ({ ...current, [key]: value }));
+    setValues((current) => {
+      const next: Values = { ...current, [key]: value };
+      if (key === "carro_apoio" && freight.codigo_fonte_tarifa === "PAULO_CRUZ") {
+        const currentGross = numericValue(current.valor_frete_bruto);
+        if (currentGross !== null) {
+          const delta = supportVehiclePrice(value) - supportVehiclePrice(current.carro_apoio);
+          const nextGross = Math.max(0, Number((currentGross + delta).toFixed(2)));
+          const damage = numericValue(current.valor_avaria) ?? 0;
+          next.valor_frete_bruto = nextGross.toFixed(2);
+          next.valor_frete_pago = Number((nextGross - damage).toFixed(2)).toFixed(2);
+          next.percentual_frete = "";
+        }
+      } else if (key === "valor_frete_bruto" || key === "valor_avaria") {
+        const nextGross = numericValue(next.valor_frete_bruto);
+        const nextDamage = numericValue(next.valor_avaria) ?? 0;
+        next.valor_frete_pago = nextGross === null
+          ? ""
+          : Number((nextGross - nextDamage).toFixed(2)).toFixed(2);
+        if (key === "valor_frete_bruto") {
+          next.percentual_frete = "";
+        }
+      } else if (key === "valor_nota") {
+        next.percentual_frete = "";
+      } else if (key === "km_inicial" || key === "km_final") {
+        const kmInitial = numericValue(next.km_inicial);
+        const kmFinal = numericValue(next.km_final);
+        if (kmInitial !== null && kmFinal !== null && kmFinal >= kmInitial) {
+          next.km_rodado = String(Number((kmFinal - kmInitial).toFixed(3)));
+        }
+      }
+      return next;
+    });
     if (key in appliedDeliveryValues && appliedDeliveryValues[key] !== value) {
       setAppliedDeliveryValues((current) => {
         const next = { ...current };
@@ -509,7 +567,14 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
           A data veio da planilha. Selecione o motorista cadastrado para conferir as Entregas confirmadas nessa data.
         </p>
         <div className={cx(formStyles, "field-grid", "field-grid-two")}>
-          {field("data_servico", "Data do serviço", "date", "Data original preservada.", undefined, true)}
+          {field(
+            "data_servico",
+            "Data do serviço",
+            "date",
+            sourceOriginalValue(source, "data_servico")
+              ? `Original na planilha: ${sourceOriginalValue(source, "data_servico")}. Alterações ficam registradas na auditoria.`
+              : "Data do serviço do frete.",
+          )}
           <label className={cx(formStyles, "field")}>
             Motorista cadastrado
             <select
@@ -533,11 +598,9 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
             "rota_cidade",
             "Rota / cidade",
             "text",
-            sourceHasValue(source, "rota_cidade")
-              ? "Valor informado na planilha; bloqueado para preservar o histórico."
-              : "Pode ser preenchida pelas Entregas quando estiver vazia.",
-            undefined,
-            sourceHasValue(source, "rota_cidade"),
+            sourceOriginalValue(source, "rota_cidade")
+              ? `Original na planilha: ${sourceOriginalValue(source, "rota_cidade")}. Editável com auditoria.`
+              : "Pode ser preenchida manualmente ou pelas Entregas.",
           )}
         </div>
         {selectedDriverId && <section className={cx(formStyles, "delivery-match-panel")} aria-label="Entregas do motorista e data">
@@ -590,14 +653,14 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
               : "Paulo Cruz não usa KM, rota nem peso para calcular a tarifa. Se o bruto estiver ausente, informe o tipo de caminhão; carro de apoio é opcional. O valor líquido histórico, quando preenchido, basta para o pagamento."}
         </p>
         <div className={cx(formStyles, "field-grid", "field-grid-two")}>
-          {field("quantidade_entregas", "Entregas", "text", sourceHasValue(source, "quantidade_entregas") ? "Informado na planilha; bloqueado." : "Ausente na planilha; pode ser completado pelas Entregas.", "numeric", sourceHasValue(source, "quantidade_entregas"))}
-          {field("peso_kg", "Peso (kg)", "text", sourceHasValue(source, "peso_kg") ? "Informado na planilha; bloqueado." : "Ausente na planilha; pode ser completado pelas Entregas.", "decimal", sourceHasValue(source, "peso_kg"))}
+          {field("quantidade_entregas", "Entregas", "text", sourceOriginalValue(source, "quantidade_entregas") ? `Original na planilha: ${sourceOriginalValue(source, "quantidade_entregas")}.` : "Ausente na planilha; pode ser completado manualmente ou pelas Entregas.", "numeric")}
+          {field("peso_kg", "Peso (kg)", "text", sourceOriginalValue(source, "peso_kg") ? `Original na planilha: ${sourceOriginalValue(source, "peso_kg")}.` : "Ausente na planilha; pode ser completado manualmente ou pelas Entregas.", "decimal")}
           {freight.tipo_transporte === "AGREGADO" && <>
-            {field("km_inicial", "KM inicial", "text", sourceHasValue(source, "km_inicial") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_inicial"))}
-            {field("km_final", "KM final", "text", sourceHasValue(source, "km_final") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "km_final"))}
-            {field("km_rodado", "KM rodado", "text", sourceHasValue(source, "km_rodado") ? "Informado na planilha; bloqueado." : "Necessário apenas para calcular o bruto pela tarifa Agregados CD.", "decimal", sourceHasValue(source, "km_rodado") || (sourceHasValue(source, "km_inicial") && sourceHasValue(source, "km_final")))}
+            {field("km_inicial", "KM inicial", "text", sourceOriginalValue(source, "km_inicial") ? `Original na planilha: ${sourceOriginalValue(source, "km_inicial")}.` : undefined, "decimal")}
+            {field("km_final", "KM final", "text", sourceOriginalValue(source, "km_final") ? `Original na planilha: ${sourceOriginalValue(source, "km_final")}.` : undefined, "decimal")}
+            {field("km_rodado", "KM rodado", "text", sourceOriginalValue(source, "km_rodado") ? `Original na planilha: ${sourceOriginalValue(source, "km_rodado")}.` : "Calculado automaticamente quando KM inicial e final estiverem preenchidos.", "decimal")}
           </>}
-          {field("valor_nota", "Valor da nota (R$)", "text", sourceHasValue(source, "valor_nota") ? "Informado na planilha; bloqueado." : undefined, "decimal", sourceHasValue(source, "valor_nota"))}
+          {field("valor_nota", "Valor da nota (R$)", "text", sourceOriginalValue(source, "valor_nota") ? `Original na planilha: ${sourceOriginalValue(source, "valor_nota")}.` : undefined, "decimal")}
           {freight.codigo_fonte_tarifa === "JUST_IN_TIME" && <>
             <label className={cx(formStyles, "field")}>Região JUST IN TIME
               <select value={jitRegionCode} onChange={(event) => {
@@ -661,7 +724,7 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
                 <option value="">Selecione o caminhão tarifado</option>
                 {options.tipos_caminhao_paulo_cruz.map((truck) => <option key={truck.codigo} value={truck.codigo}>{truck.nome}</option>)}
               </select>
-              <small>Campo necessário para calcular o bruto; rota, peso e KM não alteram essa tarifa.</small>
+              <small>Opcional quando o frete bruto já estiver informado; obrigatório apenas para calcular um bruto em branco pela tabela.</small>
             </label>
             <label className={cx(formStyles, "field")}>Carro de apoio (opcional)
               <select value={values.carro_apoio} onChange={(event) => update("carro_apoio", event.target.value)} disabled={busy}>
@@ -669,13 +732,22 @@ export function HistoricalFreightForm({ freight, options, onUpdated, onCancel }:
                 <option value="SAVEIRO">Saveiro · adicional de R$ 300,00</option>
                 <option value="KIA_BONGO">Bongo · adicional de R$ 500,00</option>
               </select>
-              <small>Deixe sem seleção quando não houver carro de apoio.</small>
+              <small>Ao alterar o carro de apoio, o adicional é somado automaticamente ao frete bruto informado.</small>
             </label>
           </>}
-          {field("valor_frete_bruto", "Frete bruto (R$)", "text", sourceHasValue(source, "valor_frete_bruto") ? "Informado na planilha; bloqueado." : freight.codigo_fonte_tarifa === "AGREGADOS_CD" ? "Em branco: calcula com rota, peso, nota e KM rodado, se os dados e a rota tarifária estiverem válidos." : freight.codigo_fonte_tarifa === "JUST_IN_TIME" ? "Em branco: calcula com zona, peso e o adicional opcional selecionado." : "Em branco: calcula pelo tipo de caminhão e pelo carro de apoio opcional.", "decimal", sourceHasValue(source, "valor_frete_bruto"))}
-          {field("valor_avaria", "Avaria (R$)", "text", sourceHasValue(source, "valor_avaria") ? "Informado na planilha; bloqueado." : "Ausente na planilha; informe o valor em reais se conhecido.", "decimal", sourceHasValue(source, "valor_avaria"))}
-          {field("valor_frete_pago", "Total líquido (R$)", "text", sourceHasValue(source, "valor_frete_pago") ? "Informado na planilha; bloqueado." : "Se deixar em branco, será calculado como frete bruto menos avaria.", "decimal", sourceHasValue(source, "valor_frete_pago"))}
-          {field("percentual_frete", "Percentual (%)", "text", sourceHasValue(source, "percentual_frete") ? "Informado na planilha; bloqueado." : "Informe, por exemplo, 12 para 12%. Em branco, será calculado pela nota.", "decimal", sourceHasValue(source, "percentual_frete"))}
+          {field("valor_frete_bruto", "Frete bruto (R$)", "text", sourceOriginalValue(source, "valor_frete_bruto") ? `Original na planilha: ${sourceOriginalValue(source, "valor_frete_bruto")}. Editável com auditoria; em branco recalcula pela tabela.` : freight.codigo_fonte_tarifa === "AGREGADOS_CD" ? "Em branco: calcula com rota, peso, nota e KM rodado, se os dados e a rota tarifária estiverem válidos." : freight.codigo_fonte_tarifa === "JUST_IN_TIME" ? "Em branco: calcula com zona, peso e o adicional opcional selecionado." : "Em branco: calcula pelo tipo de caminhão e pelo carro de apoio opcional.", "decimal")}
+          {field("valor_avaria", "Avaria (R$)", "text", sourceOriginalValue(source, "valor_avaria") ? `Original na planilha: ${sourceOriginalValue(source, "valor_avaria")}.` : "Informe o valor em reais se houver avaria.", "decimal")}
+          {field("valor_frete_pago", "Total líquido (R$)", "text", sourceOriginalValue(source, "valor_frete_pago") ? `Original na planilha: ${sourceOriginalValue(source, "valor_frete_pago")}. Atualizado automaticamente ao alterar bruto ou avaria.` : "Se deixar em branco, será calculado como frete bruto menos avaria.", "decimal")}
+          {field("percentual_frete", "Percentual (%)", "text", sourceOriginalValue(source, "percentual_frete") ? `Original na planilha: ${sourceOriginalValue(source, "percentual_frete")}. Em branco, será recalculado pela nota.` : "Informe, por exemplo, 12 para 12%. Em branco, será calculado pela nota.", "decimal")}
+          <label className={cx(formStyles, "field")}>Nome do cliente (opcional)
+            <input type="text" maxLength={160} placeholder="Ex.: Maria Silva" value={values.nome_cliente} onChange={(event) => update("nome_cliente", event.target.value)} disabled={busy} />
+          </label>
+          <label className={cx(formStyles, "field")}>Código do cliente (opcional)
+            <input type="text" maxLength={80} placeholder="Ex.: 12345" value={values.codigo_cliente} onChange={(event) => update("codigo_cliente", event.target.value)} disabled={busy} />
+          </label>
+          <label className={cx(formStyles, "field", "field-wide")}>Observação (opcional)
+            <textarea maxLength={1000} rows={3} value={values.observacao} onChange={(event) => update("observacao", event.target.value)} disabled={busy} />
+          </label>
         </div>
         {freight.tipo_transporte === "TRANSPORTADORA" && <div className={cx(formStyles, "distance-result")}><span>Hodômetro operacional</span><strong>Não se aplica</strong><small>JUST IN TIME e Paulo Cruz não usam KM no cálculo do frete; eventual KM original continua preservado na planilha de origem.</small></div>}
         {Boolean(source.ultima_edicao_manual) && <p className={cx(formStyles, "route-hint")}>Este lançamento já foi corrigido anteriormente. A próxima alteração também será auditada.</p>}

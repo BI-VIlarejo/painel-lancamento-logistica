@@ -178,3 +178,36 @@ class FreightRouterTests(TestCase):
             "/freights/payments/report", params={"data_de": "2026-11-30", "data_ate": "2026-11-01"}
         )
         self.assertEqual(response.status_code, 409)
+
+    def test_create_and_edit_freight_with_support_vehicle_and_client_code(self):
+        create_body = payload(
+            tipo_transporte="TRANSPORTADORA",
+            id_motorista_agregado=None,
+            id_motorista_transportadora=2,
+            nome_transportador="Paulo Cruz",
+            codigo_fonte_tarifa="PAULO_CRUZ",
+            km_inicial=None,
+            km_final=None,
+            tipo_caminhao="CAMINHAO_3_4",
+            peso_kg="2000",
+            codigo_cliente="  445566  ",
+        ).model_dump(mode="json")
+        created = self.client.post("/freights", json=create_body, headers=self.headers)
+        self.assertEqual(created.status_code, 201, created.text)
+        code = created.json()["codigo_frete"]
+        self.assertEqual(created.json()["codigo_cliente"], "445566")
+
+        edit_body = {
+            **create_body,
+            "carro_apoio": "SAVEIRO",
+            "codigo_cliente": "778899",
+        }
+        updated = self.client.put(
+            f"/freights/{code}",
+            json=edit_body,
+            headers=self.headers | {"Idempotency-Key": str(uuid4())},
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        self.assertEqual(updated.json()["carro_apoio"], "SAVEIRO")
+        self.assertEqual(updated.json()["valor_frete_bruto"], "1250.00")
+        self.assertEqual(updated.json()["codigo_cliente"], "778899")
