@@ -9,6 +9,7 @@ from sqlalchemy import (
     CHAR,
     JSON,
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -207,3 +208,237 @@ class FreteEvento(Base):
     tipo_evento: Mapped[str] = mapped_column(String(30), nullable=False)
     ocorrido_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     detalhes: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+
+
+class FretePagamento(Base):
+    """Fechamento financeiro por responsável e período, com status e auditoria."""
+
+    __tablename__ = "op_logistica_frete_pagamento"
+    __table_args__ = (
+        CheckConstraint(
+            "tipo_transporte in ('AGREGADO', 'TRANSPORTADORA')",
+            name="ck_op_logistica_frete_pag_tipo",
+        ),
+        CheckConstraint(
+            "status_pagamento in ('SOLICITADO', 'PAGO', 'ESTORNADO')",
+            name="ck_op_logistica_frete_pag_status",
+        ),
+        CheckConstraint(
+            "data_ate >= data_de",
+            name="ck_op_logistica_frete_pag_periodo",
+        ),
+        CheckConstraint(
+            "quantidade_fretes >= 0 and quantidade_dias >= 0",
+            name="ck_op_logistica_frete_pag_quantidades",
+        ),
+        Index(
+            "ix_op_logistica_frete_pag_setor_periodo",
+            "id_setor",
+            "tipo_transporte",
+            "data_de",
+            "data_ate",
+        ),
+        Index(
+            "ix_op_logistica_frete_pag_status_data",
+            "id_setor",
+            "status_pagamento",
+            "data_pagamento",
+        ),
+        Index(
+            "ix_op_logistica_frete_pag_responsavel",
+            "id_setor",
+            "tipo_transporte",
+            "nome_transportador",
+            "status_pagamento",
+        ),
+    )
+
+    id_frete_pagamento: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    codigo_pagamento: Mapped[str] = mapped_column(CHAR(36), nullable=False, unique=True)
+    id_setor: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("op_logistica_setor.id_setor", name="fk_op_logistica_frete_pag_setor"),
+        nullable=False,
+    )
+    tipo_transporte: Mapped[str] = mapped_column(String(24), nullable=False)
+    nome_transportador: Mapped[str] = mapped_column(String(160), nullable=False)
+    sem_identificacao: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+    id_pessoa_responsavel: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_pessoa.id_pessoa", name="fk_op_logistica_frete_pag_pessoa"),
+        nullable=True,
+    )
+    data_de: Mapped[date] = mapped_column(Date, nullable=False)
+    data_ate: Mapped[date] = mapped_column(Date, nullable=False)
+    status_pagamento: Mapped[str] = mapped_column(String(24), nullable=False)
+    quantidade_fretes: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantidade_dias: Mapped[int] = mapped_column(Integer, nullable=False)
+    valor_frete_bruto: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    valor_avarias: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    valor_ajustes: Mapped[Decimal] = mapped_column(
+        Numeric(14, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+        server_default="0.00",
+    )
+    valor_liquido_registrado: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    data_pagamento: Mapped[date | None] = mapped_column(Date, nullable=True)
+    nf_numero: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    nf_data: Mapped[date | None] = mapped_column(Date, nullable=True)
+    nf_recebida: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
+    observacao: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    criado_por: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_usuario.id_usuario", name="fk_op_logistica_frete_pag_criador"),
+        nullable=False,
+    )
+    criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    pago_por: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_usuario.id_usuario", name="fk_op_logistica_frete_pag_pagador"),
+        nullable=True,
+    )
+    pago_em: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    estornado_por: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_usuario.id_usuario", name="fk_op_logistica_frete_pag_estorno"),
+        nullable=True,
+    )
+    estornado_em: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    motivo_estorno: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class FretePagamentoItem(Base):
+    """Vincula cada frete ao seu fechamento financeiro e impede pagamento duplicado."""
+
+    __tablename__ = "op_logistica_frete_pagamento_item"
+    __table_args__ = (
+        Index("ix_op_logistica_frete_pag_item_pag", "id_frete_pagamento"),
+        Index("ix_op_logistica_frete_pag_item_frete", "id_frete"),
+        Index("uq_op_logistica_frete_pag_item_ativo", "id_frete_ativo", unique=True),
+    )
+
+    id_frete_pagamento_item: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    id_frete_pagamento: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "op_logistica_frete_pagamento.id_frete_pagamento",
+            name="fk_op_logistica_frete_pag_item_pag",
+        ),
+        nullable=False,
+    )
+    id_frete: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_frete.id_frete", name="fk_op_logistica_frete_pag_item_frete"),
+        nullable=False,
+    )
+    # Mantém o id_frete enquanto o fechamento está ativo; fica nulo ao estornar,
+    # garantindo unicidade no banco contra pagamentos duplicados sem perder histórico.
+    id_frete_ativo: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    data_servico_snapshot: Mapped[date] = mapped_column(Date, nullable=False)
+    valor_frete_bruto_snapshot: Mapped[Decimal | None] = mapped_column(
+        Numeric(14, 2), nullable=True
+    )
+    valor_avaria_snapshot: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    valor_frete_pago_snapshot: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+
+
+class FreteAjusteFinanceiro(Base):
+    """Lançamento extra de acréscimo ou desconto (vale, adiantamento, bônus, pedágio)."""
+
+    __tablename__ = "op_logistica_frete_ajuste"
+    __table_args__ = (
+        CheckConstraint(
+            "tipo_transporte in ('AGREGADO', 'TRANSPORTADORA')",
+            name="ck_op_logistica_frete_ajuste_tipo",
+        ),
+        CheckConstraint(
+            "natureza in ('ACRESCIMO', 'DESCONTO')",
+            name="ck_op_logistica_frete_ajuste_natureza",
+        ),
+        CheckConstraint(
+            "categoria in ('VALE', 'ADIANTAMENTO', 'BONUS', 'PEDAGIO', 'DESCONTO', 'OUTRO')",
+            name="ck_op_logistica_frete_ajuste_categoria",
+        ),
+        CheckConstraint(
+            "valor > 0",
+            name="ck_op_logistica_frete_ajuste_valor",
+        ),
+        Index(
+            "ix_op_logistica_frete_ajuste_setor_data",
+            "id_setor",
+            "tipo_transporte",
+            "data_referencia",
+            "ativo",
+        ),
+        Index("ix_op_logistica_frete_ajuste_pag", "id_frete_pagamento"),
+    )
+
+    id_frete_ajuste: Mapped[int] = mapped_column(
+        BigInteger().with_variant(Integer, "sqlite"),
+        primary_key=True,
+        autoincrement=True,
+    )
+    codigo_ajuste: Mapped[str] = mapped_column(CHAR(36), nullable=False, unique=True)
+    id_setor: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("op_logistica_setor.id_setor", name="fk_op_logistica_frete_ajuste_setor"),
+        nullable=False,
+    )
+    tipo_transporte: Mapped[str] = mapped_column(String(24), nullable=False)
+    nome_transportador: Mapped[str] = mapped_column(String(160), nullable=False)
+    id_pessoa_responsavel: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_pessoa.id_pessoa", name="fk_op_logistica_frete_ajuste_pessoa"),
+        nullable=True,
+    )
+    data_referencia: Mapped[date] = mapped_column(Date, nullable=False)
+    natureza: Mapped[str] = mapped_column(String(16), nullable=False)
+    categoria: Mapped[str] = mapped_column(String(32), nullable=False)
+    descricao: Mapped[str] = mapped_column(String(200), nullable=False)
+    valor: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    observacao: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    id_frete_pagamento: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            "op_logistica_frete_pagamento.id_frete_pagamento",
+            name="fk_op_logistica_frete_ajuste_pag",
+        ),
+        nullable=True,
+    )
+    ativo: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="1",
+    )
+    criado_por: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_usuario.id_usuario", name="fk_op_logistica_frete_ajuste_criador"),
+        nullable=False,
+    )
+    criado_em: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    removido_por: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("op_logistica_usuario.id_usuario", name="fk_op_logistica_frete_ajuste_rem"),
+        nullable=True,
+    )
+    removido_em: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

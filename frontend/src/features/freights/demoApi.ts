@@ -7,9 +7,19 @@ import type {
   HistoricalFreightEditDriverOption,
   FreightInput,
   FreightPage,
+  FreightPaymentAdjustmentCreateInput,
+  FreightPaymentAdjustmentItem,
   FreightPaymentFilters,
+  FreightPaymentInvoiceUpdateInput,
   FreightPaymentOptions,
+  FreightPaymentPendingSummary,
   FreightPaymentReport,
+  FreightPaymentResponsibleSummary,
+  FreightPaymentSettlementCreateInput,
+  FreightPaymentSettlementHistoryFilters,
+  FreightPaymentSettlementPage,
+  FreightPaymentSettlementStatusInput,
+  FreightPaymentSettlementSummary,
   FreightQuoteResponse,
   FreightResponse,
   FreightTariffOptions,
@@ -22,6 +32,87 @@ import type {
 import type { PaymentRequestWorkbookRow } from "./paymentRequestWorkbook";
 
 const FREIGHTS_KEY = "lancamento-logistica:demo-freights";
+const PAYMENT_SETTLEMENTS_KEY = "lancamento-logistica:demo-payment-settlements";
+const PAYMENT_ADJUSTMENTS_KEY = "lancamento-logistica:demo-payment-adjustments";
+const UNIDENTIFIED_KEY = "__SEM_IDENTIFICACAO__";
+
+type DemoSettlementRecord = FreightPaymentSettlementSummary & {
+  freight_snapshots: Array<{
+    id_frete: number;
+    valor_frete_pago_snapshot: number;
+    valor_avaria_snapshot: number;
+  }>;
+  adjustment_codes: string[];
+};
+
+function readDemoSettlements(): DemoSettlementRecord[] {
+  try {
+    const raw = window.localStorage.getItem(PAYMENT_SETTLEMENTS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as DemoSettlementRecord[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDemoSettlements(items: DemoSettlementRecord[]): void {
+  window.localStorage.setItem(PAYMENT_SETTLEMENTS_KEY, JSON.stringify(items));
+}
+
+function readDemoAdjustments(): FreightPaymentAdjustmentItem[] {
+  try {
+    const raw = window.localStorage.getItem(PAYMENT_ADJUSTMENTS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as FreightPaymentAdjustmentItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDemoAdjustments(items: FreightPaymentAdjustmentItem[]): void {
+  window.localStorage.setItem(PAYMENT_ADJUSTMENTS_KEY, JSON.stringify(items));
+}
+
+function demoTodayIso(): string {
+  const date = new Date();
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function demoAddDays(iso: string, days: number): string {
+  const date = new Date(`${iso.slice(0, 10)}T12:00:00`);
+  date.setDate(date.getDate() + days);
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+}
+
+function demoAddMonths(iso: string, months: number): string {
+  const year = Number(iso.slice(0, 4));
+  const month = Number(iso.slice(5, 7)) - 1 + months;
+  const day = Number(iso.slice(8, 10));
+  const targetYear = year + Math.floor(month / 12);
+  const targetMonth = ((month % 12) + 12) % 12;
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate();
+  const clamped = Math.min(day, lastDay);
+  return `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(clamped).padStart(2, "0")}`;
+}
+
+function demoProfileMeta(name: string, type: "AGREGADO" | "TRANSPORTADORA") {
+  if (type === "TRANSPORTADORA") {
+    return {
+      documento_fiscal: name.toUpperCase().includes("PAULO") ? "12.345.678/0001-90" : "98.765.432/0001-10",
+      chave_pix: name.toUpperCase().includes("PAULO") ? "financeiro@paulocruz.demo" : "financeiro@justintime.demo",
+      exige_nota_fiscal: true,
+    };
+  }
+  return {
+    documento_fiscal: "123.456.789-01",
+    chave_pix: `${name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@pix.demo`,
+    exige_nota_fiscal: false,
+  };
+}
 const pause = () => new Promise<void>((resolve) => window.setTimeout(resolve, 120));
 const carrierDriverExamples: FreightCarrierDriverOption[] = [
   {
@@ -896,7 +987,19 @@ export const freightsDemoApi = {
     if (!existing) throw new Error("Lançamento de frete não encontrado.");
     if (existing.cancelado) throw new Error("Um frete cancelado não pode ser editado.");
 
-    const quote = calculateQuote(payload);
+    const effectivePayload = (
+      payload.codigo_fonte_tarifa === "PAULO_CRUZ"
+      && payload.valor_frete_bruto != null
+      && existing.valor_frete_bruto != null
+      && numeric(payload.valor_frete_bruto) === numeric(existing.valor_frete_bruto)
+      && (
+        (payload.carro_apoio ?? null) !== (existing.carro_apoio ?? null)
+        || (payload.tipo_caminhao ?? null) !== (existing.tipo_caminhao ?? null)
+      )
+    )
+      ? { ...payload, valor_frete_bruto: null }
+      : payload;
+    const quote = calculateQuote(effectivePayload);
     const gross = numeric(quote.valor_frete_bruto);
     const damage = numeric(payload.valor_avaria) ?? 0;
     const kmRun = odometerDistance(payload);
@@ -954,25 +1057,7 @@ export const freightsDemoApi = {
     if (!source || typeof source !== "object") {
       throw new Error("A edição histórica só está disponível para fretes importados.");
     }
-    const importSource = source as Record<string, unknown>;
-    const originals = importSource.valores_originais_planilha;
-    const sourceHasValue = (field: string) => {
-      if (typeof originals !== "object" || originals === null) return false;
-      const value = (originals as Record<string, unknown>)[field];
-      return value !== null && value !== undefined && String(value).trim() !== "";
-    };
-    const lockedValues: Partial<HistoricalFreightEditInput> = {};
-    const fieldsFromSheet: Array<keyof FreightResponse> = [
-      "data_servico", "rota_cidade", "km_inicial", "km_final", "km_rodado",
-      "quantidade_entregas", "peso_kg", "valor_nota", "valor_frete_bruto",
-      "valor_frete_pago", "percentual_frete", "valor_avaria",
-    ];
-    for (const field of fieldsFromSheet) {
-      if (sourceHasValue(field)) {
-        (lockedValues as Record<string, unknown>)[field] = existing[field];
-      }
-    }
-    const savedPayload = { ...payload, ...lockedValues };
+    const savedPayload = { ...payload };
 
     const name = normalizeLabel(savedPayload.nome_transportador ?? "");
     const aggregateDriver = savedPayload.id_motorista_selecionado === 501
@@ -1004,6 +1089,20 @@ export const freightsDemoApi = {
     let gross = numeric(savedPayload.valor_frete_bruto);
     const damage = numeric(savedPayload.valor_avaria) ?? 0;
     const invoice = numeric(savedPayload.valor_nota);
+    const supportPrice = (code: string | null | undefined) => (code === "SAVEIRO" ? 300 : code === "KIA_BONGO" ? 500 : 0);
+    const appliedSupport = numeric(existing.detalhe_calculo.valor_carro_apoio as string | number | null | undefined) ?? 0;
+    const targetSupport = tariffCode === "PAULO_CRUZ" ? supportPrice(savedPayload.carro_apoio) : 0;
+    if (
+      tariffCode === "PAULO_CRUZ"
+      && gross !== null
+      && numeric(existing.valor_frete_bruto) !== null
+      && targetSupport !== appliedSupport
+      && gross === numeric(existing.valor_frete_bruto)
+    ) {
+      gross = Math.max(0, money(gross + (targetSupport - appliedSupport)));
+      savedPayload.valor_frete_pago = null;
+      savedPayload.percentual_frete = null;
+    }
     let historicalCalculation: FreightQuoteResponse | null = null;
     if (gross === null && linked) {
       if (
@@ -1135,6 +1234,9 @@ export const freightsDemoApi = {
       valor_nota: savedPayload.valor_nota,
       tipo_caminhao: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.tipo_caminhao : null,
       carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
+      nome_cliente: savedPayload.nome_cliente ?? null,
+      codigo_cliente: savedPayload.codigo_cliente ?? null,
+      observacao: savedPayload.observacao ?? null,
       codigo_zona_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME" ? savedPayload.codigo_zona_jit : null,
       codigos_zonas_jit: type === "TRANSPORTADORA" && tariffCode === "JUST_IN_TIME"
         ? (savedPayload.codigo_zona_jit ? [savedPayload.codigo_zona_jit] : [])
@@ -1156,6 +1258,10 @@ export const freightsDemoApi = {
         fonte_tarifa: tariffCode ?? "AGREGADOS_CD",
         percentual_frete: ratio === null ? null : String(ratio),
         carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? savedPayload.carro_apoio : null,
+        valor_carro_apoio: type === "TRANSPORTADORA" && tariffCode === "PAULO_CRUZ" ? moneyText(targetSupport) : null,
+        nome_cliente: savedPayload.nome_cliente ?? null,
+        codigo_cliente: savedPayload.codigo_cliente ?? null,
+        observacao: savedPayload.observacao ?? null,
         ...(historicalCalculation ? { calculo_tarifa_atual: historicalCalculation.detalhe_calculo } : {}),
         importacao_planilha: nextSource,
       },
@@ -1257,23 +1363,284 @@ export const freightsDemoApi = {
     await pause();
     ensureValidPeriod(filters);
     const records = paymentRecords(filters);
+    const settlements = readDemoSettlements().filter((item) => item.status_pagamento !== "ESTORNADO");
+    const adjustments = filters.sem_identificacao
+      ? []
+      : readDemoAdjustments().filter(
+          (adj) =>
+            adj.tipo_transporte === filters.tipo_transporte
+            && dateInRange(adj.data_referencia, filters.data_de, filters.data_ate)
+            && (!filters.nome_transportador || adj.nome_transportador === filters.nome_transportador),
+        );
+
+    const settlementByFreight = new Map<number, { settlement: DemoSettlementRecord; snapshotNet: number; snapshotDamage: number }>();
+    for (const st of settlements) {
+      for (const snap of st.freight_snapshots) {
+        settlementByFreight.set(snap.id_frete, {
+          settlement: st,
+          snapshotNet: snap.valor_frete_pago_snapshot,
+          snapshotDamage: snap.valor_avaria_snapshot,
+        });
+      }
+    }
+
     let grossTotal = 0;
     let damageTotal = 0;
     let netTotal = 0;
     let pendingTotal = 0;
 
+    type Group = {
+      key: string;
+      name: string;
+      unidentified: boolean;
+      days: Set<string>;
+      freights: FreightPaymentResponsibleSummary["fretes"];
+      adjustments: FreightPaymentAdjustmentItem[];
+      payments: Map<string, DemoSettlementRecord>;
+      ready: number;
+      pending: number;
+      paid: number;
+      requested: number;
+      open: number;
+      gross: number;
+      damage: number;
+      freightsNet: number;
+      paidVal: number;
+      reqVal: number;
+      openVal: number;
+      divergent: boolean;
+    };
+
+    const groups = new Map<string, Group>();
+    const getGroup = (key: string, name: string, unidentified: boolean): Group => {
+      const existing = groups.get(key);
+      if (existing) return existing;
+      const created: Group = {
+        key,
+        name,
+        unidentified,
+        days: new Set(),
+        freights: [],
+        adjustments: [],
+        payments: new Map(),
+        ready: 0,
+        pending: 0,
+        paid: 0,
+        requested: 0,
+        open: 0,
+        gross: 0,
+        damage: 0,
+        freightsNet: 0,
+        paidVal: 0,
+        reqVal: 0,
+        openVal: 0,
+        divergent: false,
+      };
+      groups.set(key, created);
+      return created;
+    };
+
     for (const freight of records) {
-      if (!demoPaymentReady(freight)) {
+      const isUnid = !freight.nome_transportador?.trim();
+      const key = isUnid ? UNIDENTIFIED_KEY : (freight.nome_transportador as string);
+      const name = isUnid ? "Sem identificação" : (freight.nome_transportador as string);
+      const group = getGroup(key, name, isUnid);
+      group.days.add(freight.data_servico);
+      const ready = demoPaymentReady(freight);
+      const netVal = demoPaymentAmount(freight);
+      const link = settlementByFreight.get(freight.id_frete);
+      const state = link
+        ? (link.settlement.status_pagamento === "PAGO" ? "PAGO" : "SOLICITADO")
+        : "EM_ABERTO";
+      const divergent = Boolean(
+        link && (
+          !ready
+          || netVal === null
+          || Math.abs(netVal - link.snapshotNet) > 0.005
+          || Math.abs((numeric(freight.valor_avaria) ?? 0) - link.snapshotDamage) > 0.005
+        ),
+      );
+      if (divergent) group.divergent = true;
+      if (link) group.payments.set(link.settlement.codigo_pagamento, link.settlement);
+
+      if (!ready) {
         pendingTotal += 1;
-        continue;
+        group.pending += 1;
+      } else {
+        const gross = numeric(freight.valor_frete_bruto) ?? 0;
+        const damage = numeric(freight.valor_avaria) ?? 0;
+        const net = netVal ?? 0;
+        grossTotal += gross;
+        damageTotal += damage;
+        netTotal += net;
+        group.ready += 1;
+        group.gross += gross;
+        group.damage += damage;
+        group.freightsNet += net;
+        if (state === "PAGO") {
+          group.paid += 1;
+          group.paidVal += net;
+        } else if (state === "SOLICITADO") {
+          group.requested += 1;
+          group.reqVal += net;
+        } else {
+          group.open += 1;
+          group.openVal += net;
+        }
       }
-      const gross = numeric(freight.valor_frete_bruto) ?? 0;
-      const damage = numeric(freight.valor_avaria) ?? 0;
-      const net = demoPaymentAmount(freight) ?? 0;
-      grossTotal += gross;
-      damageTotal += damage;
-      netTotal += net;
+
+      group.freights.push({
+        id_frete: freight.id_frete,
+        codigo_frete: freight.codigo_frete,
+        data_servico: freight.data_servico,
+        rota_cidade: freight.rota_cidade,
+        nome_motorista_transportadora: freight.nome_motorista_transportadora,
+        quantidade_entregas: freight.quantidade_entregas,
+        peso_kg: freight.peso_kg,
+        valor_nota: freight.valor_nota,
+        valor_frete_bruto: freight.valor_frete_bruto,
+        valor_avaria: freight.valor_avaria,
+        valor_frete_pago: netVal === null ? null : moneyText(netVal),
+        pronto_para_pagamento: ready,
+        motivo_pendencia: ready ? null : (freight.motivo_pendencia || "Frete aguardando conferência."),
+        status_pagamento_frete: state,
+        codigo_pagamento: link?.settlement.codigo_pagamento ?? null,
+        data_pagamento: link?.settlement.data_pagamento ?? null,
+        valor_divergente: divergent,
+      });
     }
+
+    for (const adj of adjustments) {
+      const group = getGroup(adj.nome_transportador, adj.nome_transportador, false);
+      group.adjustments.push(adj);
+    }
+
+    const responsaveis: FreightPaymentResponsibleSummary[] = [];
+    let execPagos = 0;
+    let execSolicitados = 0;
+    let execParciais = 0;
+    let execAbertos = 0;
+    let execPend = 0;
+    let execAlt = 0;
+    let execNfPend = 0;
+    let execValPago = 0;
+    let execValSol = 0;
+    let execValAberto = 0;
+    let execValAdj = 0;
+
+    for (const g of groups.values()) {
+      const meta = g.unidentified
+        ? { documento_fiscal: null, chave_pix: null, exige_nota_fiscal: false }
+        : demoProfileMeta(g.name, filters.tipo_transporte);
+      let adjAdd = 0;
+      let adjSub = 0;
+      let adjPaid = 0;
+      let adjReq = 0;
+      let adjOpen = 0;
+      for (const adj of g.adjustments) {
+        const val = numeric(adj.valor) ?? 0;
+        const signed = adj.natureza === "ACRESCIMO" ? val : -val;
+        if (adj.natureza === "ACRESCIMO") adjAdd += val;
+        else adjSub += val;
+        if (adj.status_pagamento === "PAGO") {
+          g.paidVal += signed;
+          adjPaid += 1;
+        } else if (adj.status_pagamento === "SOLICITADO") {
+          g.reqVal += signed;
+          adjReq += 1;
+        } else {
+          g.openVal += signed;
+          adjOpen += 1;
+        }
+      }
+      const adjNet = adjAdd - adjSub;
+      const totalNet = g.freightsNet + adjNet;
+      const totPaidUnits = g.paid + adjPaid;
+      const totReqUnits = g.requested + adjReq;
+      const totOpenUnits = g.open + adjOpen;
+      const status = g.pending > 0
+        ? "PENDENTE_CONFERENCIA"
+        : totPaidUnits > 0 && totReqUnits === 0 && totOpenUnits === 0
+          ? "PAGO"
+          : totReqUnits > 0 && totPaidUnits === 0 && totOpenUnits === 0
+            ? "SOLICITADO"
+            : totPaidUnits > 0 || totReqUnits > 0
+              ? "PARCIAL"
+              : "A_PAGAR";
+
+      const paymentList = [...g.payments.values()]
+        .sort((a, b) => b.criado_em.localeCompare(a.criado_em))
+        .map(({ freight_snapshots: _fs, adjustment_codes: _ac, ...rest }) => ({
+          ...rest,
+          possui_alteracao: g.divergent,
+          motivo_alteracao: g.divergent ? "Valores alterados após fechamento." : null,
+        }));
+      const ultimo = paymentList[0] ?? null;
+      const latestDate = paymentList
+        .map((p) => p.data_pagamento)
+        .filter((d): d is string => Boolean(d))
+        .sort()
+        .at(-1) ?? null;
+      const nfPendente = meta.exige_nota_fiscal && status !== "PAGO" && (!ultimo || !ultimo.nf_recebida);
+
+      responsaveis.push({
+        chave_responsavel: g.key,
+        nome_transportador: g.name,
+        sem_identificacao: g.unidentified,
+        id_pessoa_responsavel: null,
+        documento_fiscal: meta.documento_fiscal,
+        chave_pix: meta.chave_pix,
+        exige_nota_fiscal: meta.exige_nota_fiscal,
+        quantidade_fretes: g.freights.length,
+        quantidade_fretes_prontos: g.ready,
+        quantidade_fretes_pendentes: g.pending,
+        quantidade_fretes_pagos: g.paid,
+        quantidade_fretes_solicitados: g.requested,
+        quantidade_fretes_em_aberto: g.open,
+        quantidade_dias: g.days.size,
+        valor_frete_bruto: moneyText(g.gross),
+        valor_avarias: moneyText(g.damage),
+        valor_ajustes_acrescimos: moneyText(adjAdd),
+        valor_ajustes_descontos: moneyText(adjSub),
+        valor_ajustes_liquido: moneyText(adjNet),
+        valor_liquido_total: moneyText(totalNet),
+        valor_pago: moneyText(g.paidVal),
+        valor_solicitado: moneyText(g.reqVal),
+        valor_em_aberto: moneyText(g.openVal),
+        status_pagamento: status,
+        possui_alteracao: g.divergent,
+        motivo_alteracao: g.divergent ? "Valores de frete mudaram após o fechamento." : null,
+        data_pagamento_mais_recente: latestDate,
+        nf_pendente: nfPendente,
+        ultimo_pagamento: ultimo,
+        pagamentos: paymentList,
+        fretes: g.freights,
+        ajustes: g.adjustments,
+      });
+
+      if (status === "PAGO") execPagos += 1;
+      else if (status === "SOLICITADO") execSolicitados += 1;
+      else if (status === "PARCIAL") execParciais += 1;
+      else if (status === "A_PAGAR") execAbertos += 1;
+      else execPend += 1;
+      if (g.divergent) execAlt += 1;
+      if (nfPendente) execNfPend += 1;
+      execValPago += g.paidVal;
+      execValSol += g.reqVal;
+      execValAberto += g.openVal;
+      execValAdj += adjNet;
+    }
+
+    const orderWeight = (item: FreightPaymentResponsibleSummary) =>
+      item.possui_alteracao ? 0
+        : item.status_pagamento === "PENDENTE_CONFERENCIA" ? 1
+          : item.status_pagamento === "PARCIAL" ? 2
+            : item.status_pagamento === "A_PAGAR" ? 3
+              : item.status_pagamento === "SOLICITADO" ? 4
+                : 5;
+    responsaveis.sort(
+      (a, b) => orderWeight(a) - orderWeight(b) || a.nome_transportador.localeCompare(b.nome_transportador, "pt-BR"),
+    );
 
     return {
       data_de: filters.data_de,
@@ -1296,7 +1663,23 @@ export const freightsDemoApi = {
       }),
       valor_frete_bruto: moneyText(grossTotal),
       valor_avarias: moneyText(damageTotal),
-      valor_a_pagar: moneyText(netTotal),
+      valor_a_pagar: moneyText(netTotal + execValAdj),
+      resumo_execucao: {
+        total_responsaveis: responsaveis.length,
+        responsaveis_pagos: execPagos,
+        responsaveis_solicitados: execSolicitados,
+        responsaveis_parciais: execParciais,
+        responsaveis_em_aberto: execAbertos,
+        responsaveis_com_pendencia: execPend,
+        responsaveis_com_alteracao: execAlt,
+        nf_pendentes: execNfPend,
+        valor_pago: moneyText(execValPago),
+        valor_solicitado: moneyText(execValSol),
+        valor_em_aberto: moneyText(execValAberto),
+        valor_ajustes: moneyText(execValAdj),
+      },
+      responsaveis,
+      ajustes: adjustments,
     };
   },
 
@@ -1304,50 +1687,352 @@ export const freightsDemoApi = {
     await pause();
     if (dataDe > dataAte) throw new Error("A data inicial deve ser anterior à data final.");
     const records = readFreights().filter((item) =>
-      (item.tipo_transporte === "AGREGADO" || item.tipo_transporte === "TRANSPORTADORA")
+      !item.cancelado
+      && (item.tipo_transporte === "AGREGADO" || item.tipo_transporte === "TRANSPORTADORA")
       && dateInRange(item.data_servico, dataDe, dataAte));
+    const adjustments = readDemoAdjustments().filter((adj) =>
+      dateInRange(adj.data_referencia, dataDe, dataAte));
     return {
-      agregados: [...new Set(records
-        .filter((item) => item.tipo_transporte === "AGREGADO" && item.nome_transportador)
-        .map((item) => item.nome_transportador as string))].sort((a, b) => a.localeCompare(b, "pt-BR")),
-      transportadoras: [...new Set(records
-        .filter((item) => item.tipo_transporte === "TRANSPORTADORA" && item.nome_transportador)
-        .map((item) => item.nome_transportador as string))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      agregados: [...new Set([
+        ...records
+          .filter((item) => item.tipo_transporte === "AGREGADO" && item.nome_transportador)
+          .map((item) => item.nome_transportador as string),
+        ...adjustments
+          .filter((adj) => adj.tipo_transporte === "AGREGADO")
+          .map((adj) => adj.nome_transportador),
+      ])].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      transportadoras: [...new Set([
+        ...records
+          .filter((item) => item.tipo_transporte === "TRANSPORTADORA" && item.nome_transportador)
+          .map((item) => item.nome_transportador as string),
+        ...adjustments
+          .filter((adj) => adj.tipo_transporte === "TRANSPORTADORA")
+          .map((adj) => adj.nome_transportador),
+      ])].sort((a, b) => a.localeCompare(b, "pt-BR")),
       agregados_sem_identificacao: records.some((item) =>
         item.tipo_transporte === "AGREGADO" && item.nome_transportador === null),
     };
   },
 
   async exportPaymentReport(filters: FreightPaymentFilters): Promise<Blob> {
+    const { createPaymentRequestWorkbook } = await import("./paymentRequestWorkbook");
+    if (filters.codigo_pagamento) {
+      const found = readDemoSettlements().find((s) => s.codigo_pagamento === filters.codigo_pagamento);
+      if (!found) throw new Error("Fechamento de pagamento não encontrado.");
+      const prefix = found.tipo_transporte === "AGREGADO" ? "AGREGADO" : "TRANSPORTADORA";
+      return createPaymentRequestWorkbook([{
+        name: found.nome_transportador,
+        cpf: found.documento_fiscal,
+        reason: `${prefix} TOTAL DE ${found.quantidade_dias} ${found.quantidade_dias === 1 ? "DIA" : "DIAS"}`,
+        total: Number(found.valor_liquido_registrado),
+        observations: found.observacao ?? "",
+      }]);
+    }
     const report = await this.paymentReport(filters);
-    if (report.quantidade_pendentes) {
+    const selectedSet = filters.responsaveis?.length ? new Set(filters.responsaveis) : null;
+    const targets = (report.responsaveis ?? []).filter(
+      (resp) => !selectedSet || selectedSet.has(resp.chave_responsavel),
+    );
+    if ((!selectedSet && report.quantidade_pendentes) || targets.some((t) => t.quantidade_fretes_pendentes > 0)) {
       throw new Error("Resolva os fretes pendentes de conferência antes de exportar o pagamento.");
     }
+    const reasonPrefix = filters.tipo_transporte === "AGREGADO" ? "AGREGADO" : "TRANSPORTADORA";
+    const rows: PaymentRequestWorkbookRow[] = targets
+      .sort((a, b) => a.nome_transportador.localeCompare(b.nome_transportador, "pt-BR"))
+      .map((resp) => ({
+        name: resp.nome_transportador,
+        cpf: resp.documento_fiscal,
+        reason: `${reasonPrefix} TOTAL DE ${resp.quantidade_dias} ${resp.quantidade_dias === 1 ? "DIA" : "DIAS"}`,
+        total: Number(filters.apenas_em_aberto ? resp.valor_em_aberto : resp.valor_liquido_total),
+        observations: Number(resp.valor_ajustes_liquido) !== 0 ? `Ajustes: R$ ${resp.valor_ajustes_liquido}` : "",
+      }));
+    return createPaymentRequestWorkbook(rows);
+  },
 
-    const groups = new Map<string, {
-      days: Set<string>;
-      net: number;
-    }>();
-    for (const freight of paymentRecords(filters)) {
-      if (!demoPaymentReady(freight)) continue;
-      const responsible = freight.nome_transportador ?? "Sem identificação";
-      const group = groups.get(responsible) ?? { days: new Set<string>(), net: 0 };
-      group.days.add(freight.data_servico);
-      group.net += demoPaymentAmount(freight) ?? 0;
-      groups.set(responsible, group);
+  async paymentPendingSummary(): Promise<FreightPaymentPendingSummary> {
+    const today = demoTodayIso();
+    const dateObj = new Date(`${today}T12:00:00`);
+    const day = dateObj.getDay();
+    const weekStart = demoAddDays(today, day === 0 ? -6 : 1 - day);
+    const weekEnd = demoAddDays(weekStart, 6);
+    const [agg, car] = await Promise.all([
+      this.paymentReport({ data_de: weekStart, data_ate: weekEnd, tipo_transporte: "AGREGADO" }),
+      this.paymentReport({ data_de: weekStart, data_ate: weekEnd, tipo_transporte: "TRANSPORTADORA" }),
+    ]);
+    const a = agg.resumo_execucao;
+    const c = car.resumo_execucao;
+    return {
+      semana_de: weekStart,
+      semana_ate: weekEnd,
+      responsaveis_em_aberto: (a?.responsaveis_em_aberto ?? 0) + (a?.responsaveis_parciais ?? 0) + (c?.responsaveis_em_aberto ?? 0) + (c?.responsaveis_parciais ?? 0),
+      responsaveis_com_pendencia: (a?.responsaveis_com_pendencia ?? 0) + (c?.responsaveis_com_pendencia ?? 0),
+      nf_pendentes: (a?.nf_pendentes ?? 0) + (c?.nf_pendentes ?? 0),
+      valor_em_aberto: moneyText(Number(a?.valor_em_aberto ?? 0) + Number(c?.valor_em_aberto ?? 0)),
+    };
+  },
+
+  async createPaymentSettlements(
+    payload: FreightPaymentSettlementCreateInput,
+  ): Promise<FreightPaymentSettlementSummary[]> {
+    const report = await this.paymentReport({
+      data_de: payload.data_de,
+      data_ate: payload.data_ate,
+      tipo_transporte: payload.tipo_transporte,
+      sem_identificacao: payload.sem_identificacao,
+    });
+    const selected = payload.sem_identificacao
+      ? new Set([UNIDENTIFIED_KEY])
+      : payload.responsaveis?.length
+        ? new Set(payload.responsaveis)
+        : null;
+    const targets = (report.responsaveis ?? []).filter(
+      (item) => !selected || selected.has(item.chave_responsavel),
+    );
+    const allSettlements = readDemoSettlements();
+    const allAdjustments = readDemoAdjustments();
+    const nowIso = new Date().toISOString();
+    const payDate = payload.acao === "MARCAR_PAGO" ? (payload.data_pagamento || demoTodayIso()) : null;
+    const touched: FreightPaymentSettlementSummary[] = [];
+
+    for (const target of targets) {
+      if (target.quantidade_fretes_pendentes > 0) {
+        throw new Error(`Resolva os fretes pendentes de conferência de ${target.nome_transportador} antes de fechar.`);
+      }
+      if (payload.acao === "MARCAR_PAGO" && payload.incluir_solicitados !== false) {
+        for (const existing of allSettlements) {
+          if (
+            existing.status_pagamento === "SOLICITADO"
+            && target.pagamentos.some((p) => p.codigo_pagamento === existing.codigo_pagamento)
+          ) {
+            existing.status_pagamento = "PAGO";
+            existing.data_pagamento = payDate;
+            existing.pago_em = nowIso;
+            existing.pago_por_nome = "Usuário Demo";
+            if (payload.observacao) existing.observacao = payload.observacao;
+            if (payload.nf_numero || payload.nf_recebida) {
+              existing.nf_numero = payload.nf_numero ?? null;
+              existing.nf_data = payload.nf_data ?? null;
+              existing.nf_recebida = Boolean(payload.nf_recebida);
+            }
+            for (const adj of allAdjustments) {
+              if (adj.codigo_pagamento === existing.codigo_pagamento) adj.status_pagamento = "PAGO";
+            }
+            touched.push(existing);
+          }
+        }
+      }
+      const openFreights = target.fretes.filter(
+        (f) => f.pronto_para_pagamento && f.status_pagamento_frete === "EM_ABERTO",
+      );
+      const openAdjustments = target.ajustes.filter((a) => !a.vinculado_pagamento);
+      if (!openFreights.length && !openAdjustments.length) continue;
+
+      const grossSum = openFreights.reduce((s, f) => s + (numeric(f.valor_frete_bruto) ?? 0), 0);
+      const damageSum = openFreights.reduce((s, f) => s + (numeric(f.valor_avaria) ?? 0), 0);
+      const freightNet = openFreights.reduce((s, f) => s + (numeric(f.valor_frete_pago) ?? 0), 0);
+      const adjNet = openAdjustments.reduce(
+        (s, a) => s + ((a.natureza === "ACRESCIMO" ? 1 : -1) * (numeric(a.valor) ?? 0)),
+        0,
+      );
+      const code = crypto.randomUUID();
+      const status = payload.acao === "MARCAR_PAGO" ? "PAGO" : "SOLICITADO";
+      const record: DemoSettlementRecord = {
+        codigo_pagamento: code,
+        tipo_transporte: payload.tipo_transporte,
+        nome_transportador: target.nome_transportador,
+        sem_identificacao: target.sem_identificacao,
+        id_pessoa_responsavel: target.id_pessoa_responsavel,
+        documento_fiscal: target.documento_fiscal,
+        chave_pix: target.chave_pix,
+        exige_nota_fiscal: target.exige_nota_fiscal,
+        data_de: payload.data_de,
+        data_ate: payload.data_ate,
+        status_pagamento: status,
+        quantidade_fretes: openFreights.length,
+        quantidade_dias: new Set(openFreights.map((f) => f.data_servico)).size,
+        valor_frete_bruto: moneyText(grossSum),
+        valor_avarias: moneyText(damageSum),
+        valor_ajustes: moneyText(adjNet),
+        valor_liquido_registrado: moneyText(freightNet + adjNet),
+        data_pagamento: payDate,
+        nf_numero: payload.nf_numero ?? null,
+        nf_data: payload.nf_data ?? null,
+        nf_recebida: Boolean(payload.nf_recebida),
+        observacao: payload.observacao ?? null,
+        criado_em: nowIso,
+        criado_por_nome: "Usuário Demo",
+        pago_em: status === "PAGO" ? nowIso : null,
+        pago_por_nome: status === "PAGO" ? "Usuário Demo" : null,
+        estornado_em: null,
+        estornado_por_nome: null,
+        motivo_estorno: null,
+        possui_alteracao: false,
+        motivo_alteracao: null,
+        freight_snapshots: openFreights.map((f) => ({
+          id_frete: f.id_frete,
+          valor_frete_pago_snapshot: numeric(f.valor_frete_pago) ?? 0,
+          valor_avaria_snapshot: numeric(f.valor_avaria) ?? 0,
+        })),
+        adjustment_codes: openAdjustments.map((a) => a.codigo_ajuste),
+      };
+      allSettlements.unshift(record);
+      for (const adj of allAdjustments) {
+        if (record.adjustment_codes.includes(adj.codigo_ajuste)) {
+          adj.vinculado_pagamento = true;
+          adj.codigo_pagamento = code;
+          adj.status_pagamento = status;
+        }
+      }
+      touched.push(record);
     }
 
-    const reasonPrefix = filters.tipo_transporte === "AGREGADO" ? "AGREGADO" : "TRANSPORTADORA";
-    const rows: PaymentRequestWorkbookRow[] = [...groups.entries()]
-      .sort(([left], [right]) => left.localeCompare(right, "pt-BR"))
-      .map(([name, group]) => ({
-        name,
-        reason: `${reasonPrefix} TOTAL DE ${group.days.size} ${group.days.size === 1 ? "DIA" : "DIAS"}`,
-        total: Number(group.net.toFixed(2)),
-        observations: "",
-      }));
+    if (!touched.length) {
+      throw new Error("Não há fretes ou ajustes pendentes de fechamento para os responsáveis selecionados.");
+    }
+    saveDemoSettlements(allSettlements);
+    saveDemoAdjustments(allAdjustments);
+    return touched;
+  },
 
-    const { createPaymentRequestWorkbook } = await import("./paymentRequestWorkbook");
-    return createPaymentRequestWorkbook(rows);
+  async updatePaymentSettlementStatus(
+    codigoPagamento: string,
+    payload: FreightPaymentSettlementStatusInput,
+  ): Promise<FreightPaymentSettlementSummary> {
+    await pause();
+    const allSettlements = readDemoSettlements();
+    const allAdjustments = readDemoAdjustments();
+    const target = allSettlements.find((s) => s.codigo_pagamento === codigoPagamento);
+    if (!target) throw new Error("Fechamento de pagamento não encontrado.");
+    const nowIso = new Date().toISOString();
+    if (payload.acao === "MARCAR_PAGO") {
+      target.status_pagamento = "PAGO";
+      target.data_pagamento = payload.data_pagamento || demoTodayIso();
+      target.pago_em = nowIso;
+      target.pago_por_nome = "Usuário Demo";
+      for (const adj of allAdjustments) {
+        if (adj.codigo_pagamento === codigoPagamento) adj.status_pagamento = "PAGO";
+      }
+    } else if (payload.acao === "DESFAZER_PAGO") {
+      target.status_pagamento = "SOLICITADO";
+      target.data_pagamento = null;
+      target.pago_em = null;
+      target.pago_por_nome = null;
+      for (const adj of allAdjustments) {
+        if (adj.codigo_pagamento === codigoPagamento) adj.status_pagamento = "SOLICITADO";
+      }
+    } else {
+      target.status_pagamento = "ESTORNADO";
+      target.estornado_em = nowIso;
+      target.estornado_por_nome = "Usuário Demo";
+      target.motivo_estorno = payload.motivo_estorno || "Estorno manual";
+      for (const adj of allAdjustments) {
+        if (adj.codigo_pagamento === codigoPagamento) {
+          adj.vinculado_pagamento = false;
+          adj.codigo_pagamento = null;
+          adj.status_pagamento = null;
+        }
+      }
+    }
+    saveDemoSettlements(allSettlements);
+    saveDemoAdjustments(allAdjustments);
+    return target;
+  },
+
+  async updatePaymentSettlementInvoice(
+    codigoPagamento: string,
+    payload: FreightPaymentInvoiceUpdateInput,
+  ): Promise<FreightPaymentSettlementSummary> {
+    await pause();
+    const allSettlements = readDemoSettlements();
+    const target = allSettlements.find((s) => s.codigo_pagamento === codigoPagamento);
+    if (!target) throw new Error("Fechamento de pagamento não encontrado.");
+    target.nf_numero = payload.nf_numero;
+    target.nf_data = payload.nf_data;
+    target.nf_recebida = payload.nf_recebida;
+    saveDemoSettlements(allSettlements);
+    return target;
+  },
+
+  async listPaymentSettlements(
+    filters: FreightPaymentSettlementHistoryFilters = {},
+  ): Promise<FreightPaymentSettlementPage> {
+    await pause();
+    const filtered = readDemoSettlements()
+      .filter((s) => !filters.tipo_transporte || s.tipo_transporte === filters.tipo_transporte)
+      .filter((s) => !filters.status_pagamento || s.status_pagamento === filters.status_pagamento)
+      .filter((s) => filters.incluir_estornados !== false || s.status_pagamento !== "ESTORNADO")
+      .filter((s) => !filters.nome_transportador || s.nome_transportador === filters.nome_transportador)
+      .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+    const limit = filters.limit ?? 50;
+    const offset = filters.offset ?? 0;
+    return {
+      items: filtered.slice(offset, offset + limit),
+      total: filtered.length,
+      limit,
+      offset,
+    };
+  },
+
+  async listPaymentAdjustments(
+    dataDe?: string,
+    dataAte?: string,
+    tipoTransporte?: string,
+    nomeTransportador?: string,
+  ): Promise<FreightPaymentAdjustmentItem[]> {
+    await pause();
+    return readDemoAdjustments()
+      .filter((adj) => !tipoTransporte || adj.tipo_transporte === tipoTransporte)
+      .filter((adj) => dateInRange(adj.data_referencia, dataDe, dataAte))
+      .filter((adj) => !nomeTransportador || adj.nome_transportador === nomeTransportador)
+      .sort((a, b) => b.data_referencia.localeCompare(a.data_referencia));
+  },
+
+  async createPaymentAdjustments(
+    payload: FreightPaymentAdjustmentCreateInput,
+  ): Promise<FreightPaymentAdjustmentItem[]> {
+    await pause();
+    const all = readDemoAdjustments();
+    const totalVal = numeric(payload.valor) ?? 0;
+    const n = payload.parcelas;
+    const basePart = money(totalVal / n);
+    let acc = 0;
+    const created: FreightPaymentAdjustmentItem[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const partVal = i === n - 1 ? money(totalVal - acc) : basePart;
+      acc = money(acc + partVal);
+      const refDate = payload.periodicidade === "SEMANAL"
+        ? demoAddDays(payload.data_referencia, i * 7)
+        : demoAddMonths(payload.data_referencia, i);
+      const item: FreightPaymentAdjustmentItem = {
+        codigo_ajuste: crypto.randomUUID(),
+        tipo_transporte: payload.tipo_transporte,
+        nome_transportador: payload.nome_transportador,
+        id_pessoa_responsavel: null,
+        data_referencia: refDate,
+        natureza: payload.natureza,
+        categoria: payload.categoria,
+        descricao: n > 1 ? `${payload.descricao} (${i + 1}/${n})` : payload.descricao,
+        valor: moneyText(partVal),
+        observacao: payload.observacao ?? null,
+        vinculado_pagamento: false,
+        codigo_pagamento: null,
+        status_pagamento: null,
+        criado_em: new Date().toISOString(),
+        criado_por_nome: "Usuário Demo",
+      };
+      all.unshift(item);
+      created.push(item);
+    }
+    saveDemoAdjustments(all);
+    return created;
+  },
+
+  async deletePaymentAdjustment(codigoAjuste: string): Promise<void> {
+    await pause();
+    const all = readDemoAdjustments();
+    const found = all.find((a) => a.codigo_ajuste === codigoAjuste);
+    if (!found) throw new Error("Lançamento não encontrado.");
+    if (found.vinculado_pagamento) throw new Error("Estorne o pagamento vinculado antes de excluir.");
+    saveDemoAdjustments(all.filter((a) => a.codigo_ajuste !== codigoAjuste));
   },
 };

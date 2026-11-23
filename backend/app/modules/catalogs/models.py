@@ -120,7 +120,7 @@ class Pessoa(Base):
     )
 
     id_pessoa: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, autoincrement=True
+        BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True
     )
     codigo_pessoa: Mapped[str] = mapped_column(CHAR(36), nullable=False)
     sistema_origem: Mapped[str | None] = mapped_column(String(40), nullable=True)
@@ -132,6 +132,14 @@ class Pessoa(Base):
     tipo_transporte_entrega: Mapped[str | None] = mapped_column(String(20), nullable=True)
     modalidade_terceirizada: Mapped[str | None] = mapped_column(String(32), nullable=True)
     codigo_transportadora_independente: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    documento_fiscal: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    chave_pix: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    exige_nota_fiscal: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="0",
+    )
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     vigente_desde: Mapped[date] = mapped_column(Date, nullable=False)
     vigente_ate: Mapped[date | None] = mapped_column(Date, nullable=True)

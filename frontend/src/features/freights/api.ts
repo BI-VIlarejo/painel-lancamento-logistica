@@ -9,9 +9,18 @@ import type {
   HistoricalFreightEditDriverOption,
   FreightInput,
   FreightPage,
+  FreightPaymentAdjustmentCreateInput,
+  FreightPaymentAdjustmentItem,
   FreightPaymentFilters,
+  FreightPaymentInvoiceUpdateInput,
   FreightPaymentOptions,
+  FreightPaymentPendingSummary,
   FreightPaymentReport,
+  FreightPaymentSettlementCreateInput,
+  FreightPaymentSettlementHistoryFilters,
+  FreightPaymentSettlementPage,
+  FreightPaymentSettlementStatusInput,
+  FreightPaymentSettlementSummary,
   FreightQuoteResponse,
   FreightResponse,
   FreightTariffOptions,
@@ -94,13 +103,38 @@ function historyExportQuery(filters: FreightHistoryFilters = {}): string {
 
 /** Constrói os parâmetros comuns ao relatório e à exportação financeira. */
 function paymentQuery(filters: FreightPaymentFilters): string {
-  const params = new URLSearchParams({
-    data_de: filters.data_de,
-    data_ate: filters.data_ate,
-    tipo_transporte: filters.tipo_transporte,
-  });
+  const params = new URLSearchParams();
+  if (filters.codigo_pagamento) {
+    params.set("codigo_pagamento", filters.codigo_pagamento);
+    params.set("tipo_transporte", filters.tipo_transporte);
+    return params.toString();
+  }
+  params.set("data_de", filters.data_de);
+  params.set("data_ate", filters.data_ate);
+  params.set("tipo_transporte", filters.tipo_transporte);
   if (filters.nome_transportador) params.set("nome_transportador", filters.nome_transportador);
   if (filters.sem_identificacao) params.set("sem_identificacao", "true");
+  if (filters.apenas_em_aberto) params.set("apenas_em_aberto", "true");
+  if (filters.responsaveis?.length) {
+    for (const item of filters.responsaveis) {
+      params.append("responsaveis", item);
+    }
+  }
+  return params.toString();
+}
+
+function settlementsHistoryQuery(filters: FreightPaymentSettlementHistoryFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.data_de) params.set("data_de", filters.data_de);
+  if (filters.data_ate) params.set("data_ate", filters.data_ate);
+  if (filters.tipo_transporte) params.set("tipo_transporte", filters.tipo_transporte);
+  if (filters.status_pagamento) params.set("status_pagamento", filters.status_pagamento);
+  if (filters.nome_transportador) params.set("nome_transportador", filters.nome_transportador);
+  if (filters.incluir_estornados !== undefined) {
+    params.set("incluir_estornados", String(filters.incluir_estornados));
+  }
+  params.set("limit", String(filters.limit ?? 50));
+  params.set("offset", String(filters.offset ?? 0));
   return params.toString();
 }
 
@@ -288,5 +322,95 @@ export const freightsApi = {
     return isDemoMode
       ? freightsDemoApi.exportPaymentReport(filters)
       : apiBlob(`/freights/payments/export.xlsx?${paymentQuery(filters)}`, XLSX_MIME_TYPE);
+  },
+
+  paymentPendingSummary(): Promise<FreightPaymentPendingSummary> {
+    return isDemoMode
+      ? freightsDemoApi.paymentPendingSummary()
+      : apiRequest<FreightPaymentPendingSummary>("/freights/payments/pending-summary");
+  },
+
+  createPaymentSettlements(
+    payload: FreightPaymentSettlementCreateInput,
+  ): Promise<FreightPaymentSettlementSummary[]> {
+    return isDemoMode
+      ? freightsDemoApi.createPaymentSettlements(payload)
+      : apiRequest<FreightPaymentSettlementSummary[]>("/freights/payments/settlements", {
+          method: "POST",
+          body: payload,
+        });
+  },
+
+  updatePaymentSettlementStatus(
+    codigoPagamento: string,
+    payload: FreightPaymentSettlementStatusInput,
+  ): Promise<FreightPaymentSettlementSummary> {
+    return isDemoMode
+      ? freightsDemoApi.updatePaymentSettlementStatus(codigoPagamento, payload)
+      : apiRequest<FreightPaymentSettlementSummary>(
+          `/freights/payments/settlements/${encodeURIComponent(codigoPagamento)}/status`,
+          { method: "PATCH", body: payload },
+        );
+  },
+
+  updatePaymentSettlementInvoice(
+    codigoPagamento: string,
+    payload: FreightPaymentInvoiceUpdateInput,
+  ): Promise<FreightPaymentSettlementSummary> {
+    return isDemoMode
+      ? freightsDemoApi.updatePaymentSettlementInvoice(codigoPagamento, payload)
+      : apiRequest<FreightPaymentSettlementSummary>(
+          `/freights/payments/settlements/${encodeURIComponent(codigoPagamento)}/invoice`,
+          { method: "PATCH", body: payload },
+        );
+  },
+
+  listPaymentSettlements(
+    filters: FreightPaymentSettlementHistoryFilters = {},
+  ): Promise<FreightPaymentSettlementPage> {
+    return isDemoMode
+      ? freightsDemoApi.listPaymentSettlements(filters)
+      : apiRequest<FreightPaymentSettlementPage>(
+          `/freights/payments/settlements?${settlementsHistoryQuery(filters)}`,
+        );
+  },
+
+  listPaymentAdjustments(
+    dataDe?: string,
+    dataAte?: string,
+    tipoTransporte?: string,
+    nomeTransportador?: string,
+  ): Promise<FreightPaymentAdjustmentItem[]> {
+    if (isDemoMode) {
+      return freightsDemoApi.listPaymentAdjustments(dataDe, dataAte, tipoTransporte, nomeTransportador);
+    }
+    const params = new URLSearchParams();
+    if (dataDe) params.set("data_de", dataDe);
+    if (dataAte) params.set("data_ate", dataAte);
+    if (tipoTransporte) params.set("tipo_transporte", tipoTransporte);
+    if (nomeTransportador) params.set("nome_transportador", nomeTransportador);
+    return apiRequest<FreightPaymentAdjustmentItem[]>(
+      `/freights/payments/adjustments?${params.toString()}`,
+    );
+  },
+
+  createPaymentAdjustments(
+    payload: FreightPaymentAdjustmentCreateInput,
+  ): Promise<FreightPaymentAdjustmentItem[]> {
+    return isDemoMode
+      ? freightsDemoApi.createPaymentAdjustments(payload)
+      : apiRequest<FreightPaymentAdjustmentItem[]>("/freights/payments/adjustments", {
+          method: "POST",
+          body: payload,
+        });
+  },
+
+  deletePaymentAdjustment(codigoAjuste: string): Promise<void> {
+    return isDemoMode
+      ? freightsDemoApi.deletePaymentAdjustment(codigoAjuste)
+      : apiRequest<void>(
+          `/freights/payments/adjustments/${encodeURIComponent(codigoAjuste)}`,
+          { method: "DELETE" },
+        );
   },
 };

@@ -8,6 +8,7 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, aliased
 
 from app.modules.access_control.catalog import DELIVERY_SECTOR_CODE
+from app.modules.auth.models import Usuario
 from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa, Setor
 from app.modules.deliveries.models import (
     EntregaDiaria,
@@ -18,7 +19,13 @@ from app.modules.deliveries.models import (
     LancamentoRevisao,
 )
 
-from .models import Frete, FreteEvento
+from .models import (
+    Frete,
+    FreteAjusteFinanceiro,
+    FreteEvento,
+    FretePagamento,
+    FretePagamentoItem,
+)
 from .status import avaria_only_pending_filter, route_only_pending_filter
 
 
@@ -612,3 +619,225 @@ def save_freights(
     ]
     db.add_all(events)
     db.flush()
+
+
+def list_active_payment_items_for_freights(
+    db: Session,
+    *,
+    freight_ids: list[int],
+) -> list[tuple[FretePagamentoItem, FretePagamento]]:
+    """Carrega vínculos ativos de pagamento para os fretes informados."""
+    if not freight_ids:
+        return []
+    rows: list[tuple[FretePagamentoItem, FretePagamento]] = []
+    batch_size = 500
+    for offset in range(0, len(freight_ids), batch_size):
+        batch = freight_ids[offset : offset + batch_size]
+        statement = (
+            select(FretePagamentoItem, FretePagamento)
+            .join(
+                FretePagamento,
+                FretePagamento.id_frete_pagamento == FretePagamentoItem.id_frete_pagamento,
+            )
+            .where(
+                FretePagamentoItem.id_frete_ativo.in_(batch),
+                FretePagamento.status_pagamento.in_(("SOLICITADO", "PAGO")),
+            )
+        )
+        rows.extend(tuple(row) for row in db.execute(statement).all())
+    return rows
+
+
+def list_active_payments_overlapping_period(
+    db: Session,
+    *,
+    id_setor: int,
+    data_de: date,
+    data_ate: date,
+    tipo_transporte: str | None = None,
+    nome_transportador: str | None = None,
+    sem_identificacao: bool = False,
+) -> list[FretePagamento]:
+    """Busca fechamentos ativos cujo período intersecta o intervalo filtrado."""
+    filters = [
+        FretePagamento.id_setor == id_setor,
+        FretePagamento.status_pagamento.in_(("SOLICITADO", "PAGO")),
+        FretePagamento.data_de <= data_ate,
+        FretePagamento.data_ate >= data_de,
+    ]
+    if tipo_transporte is not None:
+        filters.append(FretePagamento.tipo_transporte == tipo_transporte)
+    if sem_identificacao:
+        filters.append(FretePagamento.sem_identificacao.is_(True))
+    elif nome_transportador is not None:
+        filters.append(FretePagamento.nome_transportador == nome_transportador)
+    statement = (
+        select(FretePagamento)
+        .where(*filters)
+        .order_by(FretePagamento.criado_em.desc(), FretePagamento.id_frete_pagamento.desc())
+    )
+    return list(db.scalars(statement).all())
+
+
+def list_payment_items_by_payment_ids(
+    db: Session,
+    *,
+    payment_ids: list[int],
+) -> list[FretePagamentoItem]:
+    """Carrega todos os itens vinculados a um conjunto de fechamentos."""
+    if not payment_ids:
+        return []
+    statement = (
+        select(FretePagamentoItem)
+        .where(FretePagamentoItem.id_frete_pagamento.in_(payment_ids))
+        .order_by(FretePagamentoItem.data_servico_snapshot, FretePagamentoItem.id_frete_pagamento_item)
+    )
+    return list(db.scalars(statement).all())
+
+
+def list_freights_by_ids(db: Session, *, freight_ids: list[int]) -> dict[int, Frete]:
+    """Carrega fretes por ID em lote para conferir alterações pós-fechamento."""
+    if not freight_ids:
+        return {}
+    rows: list[Frete] = []
+    batch_size = 500
+    for offset in range(0, len(freight_ids), batch_size):
+        batch = freight_ids[offset : offset + batch_size]
+        rows.extend(db.scalars(select(Frete).where(Frete.id_frete.in_(batch))).all())
+    return {row.id_frete: row for row in rows}
+
+
+def get_payment_by_code(
+    db: Session,
+    *,
+    codigo_pagamento: UUID,
+    id_setor: int,
+    lock: bool = False,
+) -> FretePagamento | None:
+    """Busca um fechamento financeiro pelo UUID dentro do setor."""
+    statement = select(FretePagamento).where(
+        FretePagamento.codigo_pagamento == str(codigo_pagamento),
+        FretePagamento.id_setor == id_setor,
+    )
+    if lock:
+        statement = statement.with_for_update()
+    return db.scalar(statement)
+
+
+def list_payment_settlements(
+    db: Session,
+    *,
+    id_setor: int,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: str | None = None,
+    status_pagamento: str | None = None,
+    nome_transportador: str | None = None,
+    incluir_estornados: bool = True,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple[list[FretePagamento], int]:
+    """Lista fechamentos financeiros paginados para a aba de histórico."""
+    filters = [FretePagamento.id_setor == id_setor]
+    if data_de is not None:
+        filters.append(FretePagamento.data_ate >= data_de)
+    if data_ate is not None:
+        filters.append(FretePagamento.data_de <= data_ate)
+    if tipo_transporte is not None:
+        filters.append(FretePagamento.tipo_transporte == tipo_transporte)
+    if status_pagamento is not None:
+        filters.append(FretePagamento.status_pagamento == status_pagamento)
+    elif not incluir_estornados:
+        filters.append(FretePagamento.status_pagamento != "ESTORNADO")
+    if nome_transportador is not None:
+        filters.append(FretePagamento.nome_transportador == nome_transportador)
+    total = int(db.scalar(select(func.count()).select_from(FretePagamento).where(*filters)) or 0)
+    statement = (
+        select(FretePagamento)
+        .where(*filters)
+        .order_by(FretePagamento.criado_em.desc(), FretePagamento.id_frete_pagamento.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(db.scalars(statement).all()), total
+
+
+def list_payment_adjustments(
+    db: Session,
+    *,
+    id_setor: int,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: str | None = None,
+    nome_transportador: str | None = None,
+    payment_ids: list[int] | None = None,
+) -> list[FreteAjusteFinanceiro]:
+    """Lista lançamentos financeiros extras ativos no período ou vinculados a pagamentos."""
+    filters = [
+        FreteAjusteFinanceiro.id_setor == id_setor,
+        FreteAjusteFinanceiro.ativo.is_(True),
+    ]
+    if payment_ids is not None:
+        if not payment_ids:
+            return []
+        filters.append(FreteAjusteFinanceiro.id_frete_pagamento.in_(payment_ids))
+    else:
+        if data_de is not None:
+            filters.append(FreteAjusteFinanceiro.data_referencia >= data_de)
+        if data_ate is not None:
+            filters.append(FreteAjusteFinanceiro.data_referencia <= data_ate)
+    if tipo_transporte is not None:
+        filters.append(FreteAjusteFinanceiro.tipo_transporte == tipo_transporte)
+    if nome_transportador is not None:
+        filters.append(FreteAjusteFinanceiro.nome_transportador == nome_transportador)
+    statement = (
+        select(FreteAjusteFinanceiro)
+        .where(*filters)
+        .order_by(
+            FreteAjusteFinanceiro.data_referencia.desc(),
+            FreteAjusteFinanceiro.id_frete_ajuste.desc(),
+        )
+    )
+    return list(db.scalars(statement).all())
+
+
+def get_payment_adjustment_by_code(
+    db: Session,
+    *,
+    codigo_ajuste: UUID,
+    id_setor: int,
+    lock: bool = False,
+) -> FreteAjusteFinanceiro | None:
+    """Busca um lançamento extra ativo pelo código UUID."""
+    statement = select(FreteAjusteFinanceiro).where(
+        FreteAjusteFinanceiro.codigo_ajuste == str(codigo_ajuste),
+        FreteAjusteFinanceiro.id_setor == id_setor,
+    )
+    if lock:
+        statement = statement.with_for_update()
+    return db.scalar(statement)
+
+
+def list_outsourced_people_for_payments(db: Session) -> list[Pessoa]:
+    """Carrega motoristas terceirizados para resolver CPF/CNPJ, PIX e exigência de NF."""
+    statement = (
+        select(Pessoa)
+        .where(
+            Pessoa.tipo_funcao == "MOTORISTA",
+            Pessoa.tipo_transporte_entrega == "TERCEIRIZADA",
+        )
+        .order_by(Pessoa.ativo.desc(), Pessoa.vigente_desde.desc(), Pessoa.id_pessoa.desc())
+    )
+    return list(db.scalars(statement).all())
+
+
+def list_user_names_by_ids(db: Session, *, user_ids: set[int]) -> dict[int, str]:
+    """Resolve nomes completos de usuários para auditoria de pagamentos."""
+    if not user_ids:
+        return {}
+    rows = db.execute(
+        select(Usuario.id_usuario, Usuario.nome_completo).where(
+            Usuario.id_usuario.in_(list(user_ids))
+        )
+    ).all()
+    return {int(row[0]): str(row[1]) for row in rows}

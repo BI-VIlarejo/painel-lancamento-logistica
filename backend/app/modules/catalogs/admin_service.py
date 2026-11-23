@@ -111,6 +111,9 @@ def _person_audit_values(person: Pessoa | None) -> dict[str, object | None]:
             "tipo_transporte_entrega": None,
             "modalidade_terceirizada": None,
             "codigo_transportadora_independente": None,
+            "documento_fiscal": None,
+            "chave_pix": None,
+            "exige_nota_fiscal": None,
         }
     return {
         "nome_exibicao": person.nome_exibicao,
@@ -118,6 +121,9 @@ def _person_audit_values(person: Pessoa | None) -> dict[str, object | None]:
         "tipo_transporte_entrega": person.tipo_transporte_entrega,
         "modalidade_terceirizada": person.modalidade_terceirizada,
         "codigo_transportadora_independente": person.codigo_transportadora_independente,
+        "documento_fiscal": person.documento_fiscal,
+        "chave_pix": person.chave_pix,
+        "exige_nota_fiscal": person.exige_nota_fiscal,
     }
 
 
@@ -368,6 +374,9 @@ def create_person(
             "tipo_transporte_entrega": payload.tipo_transporte_entrega,
             "modalidade_terceirizada": payload.modalidade_terceirizada,
             "codigo_transportadora_independente": payload.codigo_transportadora_independente,
+            "documento_fiscal": payload.documento_fiscal,
+            "chave_pix": payload.chave_pix,
+            "exige_nota_fiscal": payload.exige_nota_fiscal,
         }
         changes = _audit_changes(_person_audit_values(None), values)
 
@@ -380,6 +389,9 @@ def create_person(
             tipo_transporte_entrega=payload.tipo_transporte_entrega,
             modalidade_terceirizada=payload.modalidade_terceirizada,
             codigo_transportadora_independente=payload.codigo_transportadora_independente,
+            documento_fiscal=payload.documento_fiscal,
+            chave_pix=payload.chave_pix,
+            exige_nota_fiscal=payload.exige_nota_fiscal,
             ativo=True,
             vigente_desde=_business_today(),
             vigente_ate=None,
@@ -440,6 +452,9 @@ def update_person(
             "tipo_transporte_entrega": payload.tipo_transporte_entrega,
             "modalidade_terceirizada": payload.modalidade_terceirizada,
             "codigo_transportadora_independente": payload.codigo_transportadora_independente,
+            "documento_fiscal": payload.documento_fiscal,
+            "chave_pix": payload.chave_pix,
+            "exige_nota_fiscal": payload.exige_nota_fiscal,
         }
         changes = _audit_changes(before, after)
         if not changes:
@@ -451,6 +466,9 @@ def update_person(
         item.tipo_transporte_entrega = payload.tipo_transporte_entrega
         item.modalidade_terceirizada = payload.modalidade_terceirizada
         item.codigo_transportadora_independente = payload.codigo_transportadora_independente
+        item.documento_fiscal = payload.documento_fiscal
+        item.chave_pix = payload.chave_pix
+        item.exige_nota_fiscal = payload.exige_nota_fiscal
         item.atualizado_em = _now()
         _event(
             db,

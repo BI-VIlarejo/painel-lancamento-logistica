@@ -20,13 +20,22 @@ from .schemas import (
     FreightInput,
     FreightPage,
     HistoricalFreightEditDriverOption,
+    FreightPaymentAdjustmentCreateRequest,
+    FreightPaymentAdjustmentItem,
+    FreightPaymentInvoiceUpdateRequest,
     FreightPaymentOptions,
+    FreightPaymentPendingSummary,
     FreightPaymentReport,
+    FreightPaymentSettlementCreateRequest,
+    FreightPaymentSettlementPage,
+    FreightPaymentSettlementStatusRequest,
+    FreightPaymentSettlementSummary,
     FreightQuoteResponse,
     FreightResponse,
     HistoricalFreightEditInput,
     HistoricalFreightImportRequest,
     HistoricalFreightImportResponse,
+    PaymentSettlementStatus,
     TransportType,
 )
 
@@ -309,11 +318,14 @@ def get_payment_options(
 @router.get("/payments/export.xlsx")
 def export_payment_report(
     db: DatabaseSession,
-    data_de: date,
-    data_ate: date,
+    data_de: date | None = None,
+    data_ate: date | None = None,
     tipo_transporte: Literal["AGREGADO", "TRANSPORTADORA"] = "AGREGADO",
     nome_transportador: str | None = Query(default=None, min_length=2, max_length=160),
     sem_identificacao: bool = False,
+    responsaveis: list[str] | None = Query(default=None),
+    apenas_em_aberto: bool = False,
+    codigo_pagamento: UUID | None = None,
     access: AuthorizationContext = Depends(_payment_export),  # noqa: B008
 ) -> Response:
     """Baixa a solicitação XLSX somente para quem tem permissão de exportação."""
@@ -325,9 +337,17 @@ def export_payment_report(
         tipo_transporte=tipo_transporte,
         nome_transportador=nome_transportador,
         sem_identificacao=sem_identificacao,
+        responsaveis=responsaveis,
+        apenas_em_aberto=apenas_em_aberto,
+        codigo_pagamento=codigo_pagamento,
     )
     transport_label = "agregados" if tipo_transporte == "AGREGADO" else "transportadoras"
-    filename = f"solicitacao-pagamento-{transport_label}-{data_de:%Y%m%d}-{data_ate:%Y%m%d}.xlsx"
+    if codigo_pagamento is not None:
+        filename = f"solicitacao-pagamento-lote-{str(codigo_pagamento)[:8]}.xlsx"
+    elif data_de is not None and data_ate is not None:
+        filename = f"solicitacao-pagamento-{transport_label}-{data_de:%Y%m%d}-{data_ate:%Y%m%d}.xlsx"
+    else:
+        filename = f"solicitacao-pagamento-{transport_label}.xlsx"
     return Response(
         content=xlsx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -336,6 +356,167 @@ def export_payment_report(
             "Cache-Control": "no-store",
             "Pragma": "no-cache",
         },
+    )
+
+
+@router.get("/payments/pending-summary", response_model=FreightPaymentPendingSummary)
+def get_pending_payment_summary(
+    db: DatabaseSession,
+    response: Response,
+    access: AuthorizationContext = Depends(_payment_view),  # noqa: B008
+) -> FreightPaymentPendingSummary:
+    """Retorna a contagem de pendências da semana atual para o indicador no menu."""
+    _no_store(response)
+    return service.get_pending_payment_summary(db, access=access)
+
+
+@router.get("/payments/settlements", response_model=FreightPaymentSettlementPage)
+def list_payment_settlements(
+    db: DatabaseSession,
+    response: Response,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: Literal["AGREGADO", "TRANSPORTADORA"] | None = None,
+    status_pagamento: PaymentSettlementStatus | None = None,
+    nome_transportador: str | None = Query(default=None, min_length=1, max_length=160),
+    incluir_estornados: bool = True,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    access: AuthorizationContext = Depends(_payment_view),  # noqa: B008
+) -> FreightPaymentSettlementPage:
+    """Lista o histórico de fechamentos de pagamento com paginação e filtros."""
+    _no_store(response)
+    return service.list_payment_settlements(
+        db,
+        access=access,
+        data_de=data_de,
+        data_ate=data_ate,
+        tipo_transporte=tipo_transporte,
+        status_pagamento=status_pagamento,
+        nome_transportador=nome_transportador,
+        incluir_estornados=incluir_estornados,
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post(
+    "/payments/settlements",
+    response_model=list[FreightPaymentSettlementSummary],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_payment_settlements(
+    payload: FreightPaymentSettlementCreateRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_payment_export),  # noqa: B008
+) -> list[FreightPaymentSettlementSummary]:
+    """Solicita ou registra o pagamento dos responsáveis selecionados no período."""
+    _no_store(response)
+    return service.create_payment_settlements(db, access=access, payload=payload)
+
+
+@router.patch(
+    "/payments/settlements/{codigo_pagamento}/status",
+    response_model=FreightPaymentSettlementSummary,
+)
+def update_payment_settlement_status(
+    codigo_pagamento: UUID,
+    payload: FreightPaymentSettlementStatusRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_payment_export),  # noqa: B008
+) -> FreightPaymentSettlementSummary:
+    """Atualiza a situação do fechamento: marcar pago, desfazer pago ou estornar."""
+    _no_store(response)
+    return service.update_payment_settlement_status(
+        db,
+        access=access,
+        codigo_pagamento=codigo_pagamento,
+        payload=payload,
+    )
+
+
+@router.patch(
+    "/payments/settlements/{codigo_pagamento}/invoice",
+    response_model=FreightPaymentSettlementSummary,
+)
+def update_payment_settlement_invoice(
+    codigo_pagamento: UUID,
+    payload: FreightPaymentInvoiceUpdateRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_payment_export),  # noqa: B008
+) -> FreightPaymentSettlementSummary:
+    """Registra número, data e recebimento da nota fiscal do fechamento."""
+    _no_store(response)
+    return service.update_payment_settlement_invoice(
+        db,
+        access=access,
+        codigo_pagamento=codigo_pagamento,
+        payload=payload,
+    )
+
+
+@router.get("/payments/adjustments", response_model=list[FreightPaymentAdjustmentItem])
+def list_payment_adjustments(
+    db: DatabaseSession,
+    response: Response,
+    data_de: date | None = None,
+    data_ate: date | None = None,
+    tipo_transporte: Literal["AGREGADO", "TRANSPORTADORA"] | None = None,
+    nome_transportador: str | None = Query(default=None, min_length=1, max_length=160),
+    access: AuthorizationContext = Depends(_payment_view),  # noqa: B008
+) -> list[FreightPaymentAdjustmentItem]:
+    """Lista lançamentos financeiros extras (vales, adiantamentos, bônus e descontos)."""
+    _no_store(response)
+    return service.list_payment_adjustments(
+        db,
+        access=access,
+        data_de=data_de,
+        data_ate=data_ate,
+        tipo_transporte=tipo_transporte,
+        nome_transportador=nome_transportador,
+    )
+
+
+@router.post(
+    "/payments/adjustments",
+    response_model=list[FreightPaymentAdjustmentItem],
+    status_code=status.HTTP_201_CREATED,
+)
+def create_payment_adjustments(
+    payload: FreightPaymentAdjustmentCreateRequest,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_payment_export),  # noqa: B008
+) -> list[FreightPaymentAdjustmentItem]:
+    """Cria um lançamento extra à vista ou parcelado (semanal/mensal)."""
+    _no_store(response)
+    return service.create_payment_adjustments(db, access=access, payload=payload)
+
+
+@router.delete(
+    "/payments/adjustments/{codigo_ajuste}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_payment_adjustment(
+    codigo_ajuste: UUID,
+    db: DatabaseSession,
+    response: Response,
+    auth: CsrfProtectedAuth,
+    access: AuthorizationContext = Depends(_payment_export),  # noqa: B008
+) -> None:
+    """Remove um lançamento extra ainda não vinculado a um pagamento ativo."""
+    _no_store(response)
+    service.delete_payment_adjustment(
+        db,
+        access=access,
+        codigo_ajuste=codigo_ajuste,
     )
 
 

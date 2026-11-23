@@ -104,6 +104,9 @@ class PersonAdminItem(BaseModel):
     tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"] | None
     modalidade_terceirizada: Literal["AGREGADO", "TRANSPORTADORA_INDEPENDENTE"] | None
     codigo_transportadora_independente: Literal["PAULO_CRUZ", "JUST_IN_TIME"] | None
+    documento_fiscal: str | None = None
+    chave_pix: str | None = None
+    exige_nota_fiscal: bool = False
     ativo: bool
     vigente_desde: date
     vigente_ate: date | None
@@ -120,6 +123,9 @@ class PersonCreateRequest(BaseModel):
     tipo_transporte_entrega: Literal["PROPRIA", "TERCEIRIZADA"]
     modalidade_terceirizada: Literal["AGREGADO", "TRANSPORTADORA_INDEPENDENTE"] | None = None
     codigo_transportadora_independente: Literal["PAULO_CRUZ", "JUST_IN_TIME"] | None = None
+    documento_fiscal: str | None = Field(default=None, max_length=32)
+    chave_pix: str | None = Field(default=None, max_length=160)
+    exige_nota_fiscal: bool = False
     sistema_origem: str | None = Field(default=None, min_length=1, max_length=40)
     codigo_pessoa_origem: str | None = Field(default=None, min_length=1, max_length=120)
 
@@ -130,6 +136,29 @@ class PersonCreateRequest(BaseModel):
         if not normalized:
             raise ValueError("O nome é obrigatório.")
         return normalized
+
+    @field_validator("documento_fiscal")
+    @classmethod
+    def normalize_document(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        if not normalized:
+            return None
+        digits = re.sub(r"\D", "", normalized)
+        if len(digits) == 11:
+            return f"{digits[:3]}.{digits[3:6]}.{digits[6:9]}-{digits[9:]}"
+        if len(digits) == 14:
+            return f"{digits[:2]}.{digits[2:5]}.{digits[5:8]}/{digits[8:12]}-{digits[12:]}"
+        raise ValueError("Informe um CPF (11 dígitos) ou CNPJ (14 dígitos) válido.")
+
+    @field_validator("chave_pix")
+    @classmethod
+    def normalize_pix(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = " ".join(value.split())
+        return normalized or None
 
     @field_validator("sistema_origem", "codigo_pessoa_origem")
     @classmethod

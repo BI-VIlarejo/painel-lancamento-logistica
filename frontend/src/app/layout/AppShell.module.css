@@ -48,6 +48,8 @@
 .disclosure-link-icon { display: grid; width: 19px; height: 19px; flex: 0 0 auto; place-items: center; color: #76889a; }
 .disclosure-link-icon svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.6; }
 .disclosure-link-active .disclosure-link-icon { color: var(--brand-blue); }
+.disclosure-label-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.nav-pending-badge { display: inline-flex; min-width: 19px; height: 19px; padding: 0 5px; margin-left: auto; align-items: center; justify-content: center; border-radius: 999px; background: #e94e24; color: #fff; font-size: 10px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
 .disclosure-current-indicator { width: 5px; height: 5px; flex: 0 0 auto; margin-left: auto; border-radius: 50%; background: var(--brand-blue); }
 
 .sector-filter { position: relative; flex: 0 0 auto; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
