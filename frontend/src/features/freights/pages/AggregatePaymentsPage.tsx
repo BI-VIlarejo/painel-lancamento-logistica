@@ -48,7 +48,6 @@ type StatusFilter = "TODOS" | "FALTA_PAGAR" | "SOLICITADO" | "PAGO" | "PENDENCIA
 type PeriodPreset = "SEMANA_ATUAL" | "SEMANA_PASSADA" | "QUINZENA" | "MES_ATUAL" | "PERSONALIZADO";
 
 const UNIDENTIFIED = "__SEM_IDENTIFICACAO__";
-const PAYMENTS_UPDATED_EVENT = "portal:payments-updated";
 
 const ADJUSTMENT_CATEGORY_LABELS: Record<string, string> = {
   VALE: "Vale",
@@ -187,7 +186,6 @@ export function AggregatePaymentsPage({
 
   const notifyPaymentsUpdated = useCallback(() => {
     setReloadVersion((version) => version + 1);
-    window.dispatchEvent(new Event(PAYMENTS_UPDATED_EVENT));
   }, []);
 
   const copyToClipboard = useCallback(async (text: string, label: string) => {

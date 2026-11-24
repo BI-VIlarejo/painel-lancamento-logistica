@@ -6,7 +6,6 @@ import type { KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { isDemoMode } from "../../shared/api/apiClient";
 import { BrandMark } from "../../shared/components/BrandMark";
 import { catalogsApi } from "../../features/catalogs/api";
-import { freightsApi } from "../../features/freights/api";
 import type { AccessScope, AuthenticatedUser } from "../../features/auth/types";
 import type { SectorCatalogItem } from "../../features/deliveries/types";
 
@@ -28,8 +27,6 @@ type AppNavItem = {
   icon?: ReactNode;
   children?: AppNavItem[];
   sectorCode?: string;
-  badgeCount?: number;
-  badgeTitle?: string;
 };
 
 const sectorCatalogPermissionCodes = [
@@ -78,7 +75,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
   const [sectorCatalog, setSectorCatalog] = useState<SectorCatalogItem[]>([]);
   const [selectedSectorCodes, setSelectedSectorCodes] = useState<string[] | null>(null);
   const [openNavPath, setOpenNavPath] = useState<string[]>([]);
-  const [pendingPaymentsCount, setPendingPaymentsCount] = useState(0);
   const navigationRef = useRef<HTMLDivElement | null>(null);
   const lastDisclosureButtonRef = useRef<HTMLButtonElement | null>(null);
   const scopedSectorIds = [...new Set(scopes.flatMap((scope) => scope.id_setor === null ? [] : [scope.id_setor]))];
@@ -207,10 +203,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
       label: "Transporte",
       visible: transportFolderVisible,
       sectorCode: "TRANSPORTE",
-      badgeCount: pendingPaymentsCount > 0 ? pendingPaymentsCount : undefined,
-      badgeTitle: pendingPaymentsCount > 0
-        ? `${pendingPaymentsCount} pagamento(s) pendente(s) na semana atual`
-        : undefined,
       children: [
         {
           id: "transport-freights",
@@ -237,7 +229,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
           id: "transport-aggregates",
           label: "Agregados",
           visible: canViewAggregatePayments && hasScopedSectorPermission(transportSectorId, ["AGREGADOS:VER"]),
-          badgeCount: pendingPaymentsCount > 0 ? pendingPaymentsCount : undefined,
           children: [
             {
               id: "aggregate-payments",
@@ -245,10 +236,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
               label: "Pagamentos de transporte",
               visible: canViewAggregatePayments && hasScopedSectorPermission(transportSectorId, ["AGREGADOS:VER"]),
               icon: <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18M7 15h4" /></svg>,
-              badgeCount: pendingPaymentsCount > 0 ? pendingPaymentsCount : undefined,
-              badgeTitle: pendingPaymentsCount > 0
-                ? `${pendingPaymentsCount} responsável(is) pendente(s) na semana atual`
-                : undefined,
             },
           ],
         },
@@ -370,35 +357,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
     return () => { active = false; };
   }, [scopes]);
 
-  const canSeePaymentsBadge = canViewAggregatePayments
-    && hasScopedSectorPermission(transportSectorId, ["AGREGADOS:VER"]);
-
-  useEffect(() => {
-    if (!canSeePaymentsBadge) {
-      setPendingPaymentsCount(0);
-      return;
-    }
-    let active = true;
-    const loadSummary = () => {
-      void freightsApi.paymentPendingSummary()
-        .then((summary) => {
-          if (!active) return;
-          setPendingPaymentsCount(
-            summary.responsaveis_em_aberto + summary.responsaveis_com_pendencia,
-          );
-        })
-        .catch(() => {
-          if (active) setPendingPaymentsCount(0);
-        });
-    };
-    loadSummary();
-    window.addEventListener("portal:payments-updated", loadSummary);
-    return () => {
-      active = false;
-      window.removeEventListener("portal:payments-updated", loadSummary);
-    };
-  }, [canSeePaymentsBadge]);
-
   const navigate = (event: MouseEvent<HTMLAnchorElement>, target: string) => {
     event.preventDefault();
     setOpenNavPath([]);
@@ -475,14 +433,7 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
                 aria-controls={panelId}
                 onClick={(event) => toggleNavFolder(event, itemPath)}
               >
-                <span className={cx(styles, commonStyles, "disclosure-label-wrap")}>
-                  <span>{item.label}</span>
-                  {item.badgeCount ? (
-                    <span className={cx(styles, commonStyles, "nav-pending-badge")} title={item.badgeTitle}>
-                      {item.badgeCount}
-                    </span>
-                  ) : null}
-                </span>
+                <span>{item.label}</span>
                 <svg className={cx(styles, commonStyles, `disclosure-chevron${depth === 0 ? " disclosure-chevron-down" : " disclosure-chevron-right"}${expanded ? " disclosure-chevron-expanded" : ""}`)} viewBox="0 0 20 20" aria-hidden="true">
                   <path d={depth === 0 ? "m5 7.5 5 5 5-5" : "m7.5 4.5 5 5-5 5"} />
                 </svg>
@@ -505,11 +456,6 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
             >
               {item.icon && <span className={cx(styles, commonStyles, "disclosure-link-icon")} aria-hidden="true">{item.icon}</span>}
               <span>{item.label}</span>
-              {item.badgeCount ? (
-                <span className={cx(styles, commonStyles, "nav-pending-badge")} title={item.badgeTitle}>
-                  {item.badgeCount}
-                </span>
-              ) : null}
               {path === item.path && <span className={cx(styles, commonStyles, "disclosure-current-indicator")} aria-hidden="true" />}
             </a>
           </li>
