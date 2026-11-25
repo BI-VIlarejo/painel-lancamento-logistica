@@ -328,7 +328,15 @@ export const demoApi = {
       ))
       .map(summarize)
       .filter((item) => !filters.estado || filters.estado === "TODOS" || (filters.estado === "LANÇADO" ? item.estado === "ENVIADA" || item.estado === "APROVADA" : item.estado === filters.estado))
-      .sort((a, b) => b.criado_em.localeCompare(a.criado_em));
+      .sort((a, b) => {
+        if (filters.ordenacao === "data_desc") {
+          return b.data_final.localeCompare(a.data_final) || b.criado_em.localeCompare(a.criado_em);
+        }
+        if (filters.ordenacao === "data_asc") {
+          return a.data_inicial.localeCompare(b.data_inicial) || a.criado_em.localeCompare(b.criado_em);
+        }
+        return b.criado_em.localeCompare(a.criado_em);
+      });
     return { items: all.slice(offset, offset + limit), total: all.length, limit, offset };
   },
   async getDelivery(id: string): Promise<DeliveryLaunchDetail | null> {

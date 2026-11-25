@@ -1,6 +1,6 @@
 """Testes unitários das validações que sustentam Entregas."""
 
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 from unittest import TestCase
 from uuid import uuid4
@@ -8,6 +8,14 @@ from uuid import uuid4
 from pydantic import ValidationError
 
 from app.modules.analytics.service import _percentage, _rate
+from app.modules.catalogs.models import Localidade
+from app.modules.deliveries import service as delivery_service
+from app.modules.deliveries.models import (
+    EntregaDiaria,
+    FormularioVersao,
+    Lancamento,
+    LancamentoRevisao,
+)
 from app.modules.deliveries.schemas import (
     DeliveryItemInput,
     DeliveryLifecycleReasonRequest,
@@ -16,6 +24,7 @@ from app.modules.deliveries.schemas import (
     DeliveryDraftCreateRequest,
     DeliveryDraftUpdateRequest,
 )
+from tests.freight_support import access, database
 
 
 class DeliveryRequestTests(TestCase):
@@ -181,4 +190,124 @@ class DashboardRuleTests(TestCase):
     def test_otif_uses_not_completed_over_total_registered(self) -> None:
         self.assertEqual(_percentage(20, 100), 20.0)
         self.assertIsNone(_percentage(0, 0))
+
+
+class DeliveryHistorySortingTests(TestCase):
+    def test_list_drafts_sorts_by_delivery_date_asc_desc_and_creation(self) -> None:
+        engine, db = database()
+        try:
+            now = datetime(2026, 11, 20, 10, 0, 0)
+            db.add(
+                Localidade(
+                    id_localidade=1,
+                    codigo_localidade="MACAE",
+                    nome_localidade="Macaé",
+                    tipo_localidade="LOJA",
+                    cidade="Macaé",
+                    uf="RJ",
+                    ativo=True,
+                    sincronizado_em=now,
+                )
+            )
+            db.add(
+                FormularioVersao(
+                    id_formulario_versao=1,
+                    id_setor=10,
+                    codigo_formulario="ENTREGAS_DIARIAS",
+                    versao=1,
+                    hash_contrato="a" * 64,
+                    status="PUBLICADO",
+                    vigente_desde=datetime(2026, 1, 1, 0, 0, 0),
+                    criado_por=1,
+                    criado_em=now,
+                    publicado_por=1,
+                    publicado_em=now,
+                )
+            )
+            fixtures = [
+                (1, datetime(2026, 11, 20, 8, 0, 0), date(2026, 11, 15)),
+                (2, datetime(2026, 11, 20, 9, 0, 0), date(2026, 11, 10)),
+                (3, datetime(2026, 11, 20, 10, 0, 0), date(2026, 11, 18)),
+            ]
+            for launch_id, created_at, delivery_date in fixtures:
+                launch = Lancamento(
+                    id_lancamento=launch_id,
+                    codigo_lancamento=str(uuid4()),
+                    id_setor=10,
+                    chave_idempotencia=str(uuid4()),
+                    criado_por=1,
+                    criado_em=created_at,
+                    atualizado_em=created_at,
+                )
+                db.add(launch)
+                db.flush()
+                revision = LancamentoRevisao(
+                    id_lancamento=launch.id_lancamento,
+                    codigo_revisao=str(uuid4()),
+                    id_formulario_versao=1,
+                    numero_revisao=1,
+                    chave_idempotencia=str(uuid4()),
+                    estado="ENVIADA",
+                    hash_conteudo="b" * 64,
+                    criado_por=1,
+                    criado_em=created_at,
+                    enviado_por=1,
+                    enviado_em=created_at,
+                )
+                db.add(revision)
+                db.flush()
+                db.add(
+                    EntregaDiaria(
+                        id_lancamento_revisao=revision.id_lancamento_revisao,
+                        codigo_item_lancamento=str(uuid4()),
+                        tipo_operacao="ENTREGA",
+                        data_entrega=delivery_date,
+                        id_localidade=1,
+                        quantidade_realizada=5,
+                        quantidade_nao_realizada=0,
+                        quantidade_coleta_realizada=0,
+                        quantidade_coleta_nao_realizada=0,
+                        peso_total_kg=Decimal("10.000"),
+                        criado_em=created_at,
+                        atualizado_em=created_at,
+                    )
+                )
+            db.commit()
+
+            ctx = access("ENTREGAS_DIARIAS:VER")
+            common_kwargs = dict(
+                access=ctx,
+                estado=None,
+                data_de=None,
+                data_ate=None,
+                id_localidade=None,
+                id_motorista=None,
+                id_motivo_nao_entrega=None,
+                grupo_motivo=None,
+                tipo_operacao=None,
+                criado_por=None,
+                limit=50,
+                offset=0,
+            )
+
+            desc_page = delivery_service.list_drafts(db, ordenacao="data_desc", **common_kwargs)
+            self.assertEqual(
+                [item.data_final for item in desc_page.items],
+                [date(2026, 11, 18), date(2026, 11, 15), date(2026, 11, 10)],
+            )
+
+            asc_page = delivery_service.list_drafts(db, ordenacao="data_asc", **common_kwargs)
+            self.assertEqual(
+                [item.data_inicial for item in asc_page.items],
+                [date(2026, 11, 10), date(2026, 11, 15), date(2026, 11, 18)],
+            )
+
+            created_page = delivery_service.list_drafts(db, ordenacao="criacao_desc", **common_kwargs)
+            self.assertEqual(
+                [item.data_final for item in created_page.items],
+                [date(2026, 11, 18), date(2026, 11, 10), date(2026, 11, 15)],
+            )
+        finally:
+            db.close()
+            engine.dispose()
 

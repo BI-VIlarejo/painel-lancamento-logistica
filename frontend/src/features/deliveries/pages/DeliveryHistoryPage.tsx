@@ -11,7 +11,7 @@ import { deliveryTransportLabel, nonDeliveryReasonGroupLabel, nonDeliveryReasonG
 import { feedbackApi } from "../../feedback/api";
 import type { FeedbackItem, FeedbackType } from "../../feedback/types";
 import type { DeliveryTransportType, NonDeliveryReasonGroup } from "../classifications";
-import type { DeliveryEvent, DeliveryHistoryFilters, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem, NonDeliveryReasonCatalogItem, PersonCatalogItem } from "../types";
+import type { DeliveryEvent, DeliveryHistoryFilters, DeliveryHistorySort, DeliveryItemResponse, DeliveryLaunchDetail, DeliveryLaunchSummary, DeliveryStatus, LocalityCatalogItem, NonDeliveryReasonCatalogItem, PersonCatalogItem } from "../types";
 
 type DeliveryHistoryPageProps = { onNavigate: (path: string) => void; canCreate: boolean; canEditDraft: boolean; canCorrect: boolean; canCancel: boolean; canViewFeedback: boolean; currentUserId: number };
 const pageSizeOptions = [10, 25, 50, 100] as const;
@@ -231,6 +231,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
   const [mineOnly, setMineOnly] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [sortOrder, setSortOrder] = useState<DeliveryHistorySort>("data_desc");
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(25);
   const [loading, setLoading] = useState(true);
@@ -290,7 +291,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
     setLoading(true);
     setError("");
     setFailedDetail(null);
-    void deliveriesApi.list({ estado: status, id_localidade: localityId ? Number(localityId) : undefined, id_motorista: driverId ? Number(driverId) : undefined, id_motivo_nao_entrega: reasonId ? Number(reasonId) : undefined, grupo_motivo: reasonGroup || undefined, tipo_operacao: operation || undefined, criado_por: mineOnly ? currentUserId : undefined, data_de: fromDate || undefined, data_ate: toDate || undefined, limit: pageSize, offset })
+    void deliveriesApi.list({ estado: status, id_localidade: localityId ? Number(localityId) : undefined, id_motorista: driverId ? Number(driverId) : undefined, id_motivo_nao_entrega: reasonId ? Number(reasonId) : undefined, grupo_motivo: reasonGroup || undefined, tipo_operacao: operation || undefined, criado_por: mineOnly ? currentUserId : undefined, data_de: fromDate || undefined, data_ate: toDate || undefined, ordenacao: sortOrder, limit: pageSize, offset })
       .then((page) => {
         if (!active) return;
         setItems(page.items);
@@ -301,7 +302,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
       })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [status, localityId, driverId, reasonGroup, reasonId, operation, mineOnly, currentUserId, fromDate, toDate, pageSize, offset, reloadVersion]);
+  }, [status, localityId, driverId, reasonGroup, reasonId, operation, mineOnly, currentUserId, fromDate, toDate, sortOrder, pageSize, offset, reloadVersion]);
 
   const activeFilterCount = [localityId, driverId, reasonGroup, reasonId, operation, mineOnly, fromDate, toDate].filter(Boolean).length;
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
@@ -315,9 +316,25 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
     data_de: fromDate || undefined,
     data_ate: toDate || undefined,
   } as const;
-  const visibleRows = items.flatMap((launch) => launch.itens
-    .filter((delivery) => itemMatchesFilters(delivery, selectedItemFilters))
-    .map((delivery) => ({ launch, delivery })));
+  const visibleRows = items
+    .flatMap((launch) => launch.itens
+      .filter((delivery) => itemMatchesFilters(delivery, selectedItemFilters))
+      .map((delivery) => ({ launch, delivery })))
+    .sort((left, right) => {
+      if (sortOrder === "data_desc") {
+        return right.delivery.data_entrega.localeCompare(left.delivery.data_entrega)
+          || right.launch.criado_em.localeCompare(left.launch.criado_em);
+      }
+      if (sortOrder === "data_asc") {
+        return left.delivery.data_entrega.localeCompare(right.delivery.data_entrega)
+          || left.launch.criado_em.localeCompare(right.launch.criado_em);
+      }
+      return 0;
+    });
+  const toggleDateSort = () => {
+    setSortOrder((current) => (current === "data_desc" ? "data_asc" : "data_desc"));
+    setOffset(0);
+  };
   const pageDeliveryCount = visibleRows.length;
 
   async function openDetail(item: DeliveryLaunchSummary, countDetail: DeliveryCountDetail | null = null) {
@@ -436,6 +453,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         criado_por: mineOnly ? currentUserId : undefined,
         data_de: fromDate || undefined,
         data_ate: toDate || undefined,
+        ordenacao: sortOrder,
         limit: 100,
         offset: 0,
       };
@@ -450,9 +468,21 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
       }
 
       type ExportRow = { launch: DeliveryLaunchSummary; delivery: DeliveryItemResponse };
-      const exportRows: ExportRow[] = allItems.flatMap((launch) => launch.itens
-        .filter((delivery) => itemMatchesFilters(delivery, selectedItemFilters))
-        .map((delivery) => ({ launch, delivery })));
+      const exportRows: ExportRow[] = allItems
+        .flatMap((launch) => launch.itens
+          .filter((delivery) => itemMatchesFilters(delivery, selectedItemFilters))
+          .map((delivery) => ({ launch, delivery })))
+        .sort((left, right) => {
+          if (sortOrder === "data_desc") {
+            return right.delivery.data_entrega.localeCompare(left.delivery.data_entrega)
+              || right.launch.criado_em.localeCompare(left.launch.criado_em);
+          }
+          if (sortOrder === "data_asc") {
+            return left.delivery.data_entrega.localeCompare(right.delivery.data_entrega)
+              || left.launch.criado_em.localeCompare(right.launch.criado_em);
+          }
+          return 0;
+        });
       const columns: Array<[string, (row: ExportRow) => string | number]> = [
         ["Data", (row) => row.delivery.data_entrega],
         ["Loja / localidade", (row) => row.delivery.nome_localidade],
@@ -511,6 +541,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
           <div className={cx(styles, commonStyles, "history-toolbar-heading")}><h2>Lançamentos</h2><span>{total} {total === 1 ? "lançamento" : "lançamentos"}</span></div>
           <div className={cx(styles, commonStyles, "history-filters")}>
             <label className={cx(styles, commonStyles, "filter-control")}><span>Status</span><select value={status} onChange={(event) => { setStatus(event.target.value as DeliveryStatus | "TODOS" | "LANÇADO"); setOffset(0); }}><option value="TODOS">Todos</option><option value="LANÇADO">Lançado</option><option value="CANCELADA">Cancelado</option></select></label>
+            <label className={cx(styles, commonStyles, "filter-control")}><span>Ordenar por</span><select aria-label="Ordenar histórico de entregas" value={sortOrder} onChange={(event) => { setSortOrder(event.target.value as DeliveryHistorySort); setOffset(0); }}><option value="data_desc">Data (mais recentes)</option><option value="data_asc">Data (mais antigas)</option><option value="criacao_desc">Lançamento (mais recentes)</option></select></label>
             <button className={cx(styles, commonStyles, "button button-secondary filter-toggle")} type="button" aria-expanded={advancedFiltersOpen} aria-controls="history-advanced-filters" onClick={() => setAdvancedFiltersOpen((open) => !open)}>
               Filtros{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}<span aria-hidden="true">{advancedFiltersOpen ? "−" : "+"}</span>
             </button>
@@ -538,7 +569,7 @@ export function DeliveryHistoryPage({ onNavigate, canCreate, canEditDraft, canCo
         {loading ? <div className={cx(styles, commonStyles, "history-loading")}><span className={cx(styles, commonStyles, "spinner spinner-green")} /> Carregando lançamentos...</div> : visibleRows.length === 0 ? (
           <div className={cx(styles, commonStyles, "history-empty")}><div className={cx(styles, commonStyles, "empty-state-icon")}>⌕</div><h3>Nenhum lançamento encontrado</h3><p>{canCreate ? "Ajuste os filtros ou crie um novo lançamento de Entregas." : "Ajuste os filtros para localizar outros lançamentos."}</p><button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => { setStatus("TODOS"); setLocalityId(""); setDriverId(""); setReasonGroup(""); setReasonId(""); setOperation(""); setMineOnly(false); setFromDate(""); setToDate(""); setOffset(0); }}>Limpar filtros</button></div>
         ) : (
-          <div className={cx(styles, commonStyles, "data-table-scroll history-table-scroll")} role="region" aria-label="Tabela do histórico de entregas" tabIndex={0}><table className={cx(styles, commonStyles, "data-table history-table")}><thead><tr><th>Data</th><th>Loja / localidade</th><th>Equipe</th><th>Tipo de transporte</th><th>Entregas R/NR</th><th>Coletas R/NR</th><th>Reclamações / elogios</th><th>Peso</th><th><span title="Entregas e coletas não realizadas ÷ total registrado nas duas operações">OTIF</span></th><th>Ações</th></tr></thead><tbody>
+          <div className={cx(styles, commonStyles, "data-table-scroll history-table-scroll")} role="region" aria-label="Tabela do histórico de entregas" tabIndex={0}><table className={cx(styles, commonStyles, "data-table history-table")}><thead><tr><th aria-sort={sortOrder === "data_desc" ? "descending" : sortOrder === "data_asc" ? "ascending" : "none"}><button className={cx(styles, commonStyles, "history-sort-button")} type="button" title={sortOrder === "data_desc" ? "Ordenar por data mais antiga" : "Ordenar por data mais recente"} onClick={toggleDateSort}><span>Data</span><span className={cx(styles, commonStyles, "history-sort-indicator")} aria-hidden="true">{sortOrder === "data_desc" ? "↓" : sortOrder === "data_asc" ? "↑" : "↕"}</span></button></th><th>Loja / localidade</th><th>Equipe</th><th>Tipo de transporte</th><th>Entregas R/NR</th><th>Coletas R/NR</th><th>Reclamações / elogios</th><th>Peso</th><th><span title="Entregas e coletas não realizadas ÷ total registrado nas duas operações">OTIF</span></th><th>Ações</th></tr></thead><tbody>
           {visibleRows.map(({ launch, delivery }) => {
               const driver = delivery.participantes.find((person) => person.papel_participante === "MOTORISTA");
               const helpers = delivery.participantes.filter((person) => person.papel_participante === "AJUDANTE");

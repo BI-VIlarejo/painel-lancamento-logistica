@@ -298,6 +298,7 @@ def list_visible_launches(
     grupo_motivo: str | None,
     tipo_operacao: str | None,
     criado_por: int | None,
+    ordenacao: str = "criacao_desc",
     limit: int,
     offset: int,
 ) -> tuple[list[LaunchRevisionRow], int]:
@@ -393,12 +394,47 @@ def list_visible_launches(
         .where(*conditions)
     )
     total = db.scalar(total_statement) or 0
+    if ordenacao == "data_desc":
+        latest_item_date = (
+            select(func.max(EntregaDiaria.data_entrega))
+            .where(
+                EntregaDiaria.id_lancamento_revisao
+                == current_revision.id_lancamento_revisao
+            )
+            .correlate(current_revision)
+            .scalar_subquery()
+        )
+        order_clauses = (
+            latest_item_date.desc(),
+            Lancamento.criado_em.desc(),
+            Lancamento.id_lancamento.desc(),
+        )
+    elif ordenacao == "data_asc":
+        earliest_item_date = (
+            select(func.min(EntregaDiaria.data_entrega))
+            .where(
+                EntregaDiaria.id_lancamento_revisao
+                == current_revision.id_lancamento_revisao
+            )
+            .correlate(current_revision)
+            .scalar_subquery()
+        )
+        order_clauses = (
+            earliest_item_date.asc(),
+            Lancamento.criado_em.asc(),
+            Lancamento.id_lancamento.asc(),
+        )
+    else:
+        order_clauses = (
+            Lancamento.criado_em.desc(),
+            Lancamento.id_lancamento.desc(),
+        )
     statement = (
         select(Lancamento, current_revision, Setor)
         .join(current_revision, current_revision.id_lancamento == Lancamento.id_lancamento)
         .join(Setor, Setor.id_setor == Lancamento.id_setor)
         .where(*conditions)
-        .order_by(Lancamento.criado_em.desc(), Lancamento.id_lancamento.desc())
+        .order_by(*order_clauses)
         .offset(offset)
         .limit(limit)
     )
@@ -410,6 +446,7 @@ def list_delivery_rows(
     db: Session,
     *,
     id_revisoes: set[int],
+    date_descending: bool = False,
 ) -> list[tuple[EntregaDiaria, Localidade]]:
     if not id_revisoes:
         return []
@@ -418,7 +455,9 @@ def list_delivery_rows(
         .join(Localidade, Localidade.id_localidade == EntregaDiaria.id_localidade)
         .where(EntregaDiaria.id_lancamento_revisao.in_(id_revisoes))
         .order_by(
-            EntregaDiaria.data_entrega,
+            EntregaDiaria.data_entrega.desc()
+            if date_descending
+            else EntregaDiaria.data_entrega.asc(),
             Localidade.nome_localidade,
             EntregaDiaria.id_entrega_diaria,
         )

@@ -158,12 +158,17 @@ def _build_details(
     db: Session,
     *,
     launch_rows: list[repository.LaunchRevisionRow],
+    date_descending: bool = False,
 ) -> list[DeliveryLaunchDetail]:
     if not launch_rows:
         return []
 
     revision_ids = {revision.id_lancamento_revisao for _, revision, _ in launch_rows}
-    item_rows = repository.list_delivery_rows(db, id_revisoes=revision_ids)
+    item_rows = repository.list_delivery_rows(
+        db,
+        id_revisoes=revision_ids,
+        date_descending=date_descending,
+    )
     delivery_ids = {delivery.id_entrega_diaria for delivery, _ in item_rows}
     feedback_counts = feedback_service.feedback_counts_by_items(
         db,
@@ -485,6 +490,7 @@ def list_drafts(
     grupo_motivo: str | None,
     tipo_operacao: str | None,
     criado_por: int | None,
+    ordenacao: str = "criacao_desc",
     limit: int,
     offset: int,
 ) -> DeliveryLaunchPage:
@@ -505,10 +511,15 @@ def list_drafts(
             grupo_motivo=grupo_motivo,
             tipo_operacao=tipo_operacao,
             criado_por=criado_por,
+            ordenacao=ordenacao,
             limit=limit,
             offset=offset,
         )
-        details = _build_details(db, launch_rows=rows)
+        details = _build_details(
+            db,
+            launch_rows=rows,
+            date_descending=(ordenacao == "data_desc"),
+        )
         summaries = []
         for detail in details:
             dates = [item.data_entrega for item in detail.itens]

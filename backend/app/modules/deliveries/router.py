@@ -64,6 +64,7 @@ def get_deliveries(
     ] | None = None,
     tipo_operacao: Literal["ENTREGA", "COLETA"] | None = None,
     criado_por: int | None = Query(default=None, ge=1),
+    ordenacao: Literal["data_desc", "data_asc", "criacao_desc"] = "criacao_desc",
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ) -> DeliveryLaunchPage:
@@ -80,6 +81,7 @@ def get_deliveries(
         grupo_motivo=grupo_motivo,
         tipo_operacao=tipo_operacao,
         criado_por=criado_por,
+        ordenacao=ordenacao,
         limit=limit,
         offset=offset,
     )

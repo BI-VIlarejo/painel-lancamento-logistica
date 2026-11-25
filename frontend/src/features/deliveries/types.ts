@@ -154,6 +154,8 @@ export type DeliveryEvent = {
   comentario: string | null;
 };
 
+export type DeliveryHistorySort = "data_desc" | "data_asc" | "criacao_desc";
+
 export type DeliveryHistoryFilters = {
   estado?: DeliveryStatus | "TODOS" | "LANÇADO";
   data_de?: string;
@@ -164,6 +166,7 @@ export type DeliveryHistoryFilters = {
   grupo_motivo?: NonDeliveryReasonGroup;
   tipo_operacao?: "ENTREGA" | "COLETA";
   criado_por?: number;
+  ordenacao?: DeliveryHistorySort;
   limit?: number;
   offset?: number;
 };

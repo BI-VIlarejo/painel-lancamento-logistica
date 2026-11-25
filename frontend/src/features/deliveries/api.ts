@@ -20,6 +20,7 @@ function queryFrom(filters: DeliveryHistoryFilters): string {
   if (filters.grupo_motivo) params.set("grupo_motivo", filters.grupo_motivo);
   if (filters.tipo_operacao) params.set("tipo_operacao", filters.tipo_operacao);
   if (filters.criado_por) params.set("criado_por", String(filters.criado_por));
+  if (filters.ordenacao) params.set("ordenacao", filters.ordenacao);
   params.set("limit", String(filters.limit ?? 50));
   params.set("offset", String(filters.offset ?? 0));
   return params.toString();
