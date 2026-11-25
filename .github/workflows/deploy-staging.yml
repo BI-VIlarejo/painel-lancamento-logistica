@@ -50,7 +50,13 @@ jobs:
         id: runner_ip
         shell: bash
         run: |
-          runner_ip="$(curl --fail --silent --show-error https://checkip.amazonaws.com)"
+          set -euo pipefail
+          runner_ip="$(curl -4 --fail --silent --show-error --max-time 15 https://checkip.amazonaws.com || curl -4 --fail --silent --show-error --max-time 15 https://api.ipify.org)"
+          runner_ip="$(printf '%s' "$runner_ip" | tr -d '[:space:]')"
+          if ! [[ "$runner_ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Failed to resolve runner IPv4 address: '$runner_ip'" >&2
+            exit 1
+          fi
           echo "cidr=${runner_ip}/32" >> "$GITHUB_OUTPUT"
 
       - name: Temporarily allow SSH from this runner
@@ -77,6 +83,23 @@ jobs:
             exit 1
           fi
 
+      - name: Wait for SSH port to become reachable
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if timeout 3 bash -c "exec 3<>/dev/tcp/\"\$1\"/22" _ "$EC2_HOST" 2>/dev/null; then
+              echo "SSH port 22 is reachable (attempt ${attempt}/12)."
+              exit 0
+            fi
+            echo "Waiting for SSH port 22 to become reachable (attempt ${attempt}/12)..." >&2
+            sleep 3
+          done
+          echo "SSH port 22 did not respond after 12 attempts. Check if the EC2 instance is running, if EC2_HOST matches its current public IPv4, and if EC2_SECURITY_GROUP_ID is attached to the instance." >&2
+          exit 1
+
       - name: Prepare deployment directory on EC2
         uses: appleboy/ssh-action@v1.2.5
         with:
@@ -84,6 +107,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          timeout: 45s
           envs: EC2_DEPLOY_DIR
           script: mkdir -p "$EC2_DEPLOY_DIR"
         env:
@@ -96,6 +120,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          timeout: 45s
           source: deploy/ec2/compose.yaml,deploy/ec2/nginx.conf
           target: ${{ secrets.EC2_DEPLOY_DIR }}
           strip_components: 2
@@ -107,13 +132,15 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           fingerprint: ${{ secrets.EC2_HOST_FINGERPRINT }}
+          timeout: 45s
           envs: EC2_DEPLOY_DIR,GITHUB_TOKEN,GITHUB_ACTOR,IMAGE_TAG
           script: |
             set -eu
+            trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
             cd "$EC2_DEPLOY_DIR"
             printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
             IMAGE_TAG="$IMAGE_TAG" docker compose --project-name logistica-staging -f compose.yaml pull
-            IMAGE_TAG="$IMAGE_TAG" docker compose --project-name logistica-staging -f compose.yaml up -d --no-build --force-recreate --remove-orphans
+            IMAGE_TAG="$IMAGE_TAG" docker compose --project-name logistica-staging -f compose.yaml up -d --no-build --force-recreate --remove-orphans --wait
         env:
           EC2_DEPLOY_DIR: ${{ secrets.EC2_DEPLOY_DIR }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
