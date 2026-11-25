@@ -194,7 +194,12 @@ def get_carrier_driver(
     return db.scalar(statement)
 
 
-def _confirmed_delivery_rows_statement(*, id_motorista: int, data_servico: date):
+def _confirmed_delivery_rows_statement(
+    *,
+    id_motorista: int,
+    data_servico: date,
+    codigo_pessoa: str | None = None,
+):
     """Monta a consulta base apenas com itens da revisão vigente e confirmada."""
     current_revision = aliased(LancamentoRevisao)
     any_revision = aliased(LancamentoRevisao)
@@ -206,7 +211,7 @@ def _confirmed_delivery_rows_statement(*, id_motorista: int, data_servico: date)
     )
     city = func.coalesce(func.nullif(func.trim(Localidade.cidade), ""), Localidade.nome_localidade)
     delivery_quantity = EntregaDiaria.quantidade_realizada
-    return (
+    statement = (
         select(
             EntregaDiaria.id_entrega_diaria.label("id_entrega_diaria"),
             city.label("cidade"),
@@ -229,8 +234,19 @@ def _confirmed_delivery_rows_statement(*, id_motorista: int, data_servico: date)
         )
         .join(Setor, Setor.id_setor == Lancamento.id_setor)
         .join(Localidade, Localidade.id_localidade == EntregaDiaria.id_localidade)
+    )
+    if codigo_pessoa is not None:
+        statement = statement.join(
+            Pessoa,
+            Pessoa.id_pessoa == EntregaParticipante.id_pessoa,
+        )
+        driver_filter = Pessoa.codigo_pessoa == codigo_pessoa
+    else:
+        driver_filter = EntregaParticipante.id_pessoa == id_motorista
+    return (
+        statement
         .where(
-            EntregaParticipante.id_pessoa == id_motorista,
+            driver_filter,
             EntregaParticipante.papel_participante == "MOTORISTA",
             EntregaDiaria.data_entrega == data_servico,
             EntregaDiaria.tipo_operacao == "ENTREGA",
@@ -256,9 +272,13 @@ def get_driver_delivery_summary(
     data_servico: date,
 ) -> tuple[str, list[str], int, int, int, Decimal | None]:
     """Soma volumes, pesos e avarias das Entregas confirmadas."""
+    codigo_pessoa = db.scalar(
+        select(Pessoa.codigo_pessoa).where(Pessoa.id_pessoa == id_motorista)
+    )
     delivery_rows = _confirmed_delivery_rows_statement(
         id_motorista=id_motorista,
         data_servico=data_servico,
+        codigo_pessoa=codigo_pessoa,
     ).subquery()
     city_column = delivery_rows.c.cidade
     city_rows = db.execute(

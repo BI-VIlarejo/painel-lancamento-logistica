@@ -54,6 +54,25 @@ type Props = {
   onUpdated?: (freight: FreightResponse) => void;
 };
 
+function normalizeAreaName(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferJustInTimeZones(cities: string[], options: FreightTariffOptions): string[] {
+  const normalizedCities = new Set(cities.map(normalizeAreaName).filter(Boolean));
+  if (normalizedCities.size === 0) return [];
+  const matching = options.zonas_just_in_time
+    .flatMap((region) => region.subzonas)
+    .filter((zone) => zone.areas.split(",").some((area) => normalizedCities.has(normalizeAreaName(area))))
+    .map((zone) => zone.codigo);
+  return [...new Set(matching)];
+}
+
 function emptyValues(options: FreightTariffOptions): FormValues {
   return {
     data_servico: localDateValue(),
@@ -205,7 +224,7 @@ function payloadFromValues(values: FormValues, jitZoneNames: string[] = []): Fre
     valor_nota: invoice,
     valor_frete_bruto: gross,
     valor_avaria: damage ?? 0,
-    quantidade_avarias: values.tipo_transporte === "AGREGADO" ? damageCount : 0,
+    quantidade_avarias: damageCount,
     nome_cliente: values.nome_cliente.trim() || null,
     codigo_cliente: values.codigo_cliente.trim() || null,
     observacao: values.observacao.trim() || null,
@@ -256,7 +275,10 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
     }
     return initialFreight ? valuesFromFreight(initialFreight) : emptyValues(options);
   });
-  const preserveSummaryFor = useRef(restored || initialFreight ? `${values.data_servico}:${values.id_motorista_agregado}` : "");
+  const initialDriverId = values.tipo_transporte === "AGREGADO"
+    ? values.id_motorista_agregado
+    : values.id_motorista_transportadora;
+  const preserveSummaryFor = useRef(restored || initialFreight ? `${values.tipo_transporte}:${values.data_servico}:${initialDriverId}` : "");
   const [aggregateDrivers, setAggregateDrivers] = useState<FreightAggregateDriverOption[]>([]);
   const [driversLoading, setDriversLoading] = useState(false);
   const [driversError, setDriversError] = useState("");
@@ -343,13 +365,18 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
     return () => { active = false; };
   }, [values.data_servico, values.tipo_transporte]);
 
+  const selectedDriverId = values.tipo_transporte === "AGREGADO"
+    ? values.id_motorista_agregado
+    : values.id_motorista_transportadora;
+
   useEffect(() => {
-    const idMotorista = Number(values.id_motorista_agregado);
-    if (values.tipo_transporte !== "AGREGADO" || !Number.isInteger(idMotorista) || idMotorista < 1) {
+    const idMotorista = Number(selectedDriverId);
+    if (!Number.isInteger(idMotorista) || idMotorista < 1) {
       setDeliverySummary(null);
       setSummaryError("");
       return;
     }
+    const transportType = values.tipo_transporte;
     let active = true;
     setDeliverySummary(null);
     setSummaryLoading(true);
@@ -358,20 +385,61 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
       .then((summary) => {
         if (!active) return;
         setDeliverySummary(summary);
-        const summaryKey = `${summary.data_servico}:${summary.id_motorista}`;
+        const summaryKey = `${transportType}:${summary.data_servico}:${summary.id_motorista}`;
         if (preserveSummaryFor.current === summaryKey) {
           preserveSummaryFor.current = "";
           return;
         }
-        setValues((current) => summary.quantidade_registros > 0 && current.data_servico === summary.data_servico
-          && current.id_motorista_agregado === String(summary.id_motorista)
-          ? { ...current, rota_cidade: summary.rota_cidade, quantidade_entregas: String(summary.quantidade_entregas), peso_kg: summary.peso_total_kg === null || Number(summary.peso_total_kg) <= 0 ? current.peso_kg : String(summary.peso_total_kg), quantidade_avarias: String(summary.quantidade_avarias), valor_frete_bruto: "" }
-          : current);
+        setValues((current) => {
+          const currentDriverId = current.tipo_transporte === "AGREGADO"
+            ? current.id_motorista_agregado
+            : current.id_motorista_transportadora;
+          if (
+            summary.quantidade_registros <= 0
+            || current.tipo_transporte !== transportType
+            || current.data_servico !== summary.data_servico
+            || currentDriverId !== String(summary.id_motorista)
+          ) {
+            return current;
+          }
+          const nextWeight = summary.peso_total_kg === null || Number(summary.peso_total_kg) <= 0
+            ? current.peso_kg
+            : String(summary.peso_total_kg);
+          if (current.codigo_fonte_tarifa === "JUST_IN_TIME") {
+            const inferredCodes = inferJustInTimeZones(summary.cidades, options);
+            const allJitZones = options.zonas_just_in_time.flatMap((region) => region.subzonas);
+            const inferredNames = allJitZones
+              .filter((zone) => inferredCodes.includes(zone.codigo))
+              .map((zone) => zone.nome);
+            return {
+              ...current,
+              ...(inferredCodes.length > 0
+                ? {
+                    codigos_zonas_jit: inferredCodes,
+                    codigo_zona_jit: inferredCodes[0] ?? "",
+                    rota_cidade: inferredNames.length > 1 ? "JUST IN TIME" : inferredNames[0] ?? summary.rota_cidade,
+                  }
+                : { rota_cidade: summary.rota_cidade }),
+              quantidade_entregas: String(summary.quantidade_entregas),
+              peso_kg: nextWeight,
+              quantidade_avarias: String(summary.quantidade_avarias),
+              valor_frete_bruto: "",
+            };
+          }
+          return {
+            ...current,
+            rota_cidade: summary.rota_cidade,
+            quantidade_entregas: String(summary.quantidade_entregas),
+            peso_kg: nextWeight,
+            quantidade_avarias: String(summary.quantidade_avarias),
+            valor_frete_bruto: "",
+          };
+        });
       })
       .catch((loadError: unknown) => { if (active) setSummaryError(messageFromApiError(loadError)); })
       .finally(() => { if (active) setSummaryLoading(false); });
     return () => { active = false; };
-  }, [values.data_servico, values.id_motorista_agregado, values.tipo_transporte]);
+  }, [values.data_servico, selectedDriverId, values.tipo_transporte, options]);
 
   const update = <K extends keyof FormValues>(key: K, value: FormValues[K]) => {
     const resetGross = key !== "valor_frete_bruto" && key !== "valor_avaria" && key !== "quantidade_avarias" && key !== "nome_cliente" && key !== "codigo_cliente" && key !== "observacao";
@@ -394,11 +462,12 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
   const kmInitial = numericValue(values.km_inicial);
   const kmFinal = numericValue(values.km_final);
   const kmRun = kmInitial !== null && kmFinal !== null && kmFinal >= kmInitial ? kmFinal - kmInitial : null;
-  const aggregateSummaryMatches = deliverySummary !== null
-    && deliverySummary.id_motorista === Number(values.id_motorista_agregado)
+  const summaryMatches = deliverySummary !== null
+    && deliverySummary.id_motorista === Number(selectedDriverId)
     && deliverySummary.data_servico === values.data_servico;
-  const aggregateWeight = aggregateSummaryMatches ? numericValue(deliverySummary.peso_total_kg) : null;
-  const deliveryWeightAvailable = aggregateSummaryMatches && aggregateWeight !== null && aggregateWeight > 0;
+  const aggregateSummaryMatches = values.tipo_transporte === "AGREGADO" && summaryMatches;
+  const summaryWeight = summaryMatches ? numericValue(deliverySummary.peso_total_kg) : null;
+  const deliveryWeightAvailable = summaryMatches && summaryWeight !== null && summaryWeight > 0;
   const manuallyEnteredWeight = numericValue(values.peso_kg);
   const manuallyEnteredWeightAvailable = manuallyEnteredWeight !== null && manuallyEnteredWeight > 0;
   const aggregateSummaryReady = values.tipo_transporte !== "AGREGADO"
@@ -571,6 +640,9 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
                 codigo_fonte_tarifa: selected?.codigo_transportadora ?? "",
                 nome_transportador: selected?.nome_transportadora ?? "",
                 rota_cidade: "",
+                quantidade_entregas: "0",
+                peso_kg: "0",
+                quantidade_avarias: "0",
                 codigo_zona_jit: "",
                 codigos_zonas_jit: [],
                 adicionais_jit: [],
@@ -627,11 +699,16 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
               <div className={cx(styles, "locked-selection")}>
                 {selectedJitZoneNames.length ? selectedJitZoneNames.join(", ") : "Nenhuma zona selecionada"}
               </div>
+              {summaryError && <small role="alert">{summaryError}</small>}
+              {summaryMatches && deliverySummary.cidades.length > 0 && <small>Cidades nas Entregas: {deliverySummary.cidades.join(", ")}</small>}
               <small>Marque abaixo todas as zonas atendidas por este serviço.</small>
             </div>
           ) : values.codigo_fonte_tarifa === "PAULO_CRUZ" ? (
             <label className={cx(styles, "field")} htmlFor={routeId}>Cidade / rota
-              <input id={routeId} value={values.rota_cidade} onChange={(event) => update("rota_cidade", event.target.value)} required minLength={2} maxLength={160} placeholder="Ex.: Macaé — região serrana" disabled={busy} />
+              <input id={routeId} value={values.rota_cidade} onChange={(event) => update("rota_cidade", event.target.value)} required minLength={2} maxLength={160} placeholder="Ex.: Macaé — região serrana" disabled={busy || summaryLoading} />
+              {summaryError && <small role="alert">{summaryError}</small>}
+              {summaryMatches && deliverySummary.cidades.length > 1 && <small>Cidades consideradas: {deliverySummary.cidades.join(", ")}</small>}
+              <small>{summaryMatches && deliverySummary.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Informe a rota do frete."}</small>
             </label>
           ) : (
             <div className={cx(styles, "field")}>
@@ -746,12 +823,12 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
         </div>
         <div className={cx(styles, "field-grid", "field-grid-two")}>
           <label className={cx(styles, "field")} htmlFor={deliveriesId}>Quantidade de entregas
-            <input id={deliveriesId} type="number" min="0" step="1" value={values.quantidade_entregas} onChange={(event) => update("quantidade_entregas", event.target.value)} required disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
-            {values.tipo_transporte === "AGREGADO" && <small>{deliverySummary?.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Informe a quantidade manualmente."}</small>}
+            <input id={deliveriesId} type="number" min="0" step="1" value={values.quantidade_entregas} onChange={(event) => update("quantidade_entregas", event.target.value)} required disabled={busy || summaryLoading || (values.tipo_transporte === "AGREGADO" && !aggregateSummaryMatches)} />
+            <small>{summaryMatches && deliverySummary.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Informe a quantidade manualmente."}</small>
           </label>
           <label className={cx(styles, "field")} htmlFor={weightId}>Peso total (kg)
-            <input id={weightId} inputMode="decimal" type="text" value={values.peso_kg} onChange={(event) => update("peso_kg", event.target.value)} required disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
-            {values.tipo_transporte === "AGREGADO" && <small>{deliveryWeightAvailable ? "Preenchido pelas Entregas; confira e altere se necessário." : "Sem peso nas Entregas? Informe o total manualmente."}</small>}
+            <input id={weightId} inputMode="decimal" type="text" value={values.peso_kg} onChange={(event) => update("peso_kg", event.target.value)} required disabled={busy || summaryLoading || (values.tipo_transporte === "AGREGADO" && !aggregateSummaryMatches)} />
+            <small>{deliveryWeightAvailable ? "Preenchido pelas Entregas; confira e altere se necessário." : "Sem peso nas Entregas? Informe o total manualmente."}</small>
           </label>
           <label className={cx(styles, "field")} htmlFor={invoiceId}>
             <span className={cx(styles, "field-label-row")}><span>Valor da nota</span>{values.codigo_fonte_tarifa === "AGREGADOS_CD" ? <span className={cx(styles, "required-label")}>Obrigatório</span> : <span className={cx(styles, "optional-label")}>Opcional</span>}</span>
@@ -767,8 +844,8 @@ export function FreightForm({ options, onCreated, initialFreight, onUpdated }: P
                 : "O sistema calcula o valor ao simular. Se não houver tarifa automática, informe o valor correto aqui."}</small>
           </label>
           <label className={cx(styles, "field")} htmlFor={damageCountId}>Quantidade de avarias
-            <input id={damageCountId} type="number" min="0" step="1" value={values.quantidade_avarias} onChange={(event) => update("quantidade_avarias", event.target.value)} readOnly={values.tipo_transporte !== "AGREGADO"} disabled={busy || (values.tipo_transporte === "AGREGADO" && (!aggregateSummaryMatches || summaryLoading))} />
-            <small>{values.tipo_transporte === "AGREGADO" ? deliverySummary?.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Informe a quantidade manualmente." : "Não há motorista vinculado para buscar ocorrências de Entrega."}</small>
+            <input id={damageCountId} type="number" min="0" step="1" value={values.quantidade_avarias} onChange={(event) => update("quantidade_avarias", event.target.value)} disabled={busy || summaryLoading || (values.tipo_transporte === "AGREGADO" && !aggregateSummaryMatches)} />
+            <small>{summaryMatches && deliverySummary.quantidade_registros ? "Preenchida pelas Entregas; confira e altere se necessário." : "Informe a quantidade manualmente."}</small>
           </label>
           <label className={cx(styles, "field")} htmlFor={damageId}>
             <span className={cx(styles, "field-label-row")}><span>Valor da Avaria (R$)</span><span className={cx(styles, "optional-label")}>Se houver</span></span>

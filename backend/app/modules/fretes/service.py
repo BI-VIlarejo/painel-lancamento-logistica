@@ -829,13 +829,38 @@ def _prepare_freight_payload(
             raise NotFoundError(
                 "O motorista não está ativo e vinculado à transportadora na data do serviço."
             )
-        return (
-            payload.model_copy(update={"quantidade_avarias": 0}),
-            {
-                "id_motorista_transportadora": driver.id_pessoa,
-                "nome_motorista_transportadora": driver.nome_exibicao,
-            },
+        route, cities, deliveries, damages, delivery_rows, weight = (
+            repository.get_driver_delivery_summary(
+                db,
+                id_motorista=driver.id_pessoa,
+                data_servico=payload.data_servico,
+            )
         )
+        delivery_weight_available = weight is not None and weight > 0
+        source_detail: dict[str, object] = {
+            "id_motorista_transportadora": driver.id_pessoa,
+            "nome_motorista_transportadora": driver.nome_exibicao,
+            "data_entregas_consultadas": payload.data_servico.isoformat(),
+            "cidades_entregas": cities,
+            "quantidade_entregas_origem": deliveries,
+            "quantidade_avarias_origem": damages,
+            "quantidade_registros_entrega": delivery_rows,
+            "peso_total_kg_origem": str(weight) if weight is not None else None,
+            "peso_total_kg_usado": str(payload.peso_kg),
+            "peso_informado_manualmente": (
+                not delivery_weight_available or payload.peso_kg != weight
+            ),
+            "rota_cidade_origem": route,
+            "dados_alterados_no_frete": bool(delivery_rows)
+            and (
+                payload.rota_cidade != route
+                or payload.quantidade_entregas != deliveries
+                or payload.quantidade_avarias != damages
+                or (delivery_weight_available and payload.peso_kg != weight)
+            ),
+            "dados_informados_manualmente": delivery_rows == 0,
+        }
+        return payload, source_detail
     if payload.tipo_transporte != "AGREGADO":
         return payload.model_copy(update={"quantidade_avarias": 0}), None
 

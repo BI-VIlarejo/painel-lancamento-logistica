@@ -617,3 +617,196 @@ class FreightServiceTests(TestCase):
         self.assertEqual(updated_normal.carro_apoio, "KIA_BONGO")
         self.assertEqual(updated_normal.valor_frete_bruto, Decimal("1450.00"))
         self.assertEqual(updated_normal.valor_frete_pago, Decimal("1434.00"))
+
+
+class CarrierDeliverySummaryTests(TestCase):
+    def test_independent_carrier_driver_loads_support_deliveries_across_person_versions(self):
+        from datetime import datetime
+        from app.modules.catalogs.models import Localidade, MotivoNaoEntrega, Pessoa, Setor
+        from app.modules.deliveries.models import (
+            EntregaDiaria,
+            EntregaMotivo,
+            EntregaParticipante,
+            FormularioVersao,
+            Lancamento,
+            LancamentoRevisao,
+        )
+
+        engine, db = database()
+        try:
+            now = datetime(2026, 11, 3, 10, 0, 0)
+            db.add(
+                Setor(
+                    id_setor=20,
+                    codigo="SUPORTE",
+                    nome="Suporte",
+                    ativo=True,
+                    criado_em=now,
+                    atualizado_em=now,
+                )
+            )
+            db.add(
+                Localidade(
+                    id_localidade=1,
+                    codigo_localidade="MACAE",
+                    nome_localidade="Macaé",
+                    tipo_localidade="LOJA",
+                    cidade="Macaé",
+                    uf="RJ",
+                    ativo=True,
+                    sincronizado_em=now,
+                )
+            )
+            db.add(
+                MotivoNaoEntrega(
+                    id_motivo_nao_entrega=1,
+                    codigo_motivo="AVARIA",
+                    descricao_motivo="Avaria",
+                    grupo_motivo="TRANSPORTE_TERCEIRIZADO",
+                    ativo=True,
+                    vigente_desde=date(2026, 1, 1),
+                    vigente_ate=None,
+                    criado_por=1,
+                    criado_em=now,
+                    atualizado_em=now,
+                )
+            )
+            # Versão anterior do mesmo motorista Paulo Cruz (mesmo codigo_pessoa)
+            db.add(
+                Pessoa(
+                    id_pessoa=99,
+                    codigo_pessoa="00000000-0000-0000-0000-000000000002",
+                    sistema_origem=None,
+                    codigo_pessoa_origem=None,
+                    nome_exibicao="Motorista Paulo Cruz Teste",
+                    tipo_funcao="MOTORISTA",
+                    tipo_transporte_entrega="TERCEIRIZADA",
+                    modalidade_terceirizada="TRANSPORTADORA_INDEPENDENTE",
+                    codigo_transportadora_independente="PAULO_CRUZ",
+                    ativo=False,
+                    vigente_desde=date(2025, 1, 1),
+                    vigente_ate=date(2026, 1, 1),
+                    criado_por=1,
+                    criado_em=now,
+                    atualizado_em=now,
+                )
+            )
+            db.add(
+                FormularioVersao(
+                    id_formulario_versao=1,
+                    id_setor=20,
+                    codigo_formulario="ENTREGAS_DIARIAS",
+                    versao=1,
+                    hash_contrato="a" * 64,
+                    status="PUBLICADO",
+                    vigente_desde=datetime(2026, 1, 1, 0, 0, 0),
+                    criado_por=1,
+                    criado_em=now,
+                    publicado_por=1,
+                    publicado_em=now,
+                )
+            )
+            launch = Lancamento(
+                id_lancamento=1,
+                codigo_lancamento=str(uuid4()),
+                id_setor=20,
+                chave_idempotencia=str(uuid4()),
+                criado_por=1,
+                criado_em=now,
+                atualizado_em=now,
+            )
+            db.add(launch)
+            db.flush()
+            revision = LancamentoRevisao(
+                id_lancamento=launch.id_lancamento,
+                codigo_revisao=str(uuid4()),
+                id_formulario_versao=1,
+                numero_revisao=1,
+                chave_idempotencia=str(uuid4()),
+                estado="ENVIADA",
+                hash_conteudo="b" * 64,
+                criado_por=1,
+                criado_em=now,
+                enviado_por=1,
+                enviado_em=now,
+            )
+            db.add(revision)
+            db.flush()
+            delivery = EntregaDiaria(
+                id_lancamento_revisao=revision.id_lancamento_revisao,
+                codigo_item_lancamento=str(uuid4()),
+                tipo_operacao="ENTREGA",
+                data_entrega=date(2026, 11, 3),
+                id_localidade=1,
+                quantidade_realizada=14,
+                quantidade_nao_realizada=1,
+                quantidade_coleta_realizada=0,
+                quantidade_coleta_nao_realizada=0,
+                peso_total_kg=Decimal("1850.500"),
+                criado_em=now,
+                atualizado_em=now,
+            )
+            db.add(delivery)
+            db.flush()
+            db.add(
+                EntregaParticipante(
+                    id_entrega_diaria=delivery.id_entrega_diaria,
+                    id_pessoa=99,
+                    papel_participante="MOTORISTA",
+                    ordem=1,
+                )
+            )
+            db.add(
+                EntregaMotivo(
+                    id_entrega_diaria=delivery.id_entrega_diaria,
+                    id_motivo_nao_entrega=1,
+                    tipo_operacao="ENTREGA",
+                    quantidade=1,
+                    codigo_cliente="12345",
+                    observacao="Caixa avariada",
+                )
+            )
+            db.commit()
+
+            summary = service.get_delivery_summary(
+                db,
+                data_servico=date(2026, 11, 3),
+                id_motorista=2,
+                access=access(),
+            )
+            self.assertEqual(summary.rota_cidade, "Macaé")
+            self.assertEqual(summary.cidades, ["Macaé"])
+            self.assertEqual(summary.quantidade_entregas, 14)
+            self.assertEqual(summary.quantidade_avarias, 1)
+            self.assertEqual(summary.quantidade_registros, 1)
+            self.assertEqual(summary.peso_total_kg, Decimal("1850.500"))
+
+            freight = service.create_freight(
+                db,
+                payload=payload(
+                    tipo_transporte="TRANSPORTADORA",
+                    id_motorista_agregado=None,
+                    id_motorista_transportadora=2,
+                    nome_transportador="Paulo Cruz",
+                    codigo_fonte_tarifa="PAULO_CRUZ",
+                    rota_cidade="Macaé",
+                    km_inicial=None,
+                    km_final=None,
+                    tipo_caminhao="CAMINHAO_3_4",
+                    quantidade_entregas=14,
+                    quantidade_avarias=1,
+                    peso_kg="1850.500",
+                ),
+                idempotency_key=uuid4(),
+                access=access(),
+            )
+            self.assertEqual(freight.rota_cidade, "Macaé")
+            self.assertEqual(freight.quantidade_entregas, 14)
+            self.assertEqual(freight.quantidade_avarias, 1)
+            origin = freight.detalhe_calculo["motorista_transportadora"]
+            self.assertEqual(origin["rota_cidade_origem"], "Macaé")
+            self.assertEqual(origin["quantidade_entregas_origem"], 14)
+            self.assertEqual(origin["quantidade_avarias_origem"], 1)
+        finally:
+            db.close()
+            engine.dispose()
