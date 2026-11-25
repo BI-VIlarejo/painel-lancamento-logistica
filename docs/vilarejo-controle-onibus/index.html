@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Vilarejo Ônibus">
+<title>Vilarejo · Controle do Ônibus</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--vb:#1d4f9c;--vbd:#123a78;--vr:#e8452f;--vo:#f59a23;--bg:#eef2f8;--ink:#101418;--mute:#5b6670;--line:#d5dbe0;--ok:#0a8f4e;--okbg:#e3f6ec;--no:#d3261b;--nobg:#fdeceb;--info:#c9650a;--infobg:#fff1e0}
+*{box-sizing:border-box;min-width:0}
+html{background:#123a78}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,system-ui,sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:"Inter Tight",Inter,sans-serif;margin:0;line-height:1.1}
+button{font-family:inherit}
+.logo{display:inline-flex;align-items:center;gap:8px;font:800 26px/1 "Inter Tight",Inter,sans-serif;color:#fff;letter-spacing:-.01em}
+.mk{position:relative;display:inline-block;width:34px;height:20px;flex:none}.mk:before,.mk:after{content:"";position:absolute;top:2px;width:15px;height:15px;transform:rotate(45deg);border-radius:2px}.mk:before{left:2px;background:var(--vr)}.mk:after{left:15px;background:var(--vo)}
+/* ---------- TERMINAL ---------- */
+#kiosk{position:fixed;inset:0;min-height:100vh;background:var(--vb);color:#fff;overflow:hidden;z-index:10}
+.kdeco{position:absolute;inset:0;width:100%;height:100%}
+.kbus{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 168px);width:min(92vw,520px)}
+@media(max-height:740px){.kbus{display:none}}
+.ktop{position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 12px) 16px 0;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ktop small{display:block;font:500 13px Inter;color:#dfe8ff;margin-top:4px}
+.kpill{position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 72px);background:rgba(10,30,70,.55);padding:7px 14px;border-radius:99px;font-weight:600;font-size:14px;white-space:nowrap;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
+.gear{width:44px;height:44px;flex:none;border-radius:50%;background:rgba(10,30,70,.45);border:0;color:#fff;display:grid;place-items:center;cursor:pointer}
+.ring{position:absolute;left:50%;top:calc(env(safe-area-inset-top) + 128px);width:min(60vw,34vh);aspect-ratio:3/4;transform:translateX(-50%);border-radius:50%;overflow:hidden;background:#0b1d3d;border:7px solid #fff;box-shadow:0 0 0 6px rgba(245,154,35,.9),0 18px 40px rgba(0,0,0,.35);transition:border-color .2s,box-shadow .2s}
+.ring video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1);opacity:0}
+.ring.live video{opacity:1}
+.ringbtn{position:absolute;inset:0;border:0;background:radial-gradient(circle at 50% 40%,#2a64bf,#0b1d3d);color:#fff;font:700 clamp(18px,5vw,24px)/1.2 "Inter Tight",Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:28px;cursor:pointer;text-align:center}
+.ringbtn svg{width:64px;height:64px;padding:16px;border-radius:50%;background:var(--vo);color:#14181c;box-sizing:content-box}
+.ring.live .ringbtn{display:none}
+.ringcount{position:absolute;left:0;right:0;bottom:12%;text-align:center;font:700 15px Inter;color:#fff;text-shadow:0 1px 4px #000;display:none}
+.ring.live .ringcount{display:block}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 6px rgba(245,154,35,.9),0 18px 40px rgba(0,0,0,.35)}50%{box-shadow:0 0 0 14px rgba(245,154,35,.55),0 18px 40px rgba(0,0,0,.35)}}
+#kiosk:not([class*=s-]) .ring:not(.live){animation:pulse 2.4s ease-in-out infinite}
+.endbtn{background:var(--no);color:#fff;border:0;border-radius:99px;padding:10px 14px;font:700 14px Inter;min-height:44px;cursor:pointer;display:none}
+.pass .endbtn{display:inline-block}
+.ktop .tr{display:flex;gap:8px;align-items:center}
+#kiosk.s-ok .ring{border-color:#35e08f;box-shadow:0 0 0 8px #0a8f4e,0 18px 40px rgba(0,0,0,.35)}
+#kiosk.s-no .ring{border-color:#ff8a80;box-shadow:0 0 0 8px #d3261b,0 18px 40px rgba(0,0,0,.35)}
+#kiosk.s-info .ring{border-color:#ffd08a;box-shadow:0 0 0 8px #d9730c,0 18px 40px rgba(0,0,0,.35)}
+.kmsg{position:absolute;left:12px;right:12px;bottom:calc(env(safe-area-inset-bottom) + 14px);border-radius:22px;padding:20px 16px;text-align:center;background:#fff;color:var(--vb);box-shadow:0 10px 30px rgba(0,0,0,.25);transition:background .2s}
+.kmsg h2{font-size:clamp(28px,7.5vw,52px)}
+.kmsg p{font-size:clamp(16px,4.2vw,22px);margin:6px 0 0;color:var(--mute)}
+.kmsg.ok,.kmsg.no,.kmsg.info{color:#fff}.kmsg.ok p,.kmsg.no p,.kmsg.info p{color:#fff}
+.kmsg.ok{background:var(--ok)}.kmsg.no{background:var(--no)}.kmsg.info{background:#d9730c}
+.kmsg img{width:80px;height:80px;border-radius:50%;border:3px solid #fff;object-fit:cover;margin-bottom:6px}
+.kover{position:absolute;inset:0;background:rgba(10,20,45,.94);display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:calc(env(safe-area-inset-top) + 24px) 24px 24px;text-align:center;overflow:auto}
+.kover.on{display:flex}
+.kover h2{font-size:clamp(26px,7vw,44px)}
+.kover p{margin:0;font-size:18px;color:#d5dbe0;max-width:520px}
+.note{font-size:14px}
+.bigbtn{min-height:60px;padding:14px 28px;border-radius:16px;border:0;font:700 20px "Inter Tight",Inter;cursor:pointer;width:min(420px,100%)}
+.bigbtn.yel{background:var(--vo);color:#14181c}.bigbtn.red{background:var(--no);color:#fff}.bigbtn.ghost{background:transparent;color:#fff;border:2px solid #7a8aa8}.bigbtn.wa{background:#1fae54;color:#fff}.bigbtn.blue{background:#fff;color:var(--vb)}
+.sumgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;width:min(420px,100%)}
+.sumgrid div{background:#1a2a4d;border-radius:14px;padding:12px}.sumgrid b{display:block;font:700 30px/1 "Inter Tight";color:var(--vo)}.sumgrid span{font-size:14px;color:#c9d1d8}
+/* ---------- GESTÃO ---------- */
+#admin{display:none}
+body.adm #admin{display:block}body.adm #kiosk{display:none}
+header{background:var(--vb);border-bottom:4px solid var(--vo);color:#fff;padding:calc(env(safe-area-inset-top) + 10px) max(4vw,12px) 10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:1000}
+.brand{display:flex;flex-direction:column;gap:2px}
+nav{display:flex;gap:4px;overflow-x:auto;width:100%}
+nav button{flex:none;background:transparent;color:#dfe8ff;border:0;padding:10px 12px;border-radius:8px;font:600 15px Inter;cursor:pointer;min-height:44px}
+nav button.on{background:var(--vo);color:#14181c}
+main{max-width:1240px;margin:0 auto;padding:16px max(3vw,12px) 60px}
+.view{display:none}.view.on{display:block}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+@media(max-width:820px){.g2{grid-template-columns:minmax(0,1fr)}}
+.btn{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:10px;padding:10px 14px;font:600 15px Inter;cursor:pointer;min-height:44px}
+.btn.pri{background:var(--vb);color:#fff;border-color:var(--vb)}
+.btn.yel{background:var(--vo);border-color:var(--vo);color:#14181c}
+.btn.red{color:var(--no);border-color:#f1b8b3}
+.btn.wa{background:#1fae54;border-color:#1fae54;color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--vo);outline-offset:2px}
+input,select{font:16px Inter;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff;min-height:44px;width:100%}
+label{font-size:14px;color:var(--mute);display:grid;gap:4px}
+.chk{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:15px}.chk input{width:22px;min-height:22px;height:22px;flex:none}
+.muted{color:var(--mute);font-size:14px}
+h2.t{font-size:30px;margin-bottom:12px}
+h3{font-size:18px;margin-bottom:10px}
+.pill{display:inline-block;padding:3px 10px;border-radius:99px;font-size:13px;font-weight:600;background:#eef1f3;white-space:nowrap}
+.pill.ok{background:var(--okbg);color:var(--ok)}.pill.no{background:var(--nobg);color:var(--no)}.pill.info{background:var(--infobg);color:var(--info)}.pill.drv{background:#e3ecfa;color:var(--vb)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}
+.kpi b{display:block;font:700 clamp(28px,5vw,42px)/1 "Inter Tight"}
+.kpi span{font-size:14px;color:var(--mute)}
+.kpi.big{background:var(--vb);color:#fff;border-color:var(--vb)}.kpi.big span{color:#dfe8ff}.kpi.big b{color:var(--vo)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+th{font-size:13px;color:var(--mute);font-weight:600}
+td.n{text-align:right;white-space:nowrap}.nw{white-space:nowrap}
+tr.sel{background:#fff1e0}
+.av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:#dde3e8;vertical-align:middle;flex:none}
+.who{display:flex;gap:8px;align-items:center}
+.bars{display:grid;gap:4px}
+.bar{display:grid;grid-template-columns:44px minmax(0,1fr) 30px;gap:8px;align-items:center;font-size:13px}
+.bar i{display:block;height:14px;background:var(--vo);border-radius:4px}
+.feed{max-height:380px;overflow:auto}
+.scroll{overflow-x:auto}
+.map{height:380px;border-radius:14px;border:1px solid var(--line);z-index:0}
+.names{font-size:14px;color:#3a444d}
+.modal{position:fixed;inset:0;background:rgba(10,14,18,.6);display:none;align-items:center;justify-content:center;z-index:2000;padding:12px}
+.modal.on{display:flex}
+.modal .card{width:min(560px,100%);max-height:94vh;overflow:auto}
+.cam{position:relative;background:#000;border-radius:14px;overflow:hidden;aspect-ratio:4/3;max-height:300px}
+.cam video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+.cam .hint{position:absolute;left:0;right:0;bottom:0;padding:10px;background:linear-gradient(transparent,rgba(0,0,0,.75));color:#fff;text-align:center;font-weight:600;font-size:14px}
+.shots{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}.shots img{width:64px;height:64px;border-radius:10px;object-fit:cover}
+.toast{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 18px);transform:translateX(-50%);background:#14181c;color:#fff;padding:12px 18px;border-radius:10px;z-index:3000;display:none;max-width:90vw}
+.empty{padding:20px;text-align:center;color:var(--mute)}
+@media(max-width:600px){table{font-size:13px}.stack thead{display:none}.stack tr{display:grid;padding-block:10px;border-bottom:1px solid var(--line)}.stack td{display:flow-root;border:0;padding:3px 0;padding-inline-start:7.5em;text-align:start}.stack td::before{content:attr(data-l);float:inline-start;width:7em;margin-inline-start:-7.5em;color:var(--mute)}.stack td:empty,.stack td.empty::before{display:none}.stack td.empty{padding-inline-start:0;text-align:center}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.printhead{display:none}
+.fbar{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+@media print{
+  @page{margin:14mm}
+  html,body{background:#fff!important}
+  #kiosk,header,.noprint,#v-painel,#v-loc,#v-func,#v-cfg,.toast,.modal{display:none!important}
+  #admin,#v-rel{display:block!important}
+  main{padding:0;max-width:none}
+  .printhead{display:block;border-bottom:3px solid #f59a23;padding-bottom:8px;margin-bottom:12px}
+  .printhead .logo{color:#1d4f9c}
+  .card{border:0;padding:0;margin:0 0 14px!important}
+  .kpis{grid-template-columns:repeat(4,1fr)}.kpi{padding:8px;border:1px solid #ccc}.kpi b{font-size:22px}
+  table{font-size:11px}
+  .stack thead{display:table-header-group!important}.stack tr{display:table-row!important}.stack td{display:table-cell!important;padding:5px 6px!important;border-bottom:1px solid #ddd!important}.stack td::before{display:none!important}
+  tr{break-inside:avoid}
+  .av{display:none}
+  .stack td.noprint,.stack th.noprint,th.noprint,td.noprint{display:none!important}
+  .names{font-size:10px}
+}
+</style>
+<script>new MutationObserver(()=>{for(const c of document.querySelectorAll('.stack td:not([data-l])')){let i=0,p=c;while(p=p.previousElementSibling)i+=p.colSpan;const h=c.closest('table').rows[0].cells[i];c.dataset.l=h?h.textContent:''}}).observe(document,{childList:true,subtree:true})</script>
+</head>
+<body>
+
+<!-- ================= TERMINAL (tela principal) ================= -->
+<section id="kiosk">
+  <svg class="kdeco" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+    <polygon points="0,20 50,66 100,20 100,31 50,77 0,31" fill="#e8452f"/>
+    <polygon points="0,31 50,77 100,31 100,35 50,81 0,35" fill="#f59a23"/>
+    <polygon points="72,0 100,0 100,16" fill="#f59a23" opacity=".9"/>
+    <polygon points="0,84 22,100 0,100" fill="#e8452f" opacity=".9"/>
+    <rect x="0" y="88" width="100" height="12" fill="#123a78"/>
+  </svg>
+  <svg class="kbus" viewBox="0 0 400 140" aria-hidden="true">
+    <defs><clipPath id="bb"><rect x="30" y="18" width="330" height="92" rx="18"/></clipPath></defs>
+    <rect x="0" y="122" width="400" height="18" fill="#0e2d5e"/>
+    <g fill="#fff" opacity=".7"><rect x="10" y="129" width="40" height="4" rx="2"/><rect x="90" y="129" width="40" height="4" rx="2"/><rect x="170" y="129" width="40" height="4" rx="2"/><rect x="250" y="129" width="40" height="4" rx="2"/><rect x="330" y="129" width="40" height="4" rx="2"/></g>
+    <ellipse cx="196" cy="122" rx="170" ry="6" fill="#000" opacity=".25"/>
+    <g clip-path="url(#bb)">
+      <rect x="30" y="18" width="330" height="92" fill="#fff"/>
+      <rect x="30" y="74" width="330" height="36" fill="#f59a23"/>
+      <rect x="30" y="68" width="330" height="6" fill="#e8452f"/>
+      <polygon points="240,74 300,74 270,110" fill="#e8452f"/>
+    </g>
+    <g fill="#1d4f9c"><rect x="46" y="30" width="40" height="30" rx="5"/><rect x="94" y="30" width="40" height="30" rx="5"/><rect x="142" y="30" width="40" height="30" rx="5"/><rect x="190" y="30" width="40" height="30" rx="5"/><rect x="238" y="30" width="40" height="30" rx="5"/></g>
+    <rect x="290" y="30" width="22" height="70" rx="4" fill="#1d4f9c" opacity=".85"/>
+    <path d="M322 30h22a10 10 0 0 1 10 10v28h-32z" fill="#9cc3ff"/>
+    <rect x="348" y="84" width="9" height="9" rx="2" fill="#ffd66b"/>
+    <text x="52" y="100" font-family="Inter Tight,Inter,sans-serif" font-weight="800" font-size="21" fill="#fff">Vilarejo</text>
+    <g transform="translate(145 84)"><rect x="2" y="2" width="11" height="11" rx="1.5" transform="rotate(45 7.5 7.5)" fill="#e8452f"/><rect x="12" y="2" width="11" height="11" rx="1.5" transform="rotate(45 17.5 7.5)" fill="#fff"/></g>
+    <g><circle cx="95" cy="112" r="15" fill="#1b1f24"/><circle cx="95" cy="112" r="6" fill="#c9d1d8"/><circle cx="300" cy="112" r="15" fill="#1b1f24"/><circle cx="300" cy="112" r="6" fill="#c9d1d8"/></g>
+  </svg>
+  <div class="ktop">
+    <div><span class="logo">Vilarejo<span class="mk"></span></span><small>Controle do ônibus</small></div>
+    <div class="tr"><button class="endbtn" id="btnEnd">Encerrar turno</button><button class="gear" id="btnAdmin" aria-label="Gestão">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button></div>
+  </div>
+  <span class="kpill" id="kTrip">Aguardando motorista</span>
+  <div class="ring" id="ring"><video id="video" autoplay muted playsinline></video><button class="ringbtn" id="ringBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span id="ringTxt">Toque aqui para registrar seu acesso</span></button><div class="ringcount" id="ringCount"></div></div>
+  <div class="kmsg" id="kmsg"><h2>Aproxime o rosto</h2><p>Olhe para a câmera</p></div>
+
+  <div class="kover" id="kReady">
+    <h2>Turno liberado</h2>
+    <p id="krSub"></p>
+    <button class="bigbtn yel" id="krGo">Abrir tela dos funcionários</button>
+  </div>
+
+  <div class="kover" id="kConfirm">
+    <h2 id="kcTitle">Encerrar a viagem?</h2>
+    <p id="kcMsg"></p>
+    <button class="bigbtn red" id="kcYes">Encerrar turno</button>
+    <button class="bigbtn ghost" id="kcNo">Continuar turno</button>
+  </div>
+
+  <div class="kover" id="kSummary">
+    <h2>Turno encerrado</h2>
+    <p id="ksSub"></p>
+    <div class="sumgrid" id="ksGrid"></div>
+    <button class="bigbtn wa" id="ksWa">Enviar relatório no WhatsApp</button>
+    <button class="bigbtn ghost" id="ksClose">Fechar</button>
+  </div>
+</section>
+
+<!-- ================= GESTÃO ================= -->
+<section id="admin">
+<header>
+  <div class="brand"><span class="logo">Vilarejo<span class="mk"></span></span><span style="font:500 13px Inter;color:#dfe8ff">Gestão do ônibus</span></div>
+  <button class="btn yel" id="btnKiosk">Voltar ao terminal</button>
+  <nav id="nav">
+    <button data-v="painel" class="on">Painel</button>
+    <button data-v="rel">Relatórios</button>
+    <button data-v="loc">Localização</button>
+    <button data-v="func">Cadastros</button>
+    <button data-v="cfg">Ajustes</button>
+  </nav>
+</header>
+<main>
+
+<section class="view on" id="v-painel">
+  <h2 style="font-size:28px;margin-bottom:12px">Hoje, <span id="pDate"></span></h2>
+  <div class="card" style="margin-bottom:14px" id="pTripCard"></div>
+  <div class="kpis" style="margin-bottom:14px">
+    <div class="kpi big"><b id="kBoard">0</b><span>a bordo agora</span></div>
+    <div class="kpi"><b id="kPeople">0</b><span>funcionários usaram hoje</span></div>
+    <div class="kpi"><b id="kRides">0</b><span>embarques hoje</span></div>
+    <div class="kpi"><b id="kTrips">0</b><span>viagens hoje</span></div>
+    <div class="kpi"><b id="kKm">0</b><span>km rodados hoje</span></div>
+    <div class="kpi"><b id="kDenied" style="color:var(--no)">0</b><span>acessos negados hoje</span></div>
+  </div>
+  <div class="grid g2">
+    <div class="card"><h3>Quem está no ônibus</h3><div class="scroll"><table class="stack"><thead><tr><th>Funcionário</th><th>Entrou</th><th>Tempo</th></tr></thead><tbody id="pBoard"></tbody></table></div></div>
+    <div class="card"><h3>Embarques por hora</h3><div class="bars" id="pHours"></div></div>
+  </div>
+  <div class="card" style="margin-top:14px"><h3>Movimento em tempo real</h3><div class="feed"><table class="stack"><thead><tr><th>Hora</th><th>Evento</th><th>Pessoa</th></tr></thead><tbody id="pFeed"></tbody></table></div></div>
+</section>
+
+<section class="view" id="v-rel">
+  <div class="printhead"><span class="logo">Vilarejo<span class="mk"></span></span><h2 style="margin:6px 0 2px">Relatório de viagens</h2><div id="phInfo" class="muted"></div></div>
+  <h2 class="t noprint">Relatório de viagens</h2>
+  <div class="card noprint" style="margin-bottom:14px">
+    <div class="fbar">
+      <label>Período<select id="rPer"><option value="hoje">Hoje</option><option value="ontem">Ontem</option><option value="7d" selected>Últimos 7 dias</option><option value="30d">Últimos 30 dias</option><option value="mes">Este mês</option><option value="custom">Escolher datas</option></select></label>
+      <label>De<input type="date" id="rFrom"></label>
+      <label>Até<input type="date" id="rTo"></label>
+      <label>Funcionário<select id="rUser"></select></label>
+      <label>Motorista<select id="rDrv"></select></label>
+    </div>
+    <div class="row" style="margin-top:12px"><button class="btn pri" id="btnPrint">Imprimir / salvar PDF</button><button class="btn" id="btnCsv">Exportar Excel (CSV)</button></div>
+  </div>
+  <div class="kpis" style="margin-bottom:14px">
+    <div class="kpi"><b id="rTrips">0</b><span>viagens</span></div>
+    <div class="kpi"><b id="rKm">0</b><span>km rodados</span></div>
+    <div class="kpi"><b id="rRides">0</b><span id="rRidesL">passageiros transportados</span></div>
+    <div class="kpi"><b id="rPeople">0</b><span id="rPeopleL">funcionários diferentes</span></div>
+  </div>
+  <div class="card scroll" id="rUserBox" style="margin-bottom:14px;display:none"><h3 id="rUserTitle"></h3><table class="stack"><thead><tr><th>Data</th><th>Viagem</th><th>Motorista</th><th>Subiu</th><th>Desceu</th><th>Tempo a bordo</th></tr></thead><tbody id="rUserList"></tbody></table></div>
+  <div class="card scroll" style="margin-bottom:14px"><h3>Viagens</h3><table class="stack"><thead><tr><th>Viagem</th><th>Motorista</th><th>Iniciou</th><th>Finalizou</th><th>KM</th><th>Passageiros</th><th>Nomes</th><th class="noprint"></th></tr></thead><tbody id="rList"></tbody></table></div>
+  <div class="card scroll"><h3>Uso por funcionário</h3><table class="stack"><thead><tr><th>Funcionário</th><th>Viagens</th><th>Dias com uso</th></tr></thead><tbody id="rByUser"></tbody></table></div>
+</section>
+
+<section class="view" id="v-loc">
+  <h2 class="t">Localização e trajetos</h2>
+  <div class="card" id="tDetail" style="margin-bottom:14px"></div>
+  <div class="card scroll"><h3>Escolha a viagem</h3><table class="stack"><thead><tr><th>Viagem</th><th>Motorista</th><th>Horário</th><th>KM</th><th>Passageiros</th><th></th></tr></thead><tbody id="tList"></tbody></table></div>
+</section>
+
+<section class="view" id="v-func">
+  <div class="row" style="justify-content:space-between;margin-bottom:12px">
+    <h2 style="font-size:30px">Cadastros</h2>
+    <div class="row"><input id="fSearch" placeholder="Buscar nome ou matrícula" style="width:220px"><button class="btn yel" id="btnNew">+ Novo cadastro</button></div>
+  </div>
+  <div class="card scroll"><table class="stack"><thead><tr><th>Nome</th><th>Tipo</th><th>Matrícula</th><th>Setor</th><th>Face</th><th>Situação</th><th>Usos (30 dias)</th><th></th></tr></thead><tbody id="fList"></tbody></table></div>
+</section>
+
+<section class="view" id="v-cfg">
+  <h2 class="t">Ajustes</h2>
+  <div class="grid g2">
+    <div class="card grid">
+      <label>Intervalo entre leituras do mesmo rosto (segundos) — vale para motorista, passageiro e acessos negados<input type="number" id="cCool" min="3" max="600"></label>
+      <label>WhatsApp que recebe o relatório (com DDD, só números)<input id="cWa" inputmode="numeric" placeholder="Ex.: 5511999998888"></label>
+      <label>Senha para entrar na gestão<input id="cPin" inputmode="numeric" placeholder="Deixe vazio para não pedir senha"></label>
+      <label>Nome da rota / ônibus<input id="cRoute"></label>
+      <label class="chk"><input type="checkbox" id="cNeedDrv"> Só liberar embarque depois que o motorista iniciar a viagem</label>
+      <label class="chk"><input type="checkbox" id="cDup"> Permitir a mesma face em mais de um cadastro (modo teste)</label>
+      <label class="chk"><input type="checkbox" id="cVoice"> Falar a mensagem em voz alta</label>
+      <button class="btn" id="btnTestSound">Testar som</button>
+      <label>Rigor do reconhecimento (menor = mais rígido) <input type="range" id="cTh" min="0.35" max="0.6" step="0.01"><span id="cThV"></span></label>
+    </div>
+    <div class="card grid" style="align-content:start">
+      <h3>Modo teste</h3>
+      <div class="row"><select id="simUser" style="flex:1 1 180px"></select><button class="btn" id="btnSim">Simular leitura</button><button class="btn red" id="btnSimNo">Simular desconhecido</button></div>
+      <h3 style="margin-top:8px">Dados</h3>
+      <button class="btn" id="btnDemo">Gerar dados de exemplo</button>
+      <button class="btn" id="btnBackup">Baixar backup (JSON)</button>
+      <label>Restaurar backup<input type="file" id="fRestore" accept=".json"></label>
+      <button class="btn red" id="btnWipe">Apagar todos os dados</button>
+      <p class="muted">Nesta fase de teste os dados ficam salvos só neste aparelho. Na versão com Supabase, a gestão vê o ônibus de qualquer lugar.</p>
+    </div>
+  </div>
+</section>
+</main>
+</section>
+
+<div class="modal" id="mUser"><div class="card grid">
+  <h3 id="mTitle">Novo cadastro</h3>
+  <label>Tipo<select id="uRole"><option value="func">Funcionário (passageiro)</option><option value="motorista">Motorista (inicia e encerra a viagem)</option></select></label>
+  <label>Nome completo<input id="uName"></label>
+  <div class="row"><label style="flex:1">Matrícula<input id="uMat"></label><label style="flex:1">Setor<input id="uSetor"></label></div>
+  <label>Situação<select id="uActive"><option value="1">Liberado</option><option value="0">Bloqueado</option></select></label>
+  <div>
+    <b>Cadastro da face</b>
+    <p class="muted" style="margin:2px 0 8px">Tire 3 fotos olhando para a câmera, com boa luz.</p>
+    <div class="cam"><video id="uVideo" autoplay muted playsinline></video><div class="hint" id="uHint">Câmera desligada</div></div>
+    <div class="row" style="margin-top:8px">
+      <button class="btn pri" id="uCap">Capturar foto</button>
+      <label class="btn" style="display:inline-flex;align-items:center;color:var(--ink)">Enviar foto<input type="file" id="uFile" accept="image/*" multiple hidden></label>
+      <button class="btn" id="uClear">Limpar fotos</button>
+    </div>
+    <div class="shots" id="uShots"></div>
+  </div>
+  <div class="row" style="justify-content:flex-end"><button class="btn" id="uCancel">Cancelar</button><button class="btn yel" id="uSave">Salvar</button></div>
+</div></div>
+
+<div class="modal" id="mPin"><div class="card grid" style="width:min(360px,100%)">
+  <h3>Senha da gestão</h3>
+  <input id="pinIn" type="password" inputmode="numeric" placeholder="Senha">
+  <div class="row" style="justify-content:flex-end"><button class="btn" id="pinNo">Cancelar</button><button class="btn yel" id="pinOk">Entrar</button></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/dist/face-api.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+{
+const MODEL_URL='https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
+const KEY='controle_onibus_v1';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,10)+Date.now().toString(36);
+const hm=t=>t?new Date(t).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'—';
+const dmh=t=>t?new Date(t).toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+const dmy=t=>new Date(t).toLocaleDateString('pt-BR');
+const dayKey=t=>{const d=new Date(t);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const dur=ms=>{if(ms==null||ms<0||isNaN(ms))return '—';const m=Math.round(ms/60000);return m<60?m+' min':Math.floor(m/60)+'h'+String(m%60).padStart(2,'0')};
+const kmn=m=>((m||0)/1000).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const km=m=>kmn(m)+' km';
+const gmap=l=>l?`https://www.google.com/maps?q=${(+l.lat).toFixed(6)},${(+l.lng).toFixed(6)}`:'';
+const locLink=l=>l?`<a href="${gmap(l)}" target="_blank" rel="noopener">ver no mapa</a>`:'<span class="muted">sem GPS</span>';
+const first=n=>String(n||'').split(' ')[0];
+function distM(a,b){const R=6371e3,r=Math.PI/180,dLa=(b.lat-a.lat)*r,dLo=(b.lng-a.lng)*r;const x=Math.sin(dLa/2)**2+Math.cos(a.lat*r)*Math.cos(b.lat*r)*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+
+// ---------- dados ----------
+let D;
+const defCfg={th:0.5,cool:10,voice:true,route:'Ônibus 01',pin:'',wa:'',needDriver:true,allowDup:true};
+function load(){try{D=JSON.parse(localStorage.getItem(KEY))}catch(e){D=null}
+  D=Object.assign({users:[],trips:[],rides:[],denied:[]},D||{});D.cfg=Object.assign({},defCfg,D.cfg||{});
+  D.users.forEach(u=>{if(!u.role)u.role='func'});D.trips.forEach(t=>{if(!t.track)t.track=[];if(t.dist==null)t.dist=0});}
+let saveT;
+function save(quiet){try{localStorage.setItem(KEY,JSON.stringify(D))}catch(e){toast('Memória do navegador cheia')}if(!quiet)renderAll();else{clearTimeout(saveT);saveT=setTimeout(renderLight,300)}}
+load();
+window.addEventListener('storage',e=>{if(e.key===KEY){load();renderAll()}});
+const userById=id=>D.users.find(u=>u.id===id);
+const activeTrip=()=>D.trips.find(t=>!t.end);
+const onBoard=()=>D.rides.filter(r=>!r.outAt);
+function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2800)}
+
+// ---------- som ----------
+function wav(notes){const sr=22050,s=[];for(const[f,ms]of notes){const n=Math.floor(sr*ms/1000);for(let i=0;i<n;i++){const env=Math.min(1,i/150,(n-i)/300);s.push(f?Math.sin(2*Math.PI*f*i/sr)*.7*env:0)}}
+  const b=new ArrayBuffer(44+s.length*2),v=new DataView(b),w=(o,t)=>{for(let i=0;i<t.length;i++)v.setUint8(o+i,t.charCodeAt(i))};
+  w(0,'RIFF');v.setUint32(4,36+s.length*2,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,s.length*2,true);
+  s.forEach((x,i)=>v.setInt16(44+i*2,Math.max(-1,Math.min(1,x))*32767,true));return URL.createObjectURL(new Blob([b],{type:'audio/wav'}))}
+const SND={silent:wav([[0,120]]),ok:wav([[660,130],[0,40],[990,220]]),info:wav([[990,130],[0,40],[660,220]]),no:wav([[260,280],[0,80],[260,380]])};
+const player=new Audio();player.setAttribute('playsinline','');
+let voice=null;
+function pickVoice(){try{const vs=speechSynthesis.getVoices();voice=vs.find(v=>/pt[-_]BR/i.test(v.lang)&&/Luciana|Felipe|Google/i.test(v.name))||vs.find(v=>/pt[-_]BR/i.test(v.lang))||vs.find(v=>/^pt/i.test(v.lang))||null}catch(e){}}
+if(window.speechSynthesis){pickVoice();speechSynthesis.onvoiceschanged=pickVoice}
+function utter(m){const u=new SpeechSynthesisUtterance(m);u.lang='pt-BR';if(voice)u.voice=voice;u.rate=1;u.volume=1;return u}
+function unlockAudio(){try{player.src=SND.silent;player.play().catch(()=>{})}catch(e){}
+  try{if(window.speechSynthesis){pickVoice();speechSynthesis.cancel();speechSynthesis.speak(utter(D.cfg.voice?'Terminal ativo':' '))}}catch(e){}}
+function beep(k){try{player.src=SND[k];player.currentTime=0;player.play().catch(()=>{})}catch(e){}}
+function speak(m){if(!D.cfg.voice||!window.speechSynthesis)return;try{if(speechSynthesis.speaking||speechSynthesis.pending)speechSynthesis.cancel();setTimeout(()=>{speechSynthesis.resume();speechSynthesis.speak(utter(m))},450)}catch(e){}}
+function feedback(kind,text){beep(kind);speak(text)}
+
+// ---------- GPS + trajeto ----------
+let lastLoc=null;
+function onPos(p){const c=p.coords;lastLoc={lat:+c.latitude.toFixed(6),lng:+c.longitude.toFixed(6),acc:Math.round(c.accuracy)};
+  const t=activeTrip();if(!t||c.accuracy>60)return;
+  const pt={lat:lastLoc.lat,lng:lastLoc.lng},tr=t.track,last=tr.length?{lat:tr[tr.length-1][0],lng:tr[tr.length-1][1]}:null,now=Date.now();
+  const d=last?distM(last,pt):0;
+  if(!last||d>=25||(now-tr[tr.length-1][2]>120000)){if(last&&d>=25&&d<3000)t.dist+=d;tr.push([pt.lat,pt.lng,now]);save(true)}}
+if(navigator.geolocation){try{navigator.geolocation.watchPosition(onPos,()=>{},{enableHighAccuracy:true,maximumAge:5000,timeout:20000})}catch(e){}}
+let wake=null;
+async function keepAwake(){try{if('wakeLock' in navigator&&document.visibilityState==='visible')wake=await navigator.wakeLock.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&started)keepAwake()});
+
+// ---------- viagens ----------
+function startTrip(driver){if(activeTrip())return activeTrip();const today=D.trips.filter(t=>dayKey(t.start)===dayKey(Date.now())).length;
+  const t={id:uid(),n:today+1,route:D.cfg.route,driverId:driver?driver.id:null,start:Date.now(),end:null,startLoc:lastLoc,track:[],dist:0};
+  if(lastLoc)t.track.push([lastLoc.lat,lastLoc.lng,Date.now()]);D.trips.push(t);save();return t}
+function endTrip(by){const t=activeTrip();if(!t)return null;const now=Date.now();
+  onBoard().forEach(r=>{r.outAt=now;r.outLoc=lastLoc;r.outMode='fim da viagem'});
+  if(lastLoc)t.track.push([lastLoc.lat,lastLoc.lng,now]);t.end=now;t.endLoc=lastLoc;t.endBy=by||'motorista';save();return t}
+function tripStats(t){const rides=D.rides.filter(r=>r.tripId===t.id).sort((a,b)=>a.inAt-b.inAt);const end=t.end||Date.now();
+  const ids=[...new Set(rides.map(r=>r.userId))];
+  return{rides,ids,names:ids.map(id=>userById(id)?.name||'Removido'),people:ids.length,denied:D.denied.filter(d=>d.at>=t.start&&d.at<=end).length,dur:end-t.start,dist:t.dist||0,driver:userById(t.driverId)}}
+// relatório simplificado (sem localização)
+function waText(t){const s=tripStats(t),L=[];
+  L.push(`*Vilarejo — Relatório de viagem*`);
+  L.push(`${t.route||D.cfg.route} · Viagem nº ${t.n} · ${dmy(t.start)}`);
+  L.push('');
+  L.push(`Motorista: ${s.driver?s.driver.name:'não identificado'}`);
+  L.push(`Iniciou: ${hm(t.start)}`);
+  L.push(`Finalizou: ${t.end?hm(t.end):'em andamento'}${t.end&&t.endBy==='gestão'?' (pela gestão)':''}`);
+  L.push(`Duração: ${dur(s.dur)}`);
+  L.push(`KM rodados: ${km(s.dist)}`);
+  L.push('');
+  L.push(`*Passageiros (${s.people})*`);
+  L.push(s.people?s.names.join(', '):'Nenhum passageiro.');
+  L.push(`Total: ${s.people} passageiro${s.people===1?'':'s'}`);
+  if(s.denied)L.push(`Acessos negados: ${s.denied}`);
+  return L.join('\n')}
+function sendWa(t){const num=(D.cfg.wa||'').replace(/\D/g,'');const url=`https://wa.me/${num}?text=${encodeURIComponent(waText(t))}`;
+  const w=window.open(url,'_blank');if(!w)location.href=url}
+
+// ---------- terminal: mensagens ----------
+let msgTimer,paused=false,holdUntil=0;
+function show(kind,title,msg,photo){const k=$('kmsg');k.className='kmsg '+(kind||'');$('kiosk').className=(kind?'s-'+kind+' ':'')+(activeTrip()?'pass':'');
+  k.innerHTML=(photo?`<img src="${photo}" alt="">`:'')+`<h2>${esc(title)}</h2><p>${esc(msg)}</p>`;
+  clearTimeout(msgTimer);if(kind){msgTimer=setTimeout(idle,4500)}}
+function idle(){if(live)return;const t=activeTrip();$('kiosk').className=t?'pass':'';
+  $('ringTxt').textContent=t?'Toque aqui para registrar seu acesso':'Motorista: toque aqui para iniciar seu turno';
+  if(t)show('','Registro de acesso','Funcionário: toque no círculo para registrar entrada ou saída');
+  else show('','Início de turno','Motorista: toque no círculo e olhe para a câmera')}
+
+const lastSeen={};
+const coolMs=()=>Math.max(3,+D.cfg.cool||10)*1000;
+function inCool(key){const now=Date.now();if(lastSeen[key]&&now-lastSeen[key]<coolMs())return true;lastSeen[key]=now;return false}
+function blocked(user){D.denied.push({id:uid(),at:Date.now(),loc:lastLoc,userId:user.id,reason:'cadastro bloqueado'});save();
+  show('no','Acesso não liberado',first(user.name)+', seu cadastro está bloqueado. Procure o responsável.',user.photo);feedback('no','Acesso não liberado')}
+// motorista inicia o turno
+function driverStart(user){if(!user.active)return blocked(user);
+  if(activeTrip()){idle();return}
+  const t=startTrip(user);show('ok','Turno liberado','Motorista '+first(user.name)+' · Viagem nº '+t.n,user.photo);feedback('ok','Turno liberado. Boa viagem, '+first(user.name));
+  paused=true;$('krSub').textContent=`Motorista ${user.name} · Viagem nº ${t.n} · ${hm(t.start)}`;setTimeout(()=>$('kReady').classList.add('on'),1200)}
+$('krGo').onclick=()=>{$('kReady').classList.remove('on');paused=false;idle()};
+// funcionário: entrada / saída
+function register(user,force){
+  const now=Date.now();
+  if(!force&&inCool(user.id)){show('info','Registro já feito',first(user.name)+', aguarde alguns segundos para registrar de novo.',user.photo);return}
+  lastSeen[user.id]=now;
+  if(!user.active)return blocked(user);
+  const open=D.rides.find(r=>r.userId===user.id&&!r.outAt);
+  if(open){open.outAt=now;open.outLoc=lastLoc;open.outMode='face';save();
+    show('info','Desembarque liberado',first(user.name)+' · saída às '+hm(now),user.photo);feedback('info','Desembarque liberado. Até logo, '+first(user.name));return}
+  let t=activeTrip();
+  if(!t){if(D.cfg.needDriver){D.denied.push({id:uid(),at:now,loc:lastLoc,userId:user.id,reason:'turno não iniciado'});save();
+      show('no','Viagem não liberada','Aguarde o motorista iniciar o turno.',user.photo);feedback('no','Viagem não liberada. Aguarde o motorista');return}
+    t=startTrip(null)}
+  D.rides.push({id:uid(),userId:user.id,tripId:t.id,inAt:now,inLoc:lastLoc,outAt:null,outLoc:null});save();
+  show('ok','Viagem liberada','Bem-vindo, '+first(user.name)+' · embarque às '+hm(now),user.photo);feedback('ok','Viagem liberada. Bem-vindo, '+first(user.name));
+}
+function denyUnknown(){D.denied.push({id:uid(),at:Date.now(),loc:lastLoc,userId:null,reason:'rosto não cadastrado'});save();
+  show('no','Viagem não liberada','Rosto não cadastrado. Procure o responsável.');feedback('no','Viagem não liberada')}
+
+// confirmação de encerramento pelo motorista
+let confirmT,confirmUser=null;
+function askEnd(t,user){if(!user.active)return blocked(user);paused=true;confirmUser=user;const s=tripStats(t);
+  $('kcTitle').textContent='Encerrar o turno (viagem nº '+t.n+')?';
+  $('kcMsg').textContent=`${first(user.name)}, a viagem está com ${onBoard().length} a bordo, ${km(s.dist)} rodados em ${dur(s.dur)}.`;
+  $('kConfirm').classList.add('on');beep('info');speak('Deseja encerrar o turno?');
+  clearTimeout(confirmT);confirmT=setTimeout(cancelEnd,20000)}
+function cancelEnd(){clearTimeout(confirmT);$('kConfirm').classList.remove('on');paused=false;confirmUser=null;idle()}
+$('kcNo').onclick=cancelEnd;
+$('kcYes').onclick=()=>{clearTimeout(confirmT);$('kConfirm').classList.remove('on');const t=endTrip('motorista');confirmUser=null;if(t){feedback('ok','Turno encerrado. Envie o relatório.');showSummary(t)}else{paused=false;idle()}};
+let sumTrip=null,sumT;
+function showSummary(t){paused=true;sumTrip=t;const s=tripStats(t);
+  $('ksSub').textContent=`Viagem nº ${t.n} · ${s.driver?'Motorista '+s.driver.name:''} · ${hm(t.start)} às ${hm(t.end)}`;
+  $('ksGrid').innerHTML=[[km(s.dist),'rodados'],[dur(s.dur),'de viagem'],[s.people,'passageiros'],[s.denied,'acessos negados']].map(([b,l])=>`<div><b>${esc(b)}</b><span>${esc(l)}</span></div>`).join('');
+  $('kSummary').classList.add('on');clearTimeout(sumT);sumT=setTimeout(closeSummary,180000)}
+function closeSummary(){clearTimeout(sumT);$('kSummary').classList.remove('on');paused=false;sumTrip=null;idle()}
+$('ksWa').onclick=()=>{if(sumTrip)sendWa(sumTrip)};
+$('ksClose').onclick=closeSummary;
+
+// ---------- reconhecimento facial (câmera só abre ao tocar) ----------
+let modelsReady=false,stream=null,started=false,live=false,scanMode='pass',deadline=0,streak={id:null,n:0},noMatch=0,stopCamT;
+async function loadModels(){
+  if(!window.faceapi)return;
+  try{await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);await faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL);await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+    modelsReady=true;$('uHint').textContent='Pronto';}catch(e){}}
+loadModels();
+async function openCam(video){const s=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user',width:{ideal:640},height:{ideal:480}},audio:false});video.srcObject=s;await video.play();return s}
+function matches(desc){const out=[];
+  for(const u of D.users){let bd=9;for(const d of (u.descs||[])){const x=faceapi.euclideanDistance(desc,d);if(x<bd)bd=x}if(bd<D.cfg.th)out.push({user:u,dist:bd})}
+  return out.sort((a,b)=>a.dist-b.dist)}
+async function startCam(){clearTimeout(stopCamT);if(stream&&stream.active){try{await $('video').play()}catch(e){}return true}
+  try{stream=await openCam($('video'));return true}catch(e){return false}}
+function stopCam(){if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+async function openScan(mode){
+  if(live||paused)return;
+  started=true;unlockAudio();keepAwake();
+  if(!window.faceapi){show('no','Sem internet','O reconhecimento facial precisa de internet para carregar.');return}
+  if(!modelsReady){show('info','Carregando…','O reconhecimento facial ainda está carregando. Toque de novo em instantes.');return}
+  if(mode!=='pass'&&!D.users.some(u=>u.role==='motorista')){show('no','Nenhum motorista cadastrado','Cadastre o motorista na gestão (engrenagem).');return}
+  scanMode=mode;live=true;streak={id:null,n:0};noMatch=0;deadline=Date.now()+12000;clearTimeout(msgTimer);
+  $('ring').classList.add('live');$('kiosk').className=activeTrip()?'pass':'';
+  show('',mode==='pass'?'Olhe para a câmera':'Motorista, olhe para a câmera','Centralize o rosto dentro do círculo');
+  if(!await startCam()){closeScan();show('no','Câmera bloqueada','Permita o acesso à câmera nos ajustes do Safari.')}}
+function closeScan(){live=false;$('ring').classList.remove('live');clearTimeout(stopCamT);stopCamT=setTimeout(stopCam,30000)}
+function finish(fn){closeScan();fn()}
+async function scanLoop(){
+  const v=$('video');
+  try{if(live){const left=Math.max(0,Math.ceil((deadline-Date.now())/1000));$('ringCount').textContent='Lendo o rosto… '+left+'s';
+    if(Date.now()>deadline){finish(()=>{show('no','Rosto não identificado','Toque no círculo e tente de novo, de frente para a câmera.');beep('no')})}
+    else if(v.readyState>=2){
+      const r=await faceapi.detectSingleFace(v,new faceapi.TinyFaceDetectorOptions({inputSize:320,scoreThreshold:0.5})).withFaceLandmarks().withFaceDescriptor();
+      if(live&&r){const all=matches(r.descriptor);const want=scanMode==='pass'?'func':'motorista';const list=all.filter(m=>m.user.role===want);
+        if(list.length){noMatch=0;const id=list[0].user.id;streak=streak.id===id?{id,n:streak.n+1}:{id,n:1};
+          if(streak.n>=2){const u=list[0].user;finish(()=>{if(scanMode==='start')driverStart(u);else if(scanMode==='end'){const t=activeTrip();t?askEnd(t,u):idle()}else register(u)})}}
+        else if(all.length){noMatch++;if(noMatch>=3)finish(()=>{const u=all[0].user;
+            if(scanMode==='pass')show('info','Este é um cadastro de motorista','Para encerrar o turno, use o botão "Encerrar turno" no topo.',u.photo);
+            else show('no','Acesso não liberado',first(u.name)+' não está cadastrado como motorista.',u.photo);beep('no')})}
+        else{noMatch++;if(noMatch>=4)finish(()=>{if(scanMode==='pass')denyUnknown();else{show('no','Acesso não liberado','Rosto não cadastrado como motorista.');feedback('no','Acesso não liberado')}})}}}}}
+  catch(e){}
+  setTimeout(scanLoop,300)}
+scanLoop();
+$('ringBtn').onclick=()=>openScan(activeTrip()?'pass':'start');
+$('btnEnd').onclick=()=>{if(activeTrip())openScan('end')};
+
+// ---------- gestão: acesso ----------
+function openAdmin(){if(live)closeScan();document.body.classList.add('adm');renderAll();setTimeout(()=>{if(mapO.m)mapO.m.invalidateSize()},100)}
+$('btnAdmin').onclick=()=>{if(!D.cfg.pin)return openAdmin();$('pinIn').value='';$('mPin').classList.add('on');setTimeout(()=>$('pinIn').focus(),50)};
+$('pinNo').onclick=()=>$('mPin').classList.remove('on');
+$('pinOk').onclick=()=>{if($('pinIn').value===String(D.cfg.pin)){$('mPin').classList.remove('on');openAdmin()}else toast('Senha incorreta')};
+$('pinIn').onkeydown=e=>{if(e.key==='Enter')$('pinOk').click()};
+$('btnKiosk').onclick=()=>{document.body.classList.remove('adm');window.scrollTo(0,0);renderKiosk();idle()};
+$('nav').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  document.querySelectorAll('#nav button').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='v-'+b.dataset.v));
+  setTimeout(()=>{if(b.dataset.v==='rel')renderRel();if(b.dataset.v==='loc')renderLoc()},50)});
+
+// ---------- cadastro ----------
+let editing=null,shots=[],uStream=null;
+function thumb(src){const c=document.createElement('canvas');c.width=c.height=120;const x=c.getContext('2d');
+  const w=src.videoWidth||src.naturalWidth||src.width,h=src.videoHeight||src.naturalHeight||src.height,s=Math.min(w,h);
+  x.drawImage(src,(w-s)/2,(h-s)/2,s,s,0,0,120,120);return c.toDataURL('image/jpeg',.7)}
+function renderShots(){$('uShots').innerHTML=shots.map(s=>`<img src="${s.photo}" alt="">`).join('')+(editing&&!shots.length&&editing.descs?.length?`<span class="muted">${editing.descs.length} fotos já cadastradas</span>`:'')}
+async function addShot(src){if(!modelsReady){toast('Reconhecimento ainda carregando');return}
+  const r=await faceapi.detectSingleFace(src,new faceapi.TinyFaceDetectorOptions({inputSize:416,scoreThreshold:0.4})).withFaceLandmarks().withFaceDescriptor();
+  if(!r){toast('Nenhum rosto encontrado nesta foto');return}
+  shots.push({desc:Array.from(r.descriptor),photo:thumb(src)});renderShots();toast('Foto '+shots.length+' capturada')}
+async function openUser(u){editing=u||null;shots=[];$('mTitle').textContent=u?'Editar cadastro':'Novo cadastro';
+  $('uRole').value=u?.role||'func';$('uName').value=u?.name||'';$('uMat').value=u?.mat||'';$('uSetor').value=u?.setor||'';$('uActive').value=u&&!u.active?'0':'1';renderShots();$('mUser').classList.add('on');
+  try{uStream=await openCam($('uVideo'));$('uHint').textContent=modelsReady?'Olhe para a câmera e toque em Capturar':'Carregando…'}catch(e){$('uHint').textContent='Câmera indisponível. Use "Enviar foto".'}}
+function closeUser(){$('mUser').classList.remove('on');if(uStream){uStream.getTracks().forEach(t=>t.stop());uStream=null}}
+$('btnNew').onclick=()=>openUser();
+$('uCancel').onclick=closeUser;
+$('uClear').onclick=()=>{shots=[];renderShots()};
+$('uCap').onclick=()=>{const v=$('uVideo');if(v.readyState<2){toast('Câmera não está ativa');return}addShot(v)};
+$('uFile').onchange=async e=>{for(const f of e.target.files){const img=new Image();img.src=URL.createObjectURL(f);try{await img.decode();await addShot(img)}catch(_){toast('Não foi possível ler a foto')}}e.target.value=''};
+$('uSave').onclick=()=>{const name=$('uName').value.trim();if(!name){toast('Informe o nome');return}
+  const u=editing||{id:uid(),descs:[],created:Date.now()};
+  if(!editing&&!shots.length){toast('Capture pelo menos uma foto do rosto');return}
+  if(shots.length){if(!D.cfg.allowDup){for(const s of shots){const m=matches(s.desc).find(x=>x.user.id!==u.id);if(m){toast('Este rosto já está cadastrado como '+m.user.name);return}}}
+    u.descs=shots.map(s=>s.desc);u.photo=shots[0].photo}
+  Object.assign(u,{role:$('uRole').value,name,mat:$('uMat').value.trim(),setor:$('uSetor').value.trim(),active:$('uActive').value==='1'});
+  if(!editing)D.users.push(u);closeUser();save();toast('Cadastro salvo')};
+$('fSearch').oninput=renderFunc;
+$('fList').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const u=userById(b.dataset.id);if(!u)return;
+  if(b.dataset.a==='edit')openUser(u);
+  if(b.dataset.a==='tog'){u.active=!u.active;save()}
+  if(b.dataset.a==='del'){if(b.dataset.c){D.users=D.users.filter(x=>x.id!==u.id);save();toast('Cadastro excluído')}else{b.dataset.c=1;b.textContent='Confirmar?'}}});
+
+// ---------- render ----------
+const av=u=>u?.photo?`<img class="av" src="${u.photo}" alt="">`:'<span class="av" style="display:inline-block"></span>';
+const roleTag=u=>u?.role==='motorista'?'<span class="pill drv">Motorista</span>':'<span class="pill">Funcionário</span>';
+function renderKiosk(){const t=activeTrip();const drv=t&&userById(t.driverId);
+  $('kTrip').textContent=t?`Viagem nº ${t.n}${drv?' · '+first(drv.name):''} · ${onBoard().length} a bordo`:'Turno não iniciado · aguardando motorista'}
+function renderPainel(){const today=dayKey(Date.now());const rT=D.rides.filter(r=>dayKey(r.inAt)===today);const ob=onBoard();const tT=D.trips.filter(t=>dayKey(t.start)===today);
+  $('pDate').textContent=new Date().toLocaleDateString('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  const t=activeTrip();
+  if(t){const s=tripStats(t);$('pTripCard').innerHTML=`<div class="row" style="justify-content:space-between"><div><span class="pill ok">Viagem em andamento</span><h3 style="margin:8px 0 2px">Viagem nº ${t.n} · ${esc(t.route||'')}</h3><div class="muted">Motorista: ${esc(s.driver?s.driver.name:'não identificado')} · desde ${hm(t.start)} · ${km(s.dist)} · ${dur(s.dur)}</div></div><div class="row"><button class="btn wa" id="pWa">Relatório parcial</button><button class="btn red" id="pEnd">Encerrar viagem</button></div></div>`;
+    $('pWa').onclick=()=>sendWa(t);$('pEnd').onclick=e=>{const b=e.target;if(!b.dataset.c){b.dataset.c=1;b.textContent='Toque de novo para confirmar';return}endTrip('gestão');toast('Viagem encerrada pela gestão')}}
+  else $('pTripCard').innerHTML='<span class="pill">Sem viagem em andamento</span><p class="muted" style="margin:6px 0 0">A viagem começa quando o motorista passa o rosto no terminal.</p>';
+  const people=new Set(rT.map(r=>r.userId));
+  $('kBoard').textContent=ob.length;$('kPeople').textContent=people.size;$('kRides').textContent=rT.length;$('kTrips').textContent=tT.length;
+  $('kKm').textContent=kmn(tT.reduce((a,t)=>a+(t.dist||0),0));
+  $('kDenied').textContent=D.denied.filter(d=>dayKey(d.at)===today).length;
+  $('pBoard').innerHTML=ob.length?ob.map(r=>{const u=userById(r.userId);return `<tr><td><span class="who">${av(u)}${esc(u?.name||'Removido')}</span></td><td class="nw">${hm(r.inAt)}</td><td class="nw">${dur(Date.now()-r.inAt)}</td></tr>`}).join(''):'<tr><td colspan="3" class="empty">Ninguém a bordo agora</td></tr>';
+  const hrs={};rT.forEach(r=>{const h=new Date(r.inAt).getHours();hrs[h]=(hrs[h]||0)+1});const ks=Object.keys(hrs).map(Number).sort((a,b)=>a-b);const mx=Math.max(1,...Object.values(hrs));
+  $('pHours').innerHTML=ks.length?ks.map(h=>`<div class="bar"><span>${String(h).padStart(2,'0')}h</span><i style="width:${hrs[h]/mx*100}%"></i><b>${hrs[h]}</b></div>`).join(''):'<div class="empty">Sem embarques hoje</div>';
+  const ev=[];D.rides.forEach(r=>{ev.push({at:r.inAt,k:'ok',l:'Embarque',u:r.userId});if(r.outAt)ev.push({at:r.outAt,k:'info',l:'Desembarque'+(r.outMode==='fim da viagem'?' (fim da viagem)':''),u:r.userId})});
+  D.trips.forEach(t=>{ev.push({at:t.start,k:'drv',l:'Viagem nº '+t.n+' iniciada',u:t.driverId});if(t.end)ev.push({at:t.end,k:'drv',l:'Viagem nº '+t.n+' encerrada · '+km(t.dist),u:t.endBy==='gestão'?null:t.driverId})});
+  D.denied.forEach(d=>ev.push({at:d.at,k:'no',l:'Negado: '+d.reason,u:d.userId}));
+  ev.sort((a,b)=>b.at-a.at);
+  $('pFeed').innerHTML=ev.slice(0,60).map(e=>{const u=userById(e.u);return `<tr><td class="nw">${dmh(e.at)}</td><td><span class="pill ${e.k}">${esc(e.l)}</span></td><td>${u?`<span class="who">${av(u)}${esc(u.name)}</span>`:'<span class="muted">—</span>'}</td></tr>`}).join('')||'<tr><td colspan="3" class="empty">Nenhum movimento ainda</td></tr>'}
+
+// relatório simplificado
+function setPeriod(v){const d=new Date(),k=x=>dayKey(x);let f,t=k(d);
+  if(v==='hoje')f=t;else if(v==='ontem'){d.setDate(d.getDate()-1);f=t=k(d)}else if(v==='7d'){d.setDate(d.getDate()-6);f=k(d)}else if(v==='30d'){d.setDate(d.getDate()-29);f=k(d)}else if(v==='mes'){d.setDate(1);f=k(d)}else return;
+  $('rFrom').value=f;$('rTo').value=t}
+$('rPer').onchange=e=>{setPeriod(e.target.value);renderRel()};
+['rFrom','rTo'].forEach(id=>$(id).onchange=()=>{$('rPer').value='custom';renderRel()});
+['rUser','rDrv'].forEach(id=>$(id).onchange=renderRel);
+function relTrips(){const f=$('rFrom').value,t=$('rTo').value,u=$('rUser').value,dv=$('rDrv').value;
+  return D.trips.filter(x=>{const k=dayKey(x.start);return(!f||k>=f)&&(!t||k<=t)&&(!dv||x.driverId===dv)&&(!u||D.rides.some(r=>r.tripId===x.id&&r.userId===u))}).sort((a,b)=>b.start-a.start)}
+const fmtD=k=>k?k.split('-').reverse().join('/'):'';
+function renderRel(){
+  const fill=(id,list,all)=>{const el=$(id),v=el.value;el.innerHTML=`<option value="">${all}</option>`+list.map(u=>`<option value="${esc(u.id)}">${esc(u.name)}</option>`).join('');el.value=v};
+  fill('rUser',D.users.filter(u=>u.role!=='motorista').sort((a,b)=>a.name.localeCompare(b.name)),'Todos');
+  fill('rDrv',D.users.filter(u=>u.role==='motorista'),'Todos');
+  const ts=relTrips(),uSel=$('rUser').value,uObj=userById(uSel);const ids=new Set();let rides=0,dist=0;const by={};
+  ts.forEach(t=>{const s=tripStats(t);dist+=s.dist;rides+=s.people;s.ids.forEach(id=>{ids.add(id);const b=by[id]||(by[id]={n:0,days:new Set()});b.n++;b.days.add(dayKey(t.start))})});
+  $('rTrips').textContent=ts.length;$('rKm').textContent=kmn(dist);
+  if(uObj){const myR=D.rides.filter(r=>r.userId===uSel&&ts.some(t=>t.id===r.tripId)).sort((a,b)=>b.inAt-a.inAt);
+    $('rRides').textContent=myR.length;$('rRidesL').textContent='embarques de '+first(uObj.name);
+    $('rPeople').textContent=new Set(myR.map(r=>dayKey(r.inAt))).size;$('rPeopleL').textContent='dias com uso';
+    $('rUserBox').style.display='';$('rUserTitle').textContent='Embarques de '+uObj.name;
+    $('rUserList').innerHTML=myR.map(r=>{const t=D.trips.find(x=>x.id===r.tripId);const dv=t&&userById(t.driverId);return `<tr><td class="nw">${dmy(r.inAt)}</td><td class="nw">nº ${t?t.n:'—'}</td><td>${esc(dv?dv.name:'—')}</td><td class="nw">${hm(r.inAt)}</td><td class="nw">${r.outAt?hm(r.outAt):'a bordo'}</td><td class="nw">${r.outAt?dur(r.outAt-r.inAt):'—'}</td></tr>`}).join('')||'<tr><td colspan="6" class="empty">Nenhum embarque no período</td></tr>'}
+  else{$('rRides').textContent=rides;$('rRidesL').textContent='passageiros transportados';$('rPeople').textContent=ids.size;$('rPeopleL').textContent='funcionários diferentes';$('rUserBox').style.display='none'}
+  const dvO=userById($('rDrv').value);
+  $('phInfo').textContent=`Período: ${fmtD($('rFrom').value)||'início'} a ${fmtD($('rTo').value)||'hoje'}${uObj?' · Funcionário: '+uObj.name:''}${dvO?' · Motorista: '+dvO.name:''} · Gerado em ${dmh(Date.now())}`;
+  $('rList').innerHTML=ts.map(t=>{const s=tripStats(t);return `<tr><td class="nw">nº ${t.n} · ${dmy(t.start)}</td><td>${esc(s.driver?s.driver.name:'—')}</td><td class="nw">${hm(t.start)}</td><td class="nw">${t.end?hm(t.end):'<span class="pill ok">em andamento</span>'}</td><td class="n">${km(s.dist)}</td><td class="n"><b>${s.people}</b></td><td class="names">${esc(s.names.join(', ')||'—')}</td><td class="noprint"><button class="btn wa" data-t="${esc(t.id)}">WhatsApp</button></td></tr>`}).join('')||'<tr><td colspan="8" class="empty">Nenhuma viagem no período</td></tr>';
+  $('rByUser').innerHTML=Object.entries(by).filter(([id])=>!uSel||id===uSel).sort((a,b)=>b[1].n-a[1].n).map(([id,b])=>{const u=userById(id);return `<tr><td><span class="who">${av(u)}${esc(u?.name||'Removido')}</span></td><td class="n">${b.n}</td><td class="n">${b.days.size}</td></tr>`}).join('')||'<tr><td colspan="3" class="empty">Nada no período</td></tr>'}
+$('rList').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const t=D.trips.find(x=>x.id===b.dataset.t);if(t)sendWa(t)});
+$('btnPrint').onclick=()=>{renderRel();try{window.print()}catch(e){toast('Não foi possível abrir a impressão')}};
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove()}
+$('btnCsv').onclick=()=>{const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';const uSel=$('rUser').value;let rows;
+  if(uSel){rows=[['Funcionário','Data','Viagem','Motorista','Subiu','Desceu','Minutos a bordo']];const u=userById(uSel);const ts=relTrips();
+    D.rides.filter(r=>r.userId===uSel&&ts.some(t=>t.id===r.tripId)).sort((a,b)=>a.inAt-b.inAt).forEach(r=>{const t=D.trips.find(x=>x.id===r.tripId);const dv=t&&userById(t.driverId);rows.push([u.name,dmy(r.inAt),t?t.n:'',dv?dv.name:'',hm(r.inAt),r.outAt?hm(r.outAt):'a bordo',r.outAt?Math.round((r.outAt-r.inAt)/60000):''])})}
+  else{rows=[['Data','Viagem','Rota','Motorista','Iniciou','Finalizou','Duração (min)','KM','Passageiros','Nomes']];
+    relTrips().forEach(t=>{const s=tripStats(t);rows.push([dmy(t.start),t.n,t.route,s.driver?s.driver.name:'',hm(t.start),t.end?hm(t.end):'',Math.round(s.dur/60000),kmn(s.dist),s.people,s.names.join(', ')])})}
+  download('relatorio-onibus.csv','﻿'+rows.map(r=>r.map(q).join(';')).join('\n'),'text/csv')};
+
+const mapO={};
+function getMap(){if(!window.L)return null;const el=$('tMap');if(!el)return null;
+  if(!mapO.m||mapO.el!==el){if(mapO.m){try{mapO.m.remove()}catch(e){}}mapO.el=el;mapO.m=L.map(el).setView([-15.8,-47.9],4);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mapO.m);mapO.layer=L.layerGroup().addTo(mapO.m)}
+  mapO.m.invalidateSize();mapO.layer.clearLayers();return mapO}
+const pin=(o,l,color,txt)=>L.circleMarker([l.lat,l.lng],{radius:7,color,fillOpacity:.85}).bindPopup(txt).addTo(o.layer);
+let selTrip=null;
+function renderLoc(){const list=[...D.trips].sort((a,b)=>b.start-a.start);if(!selTrip&&list[0])selTrip=list[0].id;
+  $('tList').innerHTML=list.slice(0,200).map(t=>{const s=tripStats(t);return `<tr class="${t.id===selTrip?'sel':''}"><td class="nw">nº ${t.n} · ${dmy(t.start)}${t.end?'':' <span class="pill ok">agora</span>'}</td><td>${esc(s.driver?s.driver.name:'—')}</td><td class="nw">${hm(t.start)}–${t.end?hm(t.end):'…'}</td><td class="n">${km(s.dist)}</td><td class="n">${s.people}</td><td><button class="btn" data-t="${esc(t.id)}">Ver no mapa</button></td></tr>`}).join('')||'<tr><td colspan="6" class="empty">Nenhuma viagem ainda</td></tr>';
+  const t=D.trips.find(x=>x.id===selTrip);
+  if(!t){$('tDetail').innerHTML='<div class="empty">Nenhuma viagem para mostrar</div>';return}
+  const s=tripStats(t);
+  $('tDetail').innerHTML=`<h3>Viagem nº ${t.n} · ${dmy(t.start)} · ${km(s.dist)} em ${dur(s.dur)}</h3><div class="map" id="tMap"></div><p class="muted">Linha laranja = trajeto do ônibus pelo GPS (${t.track.length} pontos) · Verde = onde subiu · Vermelho = onde desceu</p>
+  <div class="scroll"><table class="stack"><thead><tr><th>Passageiro</th><th>Subiu</th><th>Local</th><th>Desceu</th><th>Local</th></tr></thead><tbody>${s.rides.map(r=>{const u=userById(r.userId);return `<tr><td><span class="who">${av(u)}${esc(u?.name||'Removido')}</span></td><td class="nw">${hm(r.inAt)}</td><td>${locLink(r.inLoc)}</td><td class="nw">${r.outAt?hm(r.outAt):'a bordo'}</td><td>${locLink(r.outLoc)}</td></tr>`}).join('')||'<tr><td colspan="5" class="empty">Sem passageiros</td></tr>'}</tbody></table></div>`;
+  const o=getMap();if(!o)return;const pts=[];
+  if(t.track.length){const line=t.track.map(p=>[p[0],p[1]]);pts.push(...line);L.polyline(line,{color:'#f59a23',weight:6,opacity:.9}).addTo(o.layer);L.polyline(line,{color:'#1d4f9c',weight:2}).addTo(o.layer);
+    L.circleMarker(line[0],{radius:9,color:'#1d4f9c',fillColor:'#fff',fillOpacity:1}).bindPopup('Início '+hm(t.start)).addTo(o.layer)}
+  s.rides.forEach(r=>{const n=esc(userById(r.userId)?.name||'');if(r.inLoc){pts.push([r.inLoc.lat,r.inLoc.lng]);pin(o,r.inLoc,'#0a8f4e',n+'<br>Subiu '+hm(r.inAt))}if(r.outLoc){pts.push([r.outLoc.lat,r.outLoc.lng]);pin(o,r.outLoc,'#d3261b',n+'<br>Desceu '+hm(r.outAt))}});
+  if(pts.length)o.m.fitBounds(pts,{padding:[30,30],maxZoom:16})}
+$('tList').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;selTrip=b.dataset.t;renderLoc();$('tDetail').scrollIntoView({behavior:'smooth'})});
+
+function renderFunc(){const q=$('fSearch').value.toLowerCase();const lim=Date.now()-30*864e5;
+  const list=D.users.filter(u=>(u.name+' '+(u.mat||'')).toLowerCase().includes(q)).sort((a,b)=>(a.role===b.role?0:a.role==='motorista'?-1:1)||a.name.localeCompare(b.name));
+  $('fList').innerHTML=list.map(u=>{const n=u.role==='motorista'?D.trips.filter(t=>t.driverId===u.id&&t.start>lim).length:D.rides.filter(r=>r.userId===u.id&&r.inAt>lim).length;const onb=D.rides.some(r=>r.userId===u.id&&!r.outAt);
+    return `<tr><td><span class="who">${av(u)}${esc(u.name)}${onb?' <span class="pill ok">a bordo</span>':''}</span></td><td>${roleTag(u)}</td><td>${esc(u.mat)}</td><td>${esc(u.setor)}</td><td>${(u.descs||[]).length} fotos</td><td><span class="pill ${u.active?'ok':'no'}">${u.active?'Liberado':'Bloqueado'}</span></td><td class="n">${n}${u.role==='motorista'?' viagens':''}</td>
+    <td><div class="row"><button class="btn" data-a="edit" data-id="${esc(u.id)}">Editar</button><button class="btn" data-a="tog" data-id="${esc(u.id)}">${u.active?'Bloquear':'Liberar'}</button><button class="btn red" data-a="del" data-id="${esc(u.id)}">Excluir</button></div></td></tr>`}).join('')||'<tr><td colspan="8" class="empty">Nenhum cadastro. Comece pelo motorista: toque em "+ Novo cadastro".</td></tr>'}
+
+// ---------- ajustes ----------
+function renderCfg(){const c=D.cfg;$('cTh').value=c.th;$('cThV').textContent=(+c.th).toFixed(2);$('cCool').value=c.cool;$('cVoice').checked=c.voice;$('cRoute').value=c.route;$('cPin').value=c.pin;$('cWa').value=c.wa;$('cNeedDrv').checked=c.needDriver;$('cDup').checked=c.allowDup;
+  $('simUser').innerHTML=D.users.map(u=>`<option value="${esc(u.id)}">${esc(u.name)}${u.role==='motorista'?' (motorista)':''}</option>`).join('')||'<option>Faça um cadastro</option>'}
+$('cTh').oninput=e=>{D.cfg.th=+e.target.value;$('cThV').textContent=D.cfg.th.toFixed(2);save(true)};
+$('cCool').onchange=e=>{D.cfg.cool=Math.max(3,+e.target.value||10);save();toast('Intervalo: '+D.cfg.cool+' segundos')};
+$('cVoice').onchange=e=>{D.cfg.voice=e.target.checked;save()};$('cRoute').onchange=e=>{D.cfg.route=e.target.value;save()};
+$('cPin').onchange=e=>{D.cfg.pin=e.target.value.trim();save();toast(D.cfg.pin?'Senha definida':'Senha removida')};
+$('cWa').onchange=e=>{D.cfg.wa=e.target.value.replace(/\D/g,'');save()};
+$('cNeedDrv').onchange=e=>{D.cfg.needDriver=e.target.checked;save()};
+$('cDup').onchange=e=>{D.cfg.allowDup=e.target.checked;save()};
+$('btnTestSound').onclick=()=>{unlockAudio();setTimeout(()=>feedback('ok','Viagem liberada. Teste de som.'),600)};
+function goKioskTest(){$('btnKiosk').click();started=true;unlockAudio()}
+$('btnSim').onclick=()=>{const u=userById($('simUser').value);if(!u)return;goKioskTest();setTimeout(()=>{if(u.role==='motorista'){const t=activeTrip();t?askEnd(t,u):driverStart(u)}else register(u,true)},200)};
+$('btnSimNo').onclick=()=>{goKioskTest();setTimeout(denyUnknown,200)};
+$('btnBackup').onclick=()=>download('backup-onibus.json',JSON.stringify(D),'application/json');
+$('fRestore').onchange=async e=>{try{const j=JSON.parse(await e.target.files[0].text());if(!Array.isArray(j.users))throw 0;localStorage.setItem(KEY,JSON.stringify(j));load();renderAll();toast('Backup restaurado')}catch(_){toast('Arquivo inválido')}};
+$('btnWipe').onclick=e=>{const b=e.target;if(!b.dataset.c){b.dataset.c=1;b.textContent='Toque de novo para confirmar';return}
+  D={users:[],trips:[],rides:[],denied:[],cfg:D.cfg};delete b.dataset.c;b.textContent='Apagar todos os dados';selTrip=null;save();toast('Dados apagados')};
+$('btnDemo').onclick=()=>{const names=['Vitor Almeida','Ana Souza','Carlos Lima','Juliana Rocha','Marcos Pereira','Fernanda Dias','Rafael Costa','Patrícia Nunes'];
+  const base=lastLoc||{lat:-23.55,lng:-46.63};
+  const drv={id:uid(),role:'motorista',name:'José Ribeiro',mat:'900',setor:'Transporte',active:true,descs:[],demo:true};
+  const us=names.map((n,i)=>({id:uid(),role:'func',name:n,mat:String(1001+i),setor:['Produção','Logística','Administrativo'][i%3],active:i!==7,descs:[],demo:true}));D.users.push(drv,...us);
+  for(let d=6;d>=0;d--){const day=new Date();day.setDate(day.getDate()-d);
+    [[6,30],[17,10]].forEach(([h,m],k)=>{const s=new Date(day);s.setHours(h,m,0,0);if(s>Date.now())return;
+      const track=[];let p={...base},dist=0,ang=Math.random()*6.28;const st=+s;
+      for(let i=0;i<45;i++){ang+=(Math.random()-.5)*.8;const q={lat:p.lat+Math.cos(ang)*.0035,lng:p.lng+Math.sin(ang)*.0035};dist+=distM(p,q);p=q;track.push([+p.lat.toFixed(6),+p.lng.toFixed(6),st+i*6e4])}
+      const t={id:uid(),n:k+1,route:D.cfg.route,driverId:drv.id,start:st,end:st+45*6e4,track,dist,startLoc:{lat:track[0][0],lng:track[0][1]},endLoc:{lat:p.lat,lng:p.lng}};D.trips.push(t);
+      us.slice(0,7).forEach(u=>{if(Math.random()<.25)return;const a=Math.floor(Math.random()*15),b=Math.min(44,a+10+Math.floor(Math.random()*25));
+        D.rides.push({id:uid(),userId:u.id,tripId:t.id,inAt:st+a*6e4,inLoc:{lat:track[a][0],lng:track[a][1]},outAt:st+b*6e4,outLoc:{lat:track[b][0],lng:track[b][1]},outMode:'face'})})})}
+  selTrip=null;save();toast('Dados de exemplo criados (os cadastros de exemplo não têm face)')};
+
+function renderLight(){renderKiosk();if(document.body.classList.contains('adm')&&$('v-painel').classList.contains('on'))renderPainel()}
+function renderAll(){renderKiosk();renderPainel();renderFunc();renderCfg();if($('v-rel').classList.contains('on'))renderRel();if($('v-loc').classList.contains('on'))renderLoc()}
+setPeriod('7d');
+renderAll();idle();
+const tick=setInterval(()=>{if(document.body.classList.contains('adm')&&$('v-painel').classList.contains('on'))renderPainel()},30000);
+}
+</script>
+</body>
+</html>

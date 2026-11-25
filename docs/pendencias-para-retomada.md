@@ -1,7 +1,15 @@
 # Pendências para retomada — Portal de Logística
 
-**Atualizado:** 06/11/2026
+**Atualizado:** 25/11/2026
 **Objetivo:** concluir primeiro um staging funcional para o Diretor de Logística; produção é uma etapa separada e ainda não está liberada.
+
+## Nova frente planejada — Aba RH e aplicativo de controle de ônibus — 25/11/2026
+
+- [ ] **Aguardar envio pelo diretor** dos arquivos do aplicativo mobile de controle de ônibus (criado por IA) antes de iniciar qualquer alteração de código, banco ou navegação.
+- [ ] **Auditar e melhorar o aplicativo mobile**, restringindo o app apenas às funções operacionais de campo (cadastro/rotinas de motorista e passageiro, ponto do motorista para identificar quem conduz o ônibus, embarque, contagem de passageiros e horário da viagem) e retirando dele a parte gerencial.
+- [ ] **Implementar a aba `RH` no Portal de Lançamento** com toda a parte gerencial e de monitoramento do aplicativo (quem é o motorista da viagem, quem está no ônibus, quantos passageiros há, horário da viagem, histórico e gestão centralizada) sob controle de permissões/escopos.
+
+Escopo inicial, checklist técnico e decisões para fechar quando os arquivos chegarem: [planejamento da aba RH e controle de ônibus](./planejamento-rh-controle-onibus.md).
 
 ## Revisão do diretor — Painel e navegação — 06/11/2026
 

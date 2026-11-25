@@ -39,6 +39,7 @@ A integração com o VilarejoBI não faz parte deste portal neste release. A evo
 - [Modelo operacional DBML](docs/modelo_operacional_lancamento_logistica.dbml)
 - [Arquitetura de implantação](docs/arquitetura_implantacao.md)
 - [Deploy de staging na EC2](deploy/ec2/README.md)
+- [Planejamento da aba RH e controle de ônibus](docs/planejamento-rh-controle-onibus.md)
 - [Roteiro da reunião com o Diretor de Logística](docs/roteiro-reuniao-diretor-logistica.md)
 - [Contexto mestre de Logística](../docs/contexto_projeto_logistica.md)
 

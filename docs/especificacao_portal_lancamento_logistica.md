@@ -123,6 +123,7 @@ O plano é acrescentar uma área de trabalho por setor, com formulários tipados
 
 - **Gestão de Frota:** registros mensais por veículo e demais campos manuais que não venham de Cobli/CTA/SEAC.
 - **Operações no CD:** formulários/lançamentos definidos a partir dos dados de estoque, entregas, custos, ocorrências, devoluções e backlog.
+- **RH — Controle de Ônibus (integrado ao aplicativo mobile):** nova aba `RH` no Portal para reunir toda a visão gerencial do aplicativo de controle de ônibus do diretor (ponto/identificação do motorista por viagem, passageiros embarcados, lotação e horários de viagem), mantendo no aplicativo de celular apenas os cadastros e rotinas operacionais de motorista e passageiro. **Aguardando envio dos arquivos do aplicativo pelo diretor antes de iniciar modelagem ou implementação** (ver [planejamento-rh-controle-onibus.md](./planejamento-rh-controle-onibus.md)).
 - **Outros setores logísticos:** somente quando gestor, origem, campos e regras forem mapeados.
 
 Não criar um formulário genérico de qualquer coluna nem uma tabela EAV de `campo/valor`. Cada formulário deve ter tabelas relacionais tipadas. Isso preserva tipos, validações, filtros, histórico e consultas.

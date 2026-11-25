@@ -1,6 +1,6 @@
 # Expansão de setores, indicadores e pendências
 
-**Atualizado em:** 17/11/2026
+**Atualizado em:** 25/11/2026
 
 Este registro acompanha a organização da área de Indicadores e as próximas expansões pedidas para o Portal.
 
@@ -16,6 +16,10 @@ Este registro acompanha a organização da área de Indicadores e as próximas e
 
 Adicionar um setor **SAC** no futuro. Quando o escopo funcional for definido, criar a pasta de SAC em Indicadores e implementar os indicadores e acessos correspondentes. **Não criar o setor, a pasta ou qualquer tela de SAC nesta etapa.**
 
+## Planejado: aba RH e controle de ônibus (integração com aplicativo mobile)
+
+Adicionar futuramente uma aba **RH** no Portal para concentrar toda a **parte gerencial** do aplicativo mobile de controle de ônibus criado pelo diretor com IA (monitoramento de motorista por viagem/ponto, quem está no ônibus, quantidade de passageiros, horários das viagens e gestão operacional). Em paralelo, o aplicativo de celular será melhorado e simplificado para manter apenas cadastros e rotinas operacionais de motorista e passageiro, movendo a gestão para o Portal. **Não criar o setor/aba `RH`, rotas, migrations ou telas antes de receber e analisar os arquivos do aplicativo enviados pelo diretor.** Detalhes e checklist de análise em [planejamento-rh-controle-onibus.md](./planejamento-rh-controle-onibus.md).
+
 ## Pendente: melhorias de pagamentos
 
 A área de pagamentos precisa ser melhorada. A implementação aguarda os requisitos detalhados que serão enviados pelo solicitante; não presumir campos, cálculos, regras de aprovação, formatos de exportação ou fluxos financeiros antes desse detalhamento.
@@ -23,6 +27,7 @@ A área de pagamentos precisa ser melhorada. A implementação aguarda os requis
 ## Decisões para a próxima etapa
 
 - Definir objetivo, usuários, permissões, indicadores e dados de origem do setor SAC.
+- Aguardar o envio dos arquivos do aplicativo de controle de ônibus pelo diretor para auditar a solução atual e fechar a especificação do app melhorado + aba **RH** no Portal ([planejamento-rh-controle-onibus.md](./planejamento-rh-controle-onibus.md)).
 - Receber os requisitos funcionais de pagamentos e então atualizar o escopo antes de alterar essa área.
 - Manter Suporte e Transporte como pastas disponíveis em Indicadores, exibidas conforme as permissões e os escopos do usuário.
 
