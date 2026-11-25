@@ -227,7 +227,7 @@ export function AppShell({ user, permissions, scopes, path, onNavigate, onSignOu
         },
         {
           id: "transport-aggregates",
-          label: "Agregados",
+          label: "Pagamento de frete",
           visible: canViewAggregatePayments && hasScopedSectorPermission(transportSectorId, ["AGREGADOS:VER"]),
           children: [
             {

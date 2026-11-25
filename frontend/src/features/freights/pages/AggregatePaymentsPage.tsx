@@ -37,8 +37,6 @@ import styles from "./AggregatePaymentsPage.module.css";
 
 type Props = {
   canExport: boolean;
-  canViewFreights: boolean;
-  canViewDashboard: boolean;
   canEditFreights: boolean;
   onNavigate: (path: string) => void;
 };
@@ -136,8 +134,6 @@ function statusPillInfo(item: FreightPaymentResponsibleSummary): {
 /** Gestão completa de fechamento financeiro, baixas, NF, recibos e ajustes de Fretes. */
 export function AggregatePaymentsPage({
   canExport,
-  canViewFreights,
-  canViewDashboard,
   canEditFreights,
   onNavigate,
 }: Props) {
@@ -631,20 +627,6 @@ export function AggregatePaymentsPage({
           </p>
         </div>
         <div className={cx(styles, "heading-actions")}>
-          {canViewDashboard && canViewFreights && (
-            <button className={cx(styles, commonStyles, "button button-secondary")} type="button" onClick={() => onNavigate("/indicadores/transportes")}>
-              Painel gerencial
-            </button>
-          )}
-          {canViewFreights && (
-            <button
-              className={cx(styles, commonStyles, "button button-secondary")}
-              type="button"
-              onClick={() => onNavigate("/fretes/historico")}
-            >
-              Histórico de fretes
-            </button>
-          )}
           {canExport && (
             <button
               className={cx(styles, commonStyles, "button button-secondary")}
